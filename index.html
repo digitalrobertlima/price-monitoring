@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Uniswap Liquidity Sentinel | POL/USDT</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+        :root {
+            --bg-base: #0a0a0a;
+            --dekton-copper: #cda434;
+            --dekton-dark: #1a1818;
+            --osb-warm: #d2a679;
+            --dicroic-glow: rgba(205, 164, 52, 0.15);
+            --danger-red: #ff2a2a;
+            --success-green: #00ff88;
+            --glass-bg: rgba(26, 24, 24, 0.65);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(205, 164, 52, 0.05), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(0, 255, 255, 0.03), transparent 50%);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        /* Efeito de Vidro Dicróico e Pedra Escura */
+        .dashboard {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(205, 164, 52, 0.2);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px var(--dicroic-glow), inset 0 0 20px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 600px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dashboard::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--dekton-copper), transparent);
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: var(--osb-warm);
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .price-display {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .ticker {
+            font-family: 'Space Mono', monospace;
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255,255,255,0.2);
+            line-height: 1;
+        }
+
+        .status-badge {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--success-green);
+            border: 1px solid var(--success-green);
+            transition: all 0.3s;
+        }
+
+        .range-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .input-group input {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--dekton-copper);
+            font-family: 'Space Mono', monospace;
+            font-size: 1.2rem;
+            padding: 12px;
+            border-radius: 8px;
+            outline: none;
+            text-align: center;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: var(--dekton-copper);
+        }
+
+        .variations-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .var-card {
+            background: rgba(0, 0, 0, 0.4);
+            border-left: 2px solid rgba(255,255,255,0.1);
+            padding: 15px 10px;
+            border-radius: 6px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .var-label {
+            font-size: 0.75rem;
+            color: #aaa;
+            letter-spacing: 1px;
+        }
+
+        .var-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .positive { color: var(--success-green); border-left-color: var(--success-green); }
+        .negative { color: var(--danger-red); border-left-color: var(--danger-red); }
+        .neutral { color: #fff; }
+
+        .btn-start {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, var(--dekton-copper), #e6b93e);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(205, 164, 52, 0.3);
+            transition: transform 0.1s;
+        }
+
+        .btn-start:active {
+            transform: scale(0.98);
+        }
+
+        /* ESTADO DE ALERTA (FORA DA FAIXA) */
+        body.alert-mode {
+            background-color: #1a0505;
+        }
+
+        body.alert-mode .dashboard {
+            border-color: var(--danger-red);
+            box-shadow: 0 0 40px rgba(255, 42, 42, 0.2), inset 0 0 30px rgba(255, 42, 42, 0.1);
+            animation: pulse-border 1s infinite alternate;
+        }
+
+        body.alert-mode .status-badge {
+            background: rgba(255, 42, 42, 0.1);
+            color: var(--danger-red);
+            border-color: var(--danger-red);
+            animation: flash-text 0.5s infinite alternate;
+        }
+
+        @keyframes pulse-border {
+            0% { box-shadow: 0 0 20px rgba(255, 42, 42, 0.2), inset 0 0 20px rgba(255, 42, 42, 0.1); }
+            100% { box-shadow: 0 0 60px rgba(255, 42, 42, 0.5), inset 0 0 50px rgba(255, 42, 42, 0.3); }
+        }
+
+        @keyframes flash-text {
+            0% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+
+        @media (max-width: 480px) {
+            .variations-grid { grid-template-columns: repeat(2, 1fr); }
+            .ticker { font-size: 2.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <button id="btn-init" class="btn-start">Injetar Áudio & Iniciar Sentinela</button>
+        
+        <h1>Sentinela de Liquidez | Uniswap V3</h1>
+        
+        <div class="price-display">
+            <div id="price" class="ticker">---.----</div>
+            <div id="status" class="status-badge">Aguardando Conexão...</div>
+        </div>
+
+        <div class="range-controls">
+            <div class="input-group">
+                <label>Faixa Mínima (USDT)</label>
+                <input type="number" id="min-price" step="0.0001" placeholder="Ex: 0.3000">
+            </div>
+            <div class="input-group">
+                <label>Faixa Máxima (USDT)</label>
+                <input type="number" id="max-price" step="0.0001" placeholder="Ex: 0.4500">
+            </div>
+        </div>
+
+        <div class="variations-grid">
+            <!-- Cards gerados via JS -->
+            <div class="var-card" id="card-5m"><span class="var-label">5 MIN</span><span class="var-value" id="var-5m">--%</span></div>
+            <div class="var-card" id="card-15m"><span class="var-label">15 MIN</span><span class="var-value" id="var-15m">--%</span></div>
+            <div class="var-card" id="card-30m"><span class="var-label">30 MIN</span><span class="var-value" id="var-30m">--%</span></div>
+            <div class="var-card" id="card-1h"><span class="var-label">1 HORA</span><span class="var-value" id="var-1h">--%</span></div>
+            <div class="var-card" id="card-4h"><span class="var-label">4 HORAS</span><span class="var-value" id="var-4h">--%</span></div>
+            <div class="var-card" id="card-8h"><span class="var-label">8 HORAS</span><span class="var-value" id="var-8h">--%</span></div>
+            <div class="var-card" id="card-12h"><span class="var-label">12 HORAS</span><span class="var-value" id="var-12h">--%</span></div>
+            <div class="var-card" id="card-1d"><span class="var-label">1 DIA</span><span class="var-value" id="var-1d">--%</span></div>
+        </div>
+    </div>
+
+    <script>
+        const SYMBOL = 'POLUSDT';
+        const INTERVALS = ['5m', '15m', '30m', '1h', '4h', '8h', '12h', '1d'];
+        
+        let currentPrice = 0;
+        let audioCtx = null;
+        let isAlarmPlaying = false;
+        let alarmInterval = null;
+
+        // ELEMENTOS DO DOM
+        const priceEl = document.getElementById('price');
+        const statusEl = document.getElementById('status');
+        const minInput = document.getElementById('min-price');
+        const maxInput = document.getElementById('max-price');
+        const btnInit = document.getElementById('btn-init');
+        const bodyEl = document.body;
+
+        // INICIALIZAÇÃO DE ÁUDIO (Navegadores exigem interação do usuário para tocar som)
+        btnInit.addEventListener('click', () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            btnInit.style.display = 'none';
+            statusEl.innerText = "Monitorando...";
+            initWebSocket();
+            fetchVariations();
+            setInterval(fetchVariations, 60000); // Atualiza variações a cada 1 min
+        });
+
+        // 1. WEBSOCKET PARA PREÇO EM TEMPO REAL
+        function initWebSocket() {
+            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                currentPrice = parseFloat(data.c);
+                priceEl.innerText = currentPrice.toFixed(4);
+                checkLiquidityRange();
+            };
+
+            ws.onerror = () => { statusEl.innerText = "Erro de Conexão. Reconectando..."; };
+            ws.onclose = () => { setTimeout(initWebSocket, 3000); };
+        }
+
+        // 2. BUSCA DE VARIAÇÕES HISTÓRICAS (API REST)
+        async function fetchVariations() {
+            for (let interval of INTERVALS) {
+                try {
+                    const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=2`);
+                    const data = await response.json();
+                    
+                    const openPrice = parseFloat(data[0][1]);
+                    const closePrice = parseFloat(data[data.length-1][4]);
+                    const variation = ((closePrice - openPrice) / openPrice) * 100;
+                    
+                    updateGrid(interval, variation);
+                } catch (e) {
+                    console.error(`Erro ao buscar ${interval}`, e);
+                }
+            }
+        }
+
+        function updateGrid(interval, variation) {
+            const valEl = document.getElementById(`var-${interval}`);
+            const cardEl = document.getElementById(`card-${interval}`);
+            
+            const isPositive = variation >= 0;
+            valEl.innerText = `${isPositive ? '+' : ''}${variation.toFixed(2)}%`;
+            
+            cardEl.className = 'var-card'; // Reset
+            cardEl.classList.add(isPositive ? 'positive' : 'negative');
+        }
+
+        // 3. LÓGICA DE ALERTA E SÍNTESE SONORA (CYBER-AESTHETIC SIREN)
+        function checkLiquidityRange() {
+            const min = parseFloat(minInput.value);
+            const max = parseFloat(maxInput.value);
+
+            if (isNaN(min) || isNaN(max)) return;
+
+            if (currentPrice < min || currentPrice > max) {
+                if (!bodyEl.classList.contains('alert-mode')) {
+                    bodyEl.classList.add('alert-mode');
+                    statusEl.innerText = "FORA DA FAIXA - IMPERMANENT LOSS!";
+                    triggerAlarm();
+                }
+            } else {
+                if (bodyEl.classList.contains('alert-mode')) {
+                    bodyEl.classList.remove('alert-mode');
+                    statusEl.innerText = "DENTRO DA FAIXA";
+                    stopAlarm();
+                }
+            }
+        }
+
+        // GERADOR DE SOM SYNTHWAVE DIRETO PELO NAVEGADOR
+        function playSirenPulse() {
+            if (!audioCtx) return;
+            
+            const osc1 = audioCtx.createOscillator(); // Graves agressivos
+            const osc2 = audioCtx.createOscillator(); // Médios cortantes
+            const gainNode = audioCtx.createGain();
+
+            osc1.type = 'sawtooth';
+            osc2.type = 'square';
+
+            // Modulação de frequência estilo sirene sci-fi
+            const now = audioCtx.currentTime;
+            osc1.frequency.setValueAtTime(110, now);
+            osc1.frequency.exponentialRampToValueAtTime(440, now + 0.4);
+            
+            osc2.frequency.setValueAtTime(220, now);
+            osc2.frequency.exponentialRampToValueAtTime(880, now + 0.4);
+
+            // Envelope de volume (Attack, Decay)
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+            osc1.connect(gainNode);
+            osc2.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.5);
+            osc2.stop(now + 0.5);
+        }
+
+        function triggerAlarm() {
+            if (isAlarmPlaying) return;
+            isAlarmPlaying = true;
+            playSirenPulse(); // Toca imediato
+            alarmInterval = setInterval(playSirenPulse, 800); // Repete a cada 0.8s
+        }
+
+        function stopAlarm() {
+            isAlarmPlaying = false;
+            clearInterval(alarmInterval);
+        }
+
+        // Salvar inputs no LocalStorage para não perder ao atualizar a página
+        minInput.addEventListener('input', () => localStorage.setItem('minRange', minInput.value));
+        maxInput.addEventListener('input', () => localStorage.setItem('maxRange', maxInput.value));
+        
+        window.addEventListener('load', () => {
+            if (localStorage.getItem('minRange')) minInput.value = localStorage.getItem('minRange');
+            if (localStorage.getItem('maxRange')) maxInput.value = localStorage.getItem('maxRange');
+        });
+    </script>
+</body>
+</html>
