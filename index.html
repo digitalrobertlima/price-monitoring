@@ -41,7 +41,6 @@
             transition: all 0.3s ease;
         }
 
-        /* Efeito de Vidro Dicróico e Pedra Escura */
         .dashboard {
             background: var(--glass-bg);
             backdrop-filter: blur(16px);
@@ -85,6 +84,21 @@
             color: #fff;
             text-shadow: 0 0 20px rgba(255,255,255,0.2);
             line-height: 1;
+            transition: color 0.1s, text-shadow 0.1s;
+        }
+
+        /* ANIMAÇÕES DE TICK EM TEMPO REAL */
+        .tick-up { animation: flash-green 0.4s ease-out; }
+        .tick-down { animation: flash-red 0.4s ease-out; }
+
+        @keyframes flash-green {
+            0% { text-shadow: 0 0 30px var(--success-green); color: var(--success-green); }
+            100% { text-shadow: 0 0 20px rgba(255,255,255,0.2); color: #fff; }
+        }
+
+        @keyframes flash-red {
+            0% { text-shadow: 0 0 30px var(--danger-red); color: var(--danger-red); }
+            100% { text-shadow: 0 0 20px rgba(255,255,255,0.2); color: #fff; }
         }
 
         .status-badge {
@@ -100,6 +114,22 @@
             color: var(--success-green);
             border: 1px solid var(--success-green);
             transition: all 0.3s;
+        }
+
+        .pulse-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: var(--success-green);
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 10px var(--success-green);
+            animation: ws-pulse 1.5s infinite alternate;
+        }
+
+        @keyframes ws-pulse {
+            0% { opacity: 0.3; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
         }
 
         .range-controls {
@@ -156,21 +186,11 @@
             gap: 5px;
         }
 
-        .var-label {
-            font-size: 0.75rem;
-            color: #aaa;
-            letter-spacing: 1px;
-        }
-
-        .var-value {
-            font-family: 'Space Mono', monospace;
-            font-size: 1rem;
-            font-weight: 700;
-        }
+        .var-label { font-size: 0.75rem; color: #aaa; letter-spacing: 1px; }
+        .var-value { font-family: 'Space Mono', monospace; font-size: 1rem; font-weight: 700; }
 
         .positive { color: var(--success-green); border-left-color: var(--success-green); }
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); }
-        .neutral { color: #fff; }
 
         .btn-start {
             width: 100%;
@@ -187,39 +207,24 @@
             letter-spacing: 2px;
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(205, 164, 52, 0.3);
-            transition: transform 0.1s;
         }
 
-        .btn-start:active {
-            transform: scale(0.98);
-        }
-
-        /* ESTADO DE ALERTA (FORA DA FAIXA) */
-        body.alert-mode {
-            background-color: #1a0505;
-        }
-
+        body.alert-mode { background-color: #1a0505; }
         body.alert-mode .dashboard {
             border-color: var(--danger-red);
             box-shadow: 0 0 40px rgba(255, 42, 42, 0.2), inset 0 0 30px rgba(255, 42, 42, 0.1);
             animation: pulse-border 1s infinite alternate;
         }
-
         body.alert-mode .status-badge {
             background: rgba(255, 42, 42, 0.1);
             color: var(--danger-red);
             border-color: var(--danger-red);
-            animation: flash-text 0.5s infinite alternate;
         }
+        body.alert-mode .pulse-dot { background-color: var(--danger-red); box-shadow: 0 0 10px var(--danger-red); }
 
         @keyframes pulse-border {
             0% { box-shadow: 0 0 20px rgba(255, 42, 42, 0.2), inset 0 0 20px rgba(255, 42, 42, 0.1); }
             100% { box-shadow: 0 0 60px rgba(255, 42, 42, 0.5), inset 0 0 50px rgba(255, 42, 42, 0.3); }
-        }
-
-        @keyframes flash-text {
-            0% { opacity: 1; }
-            100% { opacity: 0.3; }
         }
 
         @media (max-width: 480px) {
@@ -231,7 +236,7 @@
 <body>
 
     <div class="dashboard">
-        <button id="btn-init" class="btn-start">Injetar Áudio & Iniciar Sentinela</button>
+        <button id="btn-init" class="btn-start">Ativar Sensores & Áudio</button>
         
         <h1>Sentinela de Liquidez | Uniswap V3</h1>
         
@@ -252,7 +257,6 @@
         </div>
 
         <div class="variations-grid">
-            <!-- Cards gerados via JS -->
             <div class="var-card" id="card-5m"><span class="var-label">5 MIN</span><span class="var-value" id="var-5m">--%</span></div>
             <div class="var-card" id="card-15m"><span class="var-label">15 MIN</span><span class="var-value" id="var-15m">--%</span></div>
             <div class="var-card" id="card-30m"><span class="var-label">30 MIN</span><span class="var-value" id="var-30m">--%</span></div>
@@ -269,11 +273,11 @@
         const INTERVALS = ['5m', '15m', '30m', '1h', '4h', '8h', '12h', '1d'];
         
         let currentPrice = 0;
+        let lastPrice = 0;
         let audioCtx = null;
         let isAlarmPlaying = false;
         let alarmInterval = null;
 
-        // ELEMENTOS DO DOM
         const priceEl = document.getElementById('price');
         const statusEl = document.getElementById('status');
         const minInput = document.getElementById('min-price');
@@ -281,32 +285,47 @@
         const btnInit = document.getElementById('btn-init');
         const bodyEl = document.body;
 
-        // INICIALIZAÇÃO DE ÁUDIO (Navegadores exigem interação do usuário para tocar som)
         btnInit.addEventListener('click', () => {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             btnInit.style.display = 'none';
-            statusEl.innerText = "Monitorando...";
+            statusEl.innerHTML = "<span class='pulse-dot'></span> Sincronizado";
             initWebSocket();
             fetchVariations();
-            setInterval(fetchVariations, 60000); // Atualiza variações a cada 1 min
+            setInterval(fetchVariations, 60000);
         });
 
-        // 1. WEBSOCKET PARA PREÇO EM TEMPO REAL
         function initWebSocket() {
             const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                currentPrice = parseFloat(data.c);
+                const newPrice = parseFloat(data.c);
+                
+                if (lastPrice !== 0 && newPrice !== lastPrice) {
+                    // Reseta animação forçando um reflow no DOM
+                    priceEl.classList.remove('tick-up', 'tick-down');
+                    void priceEl.offsetWidth; 
+
+                    if (newPrice > lastPrice) {
+                        priceEl.classList.add('tick-up');
+                        playMicroTick('up');
+                    } else {
+                        priceEl.classList.add('tick-down');
+                        playMicroTick('down');
+                    }
+                }
+                
+                lastPrice = newPrice;
+                currentPrice = newPrice;
                 priceEl.innerText = currentPrice.toFixed(4);
+                
                 checkLiquidityRange();
             };
 
-            ws.onerror = () => { statusEl.innerText = "Erro de Conexão. Reconectando..."; };
-            ws.onclose = () => { setTimeout(initWebSocket, 3000); };
+            ws.onerror = () => { statusEl.innerHTML = "Falha. Reconectando..."; };
+            ws.onclose = () => { setTimeout(initWebSocket, 2000); };
         }
 
-        // 2. BUSCA DE VARIAÇÕES HISTÓRICAS (API REST)
         async function fetchVariations() {
             for (let interval of INTERVALS) {
                 try {
@@ -317,25 +336,17 @@
                     const closePrice = parseFloat(data[data.length-1][4]);
                     const variation = ((closePrice - openPrice) / openPrice) * 100;
                     
-                    updateGrid(interval, variation);
-                } catch (e) {
-                    console.error(`Erro ao buscar ${interval}`, e);
-                }
+                    const valEl = document.getElementById(`var-${interval}`);
+                    const cardEl = document.getElementById(`card-${interval}`);
+                    const isPositive = variation >= 0;
+                    
+                    valEl.innerText = `${isPositive ? '+' : ''}${variation.toFixed(2)}%`;
+                    cardEl.className = 'var-card';
+                    cardEl.classList.add(isPositive ? 'positive' : 'negative');
+                } catch (e) {}
             }
         }
 
-        function updateGrid(interval, variation) {
-            const valEl = document.getElementById(`var-${interval}`);
-            const cardEl = document.getElementById(`card-${interval}`);
-            
-            const isPositive = variation >= 0;
-            valEl.innerText = `${isPositive ? '+' : ''}${variation.toFixed(2)}%`;
-            
-            cardEl.className = 'var-card'; // Reset
-            cardEl.classList.add(isPositive ? 'positive' : 'negative');
-        }
-
-        // 3. LÓGICA DE ALERTA E SÍNTESE SONORA (CYBER-AESTHETIC SIREN)
         function checkLiquidityRange() {
             const min = parseFloat(minInput.value);
             const max = parseFloat(maxInput.value);
@@ -345,40 +356,66 @@
             if (currentPrice < min || currentPrice > max) {
                 if (!bodyEl.classList.contains('alert-mode')) {
                     bodyEl.classList.add('alert-mode');
-                    statusEl.innerText = "FORA DA FAIXA - IMPERMANENT LOSS!";
+                    statusEl.innerHTML = "<span class='pulse-dot'></span> ALERTA DE SAÍDA";
                     triggerAlarm();
                 }
             } else {
                 if (bodyEl.classList.contains('alert-mode')) {
                     bodyEl.classList.remove('alert-mode');
-                    statusEl.innerText = "DENTRO DA FAIXA";
+                    statusEl.innerHTML = "<span class='pulse-dot'></span> Sincronizado";
                     stopAlarm();
                 }
             }
         }
 
-        // GERADOR DE SOM SYNTHWAVE DIRETO PELO NAVEGADOR
+        // SÍNTESE DO MICRO-TICK (Aviso sonoro de oscilação)
+        function playMicroTick(direction) {
+            if (!audioCtx || isAlarmPlaying) return; // Não sobrepõe a sirene
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const now = audioCtx.currentTime;
+
+            osc.type = 'sine'; // Onda suave, não intrusiva
+            
+            if (direction === 'up') {
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+            } else {
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+            }
+
+            // Envelope de volume extremamente rápido e baixo
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.03, now + 0.02); // 3% do volume máximo
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(now);
+            osc.stop(now + 0.1);
+        }
+
+        // SÍNTESE DA SIRENE (Fora do range)
         function playSirenPulse() {
             if (!audioCtx) return;
-            
-            const osc1 = audioCtx.createOscillator(); // Graves agressivos
-            const osc2 = audioCtx.createOscillator(); // Médios cortantes
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
+            const now = audioCtx.currentTime;
 
             osc1.type = 'sawtooth';
             osc2.type = 'square';
 
-            // Modulação de frequência estilo sirene sci-fi
-            const now = audioCtx.currentTime;
             osc1.frequency.setValueAtTime(110, now);
             osc1.frequency.exponentialRampToValueAtTime(440, now + 0.4);
-            
             osc2.frequency.setValueAtTime(220, now);
             osc2.frequency.exponentialRampToValueAtTime(880, now + 0.4);
 
-            // Envelope de volume (Attack, Decay)
             gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.1);
+            gainNode.gain.linearRampToValueAtTime(0.2, now + 0.1);
             gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
 
             osc1.connect(gainNode);
@@ -394,8 +431,8 @@
         function triggerAlarm() {
             if (isAlarmPlaying) return;
             isAlarmPlaying = true;
-            playSirenPulse(); // Toca imediato
-            alarmInterval = setInterval(playSirenPulse, 800); // Repete a cada 0.8s
+            playSirenPulse();
+            alarmInterval = setInterval(playSirenPulse, 800);
         }
 
         function stopAlarm() {
@@ -403,7 +440,6 @@
             clearInterval(alarmInterval);
         }
 
-        // Salvar inputs no LocalStorage para não perder ao atualizar a página
         minInput.addEventListener('input', () => localStorage.setItem('minRange', minInput.value));
         maxInput.addEventListener('input', () => localStorage.setItem('maxRange', maxInput.value));
         
