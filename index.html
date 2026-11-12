@@ -5,172 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RDESK Terminal | Wall Street de Bolso</title>
     
-    <!-- Decodificador Blockchain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-    <!-- Motor Gráfico de Alta Frequência (TradingView) -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
         :root {
-            --bg-base: #070707;
-            --dekton-copper: #cda434;
-            --dekton-dark: #b8912d;
-            --danger-red: #ff3366;
-            --success-green: #00ff88;
-            --glass-bg: rgba(15, 14, 14, 0.75);
-            --panel-border: rgba(205, 164, 52, 0.15);
+            --bg-base: #070707; --dekton-copper: #cda434; --osb-warm: #d2a679;
+            --danger-red: #ff3366; --warning-yellow: #ffb703; --success-green: #00ff88;
+            --glass-bg: rgba(15, 14, 14, 0.75); --panel-border: rgba(205, 164, 52, 0.15);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg-base); background-image: radial-gradient(circle at 10% 20%, rgba(205, 164, 52, 0.05), transparent 40%), radial-gradient(circle at 90% 80%, rgba(0, 255, 255, 0.02), transparent 40%); color: #fff; font-family: 'Rajdhani', sans-serif; min-height: 100vh; padding: 10px; display: flex; flex-direction: column; overflow-x: hidden; }
 
-        body {
-            background-color: var(--bg-base);
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(205, 164, 52, 0.05), transparent 40%),
-                radial-gradient(circle at 90% 80%, rgba(0, 255, 255, 0.02), transparent 40%);
-            color: #fff;
-            font-family: 'Rajdhani', sans-serif;
-            min-height: 100vh;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            overflow-x: hidden;
-        }
+        .terminal-grid { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 12px; width: 100%; max-width: 1600px; margin: 0 auto; flex-grow: 1; }
 
-        /* GRID PRINCIPAL */
-        .terminal-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1.6fr;
-            gap: 12px;
-            width: 100%;
-            max-width: 1600px;
-            margin: 0 auto;
-            flex-grow: 1;
-        }
-
-        /* PAINEL GRÁFICO (TRADINGVIEW) Ocupa o topo inteiro */
-        .chart-panel {
-            grid-column: 1 / -1;
-            background: var(--glass-bg);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            height: 50vh; /* Altura ideal para mobile e desktop */
-            min-height: 350px;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-        }
-
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
+        /* PAINÉIS */
+        .chart-panel { grid-column: 1 / -1; background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; height: 45vh; min-height: 350px; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .chart-title { font-size: 1rem; text-transform: uppercase; letter-spacing: 2px; color: #888; font-weight: 700; }
         .chart-title span { color: var(--dekton-copper); }
-
-        .timeframe-selector {
-            display: flex; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .tf-btn {
-            background: transparent; color: #888; border: none; padding: 6px 12px; border-radius: 4px;
-            font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
-        }
-        
+        .timeframe-selector { display: flex; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); }
+        .tf-btn { background: transparent; color: #888; border: none; padding: 6px 12px; border-radius: 4px; font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .tf-btn.active { background: rgba(205, 164, 52, 0.2); color: var(--dekton-copper); }
         .tf-btn:hover:not(.active) { color: #fff; }
-
         .chart-container { flex-grow: 1; width: 100%; position: relative; }
 
-        /* PAINÉIS DE DADOS */
-        .panel {
-            background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 12px;
-            padding: 15px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-        }
-
-        .panel-header {
-            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; color: #888;
-            border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 12px;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-
+        .panel { background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); transition: all 0.3s ease; }
+        .panel-header { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; color: #888; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
         .highlight-text { color: var(--dekton-copper); font-weight: 700; }
-
         .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 5px 0; transition: color 0.1s; }
-
-        .data-row {
-            display: flex; justify-content: space-between; font-family: 'Space Mono', monospace;
-            font-size: 0.85rem; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);
-        }
+        .data-row { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.85rem; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }
         .data-label { font-family: 'Rajdhani', sans-serif; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* TAPE READING (MOBILE OTIMIZADO) */
+        /* TAPE READING */
         .tape-container { flex-grow: 1; background: #0a0a0a; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
-        .tape-header {
-            display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; text-transform: uppercase; color: #888; font-weight: 700;
-        }
-        .tape-row {
-            display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 8px 10px;
-            font-family: 'Space Mono', monospace; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02);
-            align-items: center; animation: slide-down 0.3s ease-out forwards;
-        }
+        .tape-header { display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; text-transform: uppercase; color: #888; font-weight: 700; }
+        .tape-row { display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 8px 10px; font-family: 'Space Mono', monospace; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02); align-items: center; animation: slide-down 0.3s ease-out forwards; }
         .tape-row.new-tx { background: rgba(205, 164, 52, 0.15); }
-        .type-buy { color: var(--success-green); }
-        .type-sell { color: var(--danger-red); }
-        .wallet-hash { color: #aaa; font-size: 0.65rem; }
-
+        .type-buy { color: var(--success-green); } .type-sell { color: var(--danger-red); } .wallet-hash { color: #aaa; font-size: 0.65rem; }
         @keyframes slide-down { 0% { opacity: 0; transform: translateY(-10px); background: rgba(205,164,52,0.3); } 100% { opacity: 1; transform: translateY(0); } }
 
-        /* CONTROLES */
+        /* CONTROLES E INPUTS */
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;}
-        input {
-            background: rgba(0,0,0,0.8); border: 1px solid var(--panel-border); color: var(--dekton-copper);
-            font-family: 'Space Mono', monospace; font-size: 1rem; padding: 8px; border-radius: 6px; text-align: center; width: 100%; outline: none;
-        }
+        input { background: rgba(0,0,0,0.8); border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 1rem; padding: 8px; border-radius: 6px; text-align: center; width: 100%; outline: none; }
         input:focus { border-color: var(--dekton-copper); }
-        
         .spread-box { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; text-align: center; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); }
 
-        .btn-start {
-            width: 100%; padding: 15px; background: linear-gradient(45deg, var(--dekton-copper), #e6b93e);
-            border: none; border-radius: 8px; color: #000; font-family: 'Rajdhani', sans-serif;
-            font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
-            cursor: pointer; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(205,164,52,0.3); position: sticky; top: 10px; z-index: 100;
-        }
+        .btn-start { width: 100%; padding: 15px; background: linear-gradient(45deg, var(--dekton-copper), #e6b93e); border: none; border-radius: 8px; color: #000; font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(205,164,52,0.3); position: sticky; top: 10px; z-index: 100; transition: transform 0.1s; }
+        .btn-start:active { transform: scale(0.98); }
 
-        .pulse-dot {
-            display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-            background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green);
-            animation: ws-pulse 1.5s infinite alternate; margin-right: 5px;
-        }
+        .pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green); animation: ws-pulse 1.5s infinite alternate; margin-right: 5px; }
         @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
-
         .tick-up { color: var(--success-green); text-shadow: 0 0 20px var(--success-green); }
         .tick-down { color: var(--danger-red); text-shadow: 0 0 20px var(--danger-red); }
 
-        body.alert-mode .panel:first-child { border-color: var(--danger-red); animation: pulse-danger 1s infinite alternate; }
-        @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255,42,42,0.1); } 100% { box-shadow: inset 0 0 60px rgba(255,42,42,0.4); } }
+        /* ESTADOS DE ALERTA DINÂMICO */
+        /* Nível 1: Atenção (Amarelo) */
+        body.warning-mode .panel:first-child { border-color: var(--warning-yellow); box-shadow: inset 0 0 30px rgba(255, 183, 3, 0.15); animation: pulse-warning 1.5s infinite alternate; }
+        @keyframes pulse-warning { 0% { box-shadow: inset 0 0 10px rgba(255,183,3,0.1); } 100% { box-shadow: inset 0 0 40px rgba(255,183,3,0.3); } }
+        
+        /* Nível 2: Impermanent Loss (Vermelho) */
+        body.danger-mode .panel:first-child { border-color: var(--danger-red); animation: pulse-danger 0.5s infinite alternate; }
+        @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255,42,42,0.2); } 100% { box-shadow: inset 0 0 80px rgba(255,42,42,0.6); } }
 
-        /* RESPONSIVIDADE MOBILE ABSOLUTA */
         @media (max-width: 950px) {
             .terminal-grid { grid-template-columns: 1fr; }
             .chart-panel { height: 45vh; min-height: 300px; }
-            .tape-header, .tape-row {
-                /* No celular, encolhe colunas e prioriza Valores, Tipo e BRL */
-                grid-template-columns: 50px 70px 1fr 1fr 1fr;
-                font-size: 0.65rem;
-                gap: 5px;
-            }
-            .tape-header div:last-child, .tape-row div:last-child { display: none; } /* Esconde a Hash da carteira no celular para não amassar a tabela */
+            .tape-header, .tape-row { grid-template-columns: 50px 70px 1fr 1fr 1fr; font-size: 0.65rem; gap: 5px; }
+            .tape-header div:last-child, .tape-row div:last-child { display: none; }
         }
     </style>
 </head>
@@ -179,8 +84,6 @@
     <button id="btn-init" class="btn-start">Acionar Terminal Wall Street</button>
 
     <div class="terminal-grid">
-        
-        <!-- NOVO: COCKPIT GRÁFICO (TRADINGVIEW) -->
         <div class="chart-panel">
             <div class="chart-header">
                 <div class="chart-title"><span class="pulse-dot" style="background:#fff; box-shadow:0 0 10px #fff"></span> POL/USDT <span>LIVE TACTICAL VIEW</span></div>
@@ -196,75 +99,63 @@
             <div id="tv-chart" class="chart-container"></div>
         </div>
         
-        <!-- PAINEL GLOBAL (Controles) -->
-        <div class="panel">
+        <div class="panel" id="binance-panel">
             <div class="panel-header">
-                <span><span class="pulse-dot"></span> Binance Tracker</span>
-                <span class="highlight-text" id="alert-status">SEGURO</span>
+                <span><span class="pulse-dot" id="binance-dot"></span> Binance Tracker</span>
+                <span class="highlight-text" id="alert-status">AGUARDANDO INÍCIO</span>
             </div>
             <div id="price-binance" class="price-huge">0.0000</div>
-            
             <div class="controls">
                 <div><div class="data-label" style="font-size:0.65rem;">Mínima (Liquidez)</div><input type="number" id="min-price" step="0.0001"></div>
                 <div><div class="data-label" style="font-size:0.65rem;">Máxima (Liquidez)</div><input type="number" id="max-price" step="0.0001"></div>
             </div>
         </div>
 
-        <!-- PAINEL LOCAL (Uniswap) -->
         <div class="panel">
             <div class="panel-header">
                 <span><span class="pulse-dot" style="background:var(--dekton-copper)"></span> Uniswap V3 Pool</span>
                 <span class="highlight-text">EXATO</span>
             </div>
             <div id="price-uniswap" class="price-huge" style="color: var(--dekton-copper);">0.0000</div>
-            
             <div class="spread-box">
                 <div class="data-label" style="font-size:0.7rem;">Arbitragem (Spread)</div>
                 <div id="spread-value" style="font-family: 'Space Mono'; font-size: 1.2rem; font-weight: 700;">0.00%</div>
             </div>
-
             <div style="margin-top: 10px;">
                 <div class="data-row"><span class="data-label">BRL Oracle</span><span id="brl-rate">R$ 0,00</span></div>
                 <div class="data-row"><span class="data-label">TVL (Liquidez)</span><span id="uni-liq">$0.00</span></div>
             </div>
         </div>
 
-        <!-- LIVE TAPE (Blockchain) -->
         <div class="panel">
             <div class="panel-header">
-                <span><span class="pulse-dot" style="background:#fff"></span> Scanner Ethers.js</span>
+                <span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Scanner Ethers.js</span>
                 <span class="highlight-text">POLYGON</span>
             </div>
             <div class="tape-container">
-                <div class="tape-header">
-                    <div>Hora</div><div>Tipo</div><div>BRL</div><div>POL</div><div>USDT</div><div class="hide-mobile">Wallet</div>
-                </div>
+                <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRL</div><div>POL</div><div>USDT</div><div class="hide-mobile">Wallet</div></div>
                 <div id="tape" style="display: flex; flex-direction: column;">
                     <div style="padding: 15px; text-align: center; color: #555; font-family: 'Space Mono'; font-size: 0.75rem;">
-                        [ AGUARDANDO DECODIFICAÇÃO ]
+                        [ SISTEMA OFFLINE. CLIQUE PARA INICIAR ]
                     </div>
                 </div>
             </div>
         </div>
-
     </div>
 
     <script>
         const SYMBOL = 'POLUSDT';
         const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7';
         
-        // ETHERS.JS Setup
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
         
         let currentPriceBinance = 0, lastPriceBinance = 0, currentPriceUniswap = 0, usdBrlRate = 5.80;
-        let audioCtx = null, isAlarmPlaying = false, alarmInterval = null, firstSwapDetected = false;
+        let audioCtx = null, alarmInterval = null, firstSwapDetected = false;
+        let currentRiskState = 'SAFE'; // SAFE, WARNING, DANGER
 
-        // TRADINGVIEW Setup
-        let chart, candleSeries;
-        let currentInterval = '15m';
-        let klineWebSocket = null;
+        let chart, candleSeries, currentInterval = '15m', klineWebSocket = null;
 
         const priceBinanceEl = document.getElementById('price-binance');
         const priceUniswapEl = document.getElementById('price-uniswap');
@@ -274,29 +165,30 @@
         const bodyEl = document.body;
         const btnInit = document.getElementById('btn-init');
 
-        // INICIALIZAÇÃO GERAL
+        // BOTÃO DE IGNIÇÃO ANTI-FREEZE
         btnInit.addEventListener('click', async () => {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+            } catch (e) {
+                console.warn("Áudio não autorizado pelo navegador, rodando em modo silencioso.", e);
+            }
             
             btnInit.style.display = 'none';
-            alertStatusEl.innerText = "SEGURO";
-            alertStatusEl.style.color = 'var(--success-green)';
+            alertStatusEl.innerText = "SEGURO"; alertStatusEl.style.color = 'var(--success-green)';
+            tapeEl.innerHTML = '<div style="padding:15px;text-align:center;color:#888;font-family:\'Space Mono\';font-size:0.75rem;">[ OUVINDO REDE POLYGON... ]</div>';
             
-            initTradingViewChart();
-            fetchBRLRate();
-            setInterval(fetchBRLRate, 300000);
-            
-            initBinanceWebSocket();
-            initPolygonWebSocket();
-            fetchUniswapData();
-            setInterval(fetchUniswapData, 10000);
+            // Isolando a inicialização de cada motor para evitar "freeze" geral
+            setTimeout(() => { try { initTradingViewChart(); } catch(e) { console.error("TV Error:", e); } }, 0);
+            setTimeout(() => { try { fetchBRLRate(); setInterval(fetchBRLRate, 300000); } catch(e){} }, 50);
+            setTimeout(() => { try { initBinanceWebSocket(); } catch(e){} }, 100);
+            setTimeout(() => { try { initPolygonWebSocket(); } catch(e){} }, 150);
+            setTimeout(() => { try { fetchUniswapData(); setInterval(fetchUniswapData, 10000); } catch(e){} }, 200);
         });
 
-        // 1. MOTOR GRÁFICO (LIGHTWEIGHT CHARTS)
+        // 1. MOTOR TRADINGVIEW BLINDADO
         function initTradingViewChart() {
             const chartContainer = document.getElementById('tv-chart');
-            
             chart = LightweightCharts.createChart(chartContainer, {
                 layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#888' },
                 grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
@@ -304,22 +196,15 @@
                 rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
                 timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, secondsVisible: false },
             });
+            candleSeries = chart.addCandlestickSeries({ upColor: '#00ff88', downColor: '#ff3366', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3366' });
 
-            candleSeries = chart.addCandlestickSeries({
-                upColor: '#00ff88', downColor: '#ff3366', borderVisible: false,
-                wickUpColor: '#00ff88', wickDownColor: '#ff3366'
-            });
-
-            // Responsividade para redimensionar o gráfico automaticamente ao girar o celular
             new ResizeObserver(entries => {
-                if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
-                const newRect = entries[0].contentRect;
-                chart.applyOptions({ height: newRect.height, width: newRect.width });
+                if (entries.length === 0 || entries[0].target !== chartContainer) return;
+                chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
             loadChartData(currentInterval);
 
-            // Controles de Tempo (Touch & Click)
             document.querySelectorAll('.tf-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
@@ -331,72 +216,37 @@
         }
 
         async function loadChartData(interval) {
-            // 1. Busca passado (REST API)
             try {
                 const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=500`);
+                if (!res.ok) throw new Error("Binance API falhou");
                 const data = await res.json();
-                const klines = data.map(d => ({
-                    time: Math.floor(d[0] / 1000), // Converte ms para segundos pro TradingView
-                    open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4])
-                }));
+                const klines = data.map(d => ({ time: Math.floor(d[0] / 1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
                 candleSeries.setData(klines);
-            } catch (e) { console.error("Erro ao buscar histórico", e); }
+            } catch (e) { console.error("Falha ao carregar histórico TV"); }
 
-            // 2. Conecta Futuro/Presente (WebSocket da Vela Específica)
             if (klineWebSocket) klineWebSocket.close();
             klineWebSocket = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@kline_${interval}`);
             klineWebSocket.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                const k = msg.k;
-                candleSeries.update({
-                    time: Math.floor(k.t / 1000),
-                    open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c)
-                });
+                try {
+                    const k = JSON.parse(event.data).k;
+                    candleSeries.update({ time: Math.floor(k.t / 1000), open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c) });
+                } catch(e) { /* Ignora se houver conflito de timestamp temporal */ }
             };
         }
 
-        // =====================================
-        // ROTINAS DE DADOS (RESTO DO SISTEMA)
-        // =====================================
+        // 2. DADOS EXTERNOS
         async function fetchBRLRate() {
-            try {
-                const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
-                const data = await res.json();
-                usdBrlRate = parseFloat(data.USDBRL.ask);
-                document.getElementById('brl-rate').innerText = `R$ ${usdBrlRate.toFixed(4).replace('.',',')}`;
-            } catch(e) {}
-        }
-
-        function initBinanceWebSocket() {
-            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                const newPrice = parseFloat(data.c);
-                if (lastPriceBinance !== 0 && newPrice !== lastPriceBinance) {
-                    priceBinanceEl.classList.remove('tick-up', 'tick-down');
-                    void priceBinanceEl.offsetWidth; 
-                    const isUp = newPrice > lastPriceBinance;
-                    priceBinanceEl.classList.add(isUp ? 'tick-up' : 'tick-down');
-                    playAudioTone(isUp ? 'tick-up' : 'tick-down');
-                }
-                lastPriceBinance = newPrice;
-                currentPriceBinance = newPrice;
-                priceBinanceEl.innerText = currentPriceBinance.toFixed(4);
-                updateSpread();
-                checkLiquidityRange();
-            };
-            ws.onclose = () => setTimeout(initBinanceWebSocket, 2000);
+            try { const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL'); const data = await res.json(); usdBrlRate = parseFloat(data.USDBRL.ask); document.getElementById('brl-rate').innerText = `R$ ${usdBrlRate.toFixed(4).replace('.',',')}`; } catch(e) {}
         }
 
         async function fetchUniswapData() {
             try {
                 const res = await fetch(`https://api.dexscreener.com/latest/dex/pairs/polygon/${POOL_ADDRESS}`);
-                const json = await res.json();
-                const pair = json.pairs[0];
-                if(pair) {
-                    currentPriceUniswap = parseFloat(pair.priceUsd);
+                const data = await res.json();
+                if(data.pairs && data.pairs[0]) {
+                    currentPriceUniswap = parseFloat(data.pairs[0].priceUsd);
                     priceUniswapEl.innerText = currentPriceUniswap.toFixed(4);
-                    document.getElementById('uni-liq').innerText = `$${parseFloat(pair.liquidity.usd).toLocaleString('en-US')}`;
+                    document.getElementById('uni-liq').innerText = `$${parseFloat(data.pairs[0].liquidity.usd).toLocaleString('en-US')}`;
                     updateSpread();
                 }
             } catch (e) {}
@@ -410,15 +260,43 @@
             }
         }
 
-        // SCANNER ETHERS.JS (TAPE READING)
+        // 3. MOTORES WEBSOCKET
+        function initBinanceWebSocket() {
+            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
+            const dot = document.getElementById('binance-dot');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const newPrice = parseFloat(data.c);
+                if (lastPriceBinance !== 0 && newPrice !== lastPriceBinance) {
+                    priceBinanceEl.classList.remove('tick-up', 'tick-down');
+                    void priceBinanceEl.offsetWidth; 
+                    const isUp = newPrice > lastPriceBinance;
+                    priceBinanceEl.classList.add(isUp ? 'tick-up' : 'tick-down');
+                    if(currentRiskState === 'SAFE') playAudioTone(isUp ? 'tick-up' : 'tick-down');
+                }
+                lastPriceBinance = newPrice;
+                currentPriceBinance = newPrice;
+                priceBinanceEl.innerText = currentPriceBinance.toFixed(4);
+                
+                dot.style.opacity = dot.style.opacity == 1 ? 0.3 : 1; // Efeito de piscar
+                updateSpread();
+                processDynamicRisk();
+            };
+            ws.onclose = () => setTimeout(initBinanceWebSocket, 2000);
+        }
+
         function initPolygonWebSocket() {
             const wsPool = new WebSocket('wss://polygon-bor-rpc.publicnode.com');
+            const dot = document.getElementById('polygon-dot');
             wsPool.onopen = () => { wsPool.send(JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": ["logs", { "address": POOL_ADDRESS }] })); };
             wsPool.onmessage = (event) => {
                 const response = JSON.parse(event.data);
                 if (response.method === 'eth_subscription' && response.params.result.topics[0] === SWAP_TOPIC) {
                     if(!firstSwapDetected) { tapeEl.innerHTML = ''; firstSwapDetected = true; }
-                    playAudioTone('pool-event');
+                    dot.style.background = 'var(--dekton-copper)'; setTimeout(() => dot.style.background = '#fff', 500);
+                    
+                    if(currentRiskState === 'SAFE') playAudioTone('pool-event');
+                    
                     try {
                         const log = response.params.result;
                         const parsed = iface.parseLog(log);
@@ -427,30 +305,19 @@
                         
                         const isBuy = amount0 < 0;
                         const tipo = isBuy ? 'COMPRAR' : 'VENDER';
-                        const tipoClass = isBuy ? 'type-buy' : 'type-sell';
-                        
                         const polVal = Math.abs(amount0).toLocaleString('pt-BR', {maximumFractionDigits: 1});
                         const usdtVal = Math.abs(amount1).toLocaleString('pt-BR', {maximumFractionDigits: 2});
                         const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
-                        
-                        const recipient = parsed.args.recipient;
-                        const carteira = `${recipient.substring(0,4)}..${recipient.substring(40)}`;
+                        const carteira = `${parsed.args.recipient.substring(0,4)}..${parsed.args.recipient.substring(40)}`;
                         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
                         
                         const row = document.createElement('div');
                         row.className = 'tape-row new-tx';
-                        row.innerHTML = `
-                            <div>${time}</div>
-                            <div class="${tipoClass}">${tipo}</div>
-                            <div>${brlVal}</div>
-                            <div>${polVal}</div>
-                            <div>${usdtVal}</div>
-                            <div class="wallet-hash hide-mobile">${carteira}</div>
-                        `;
+                        row.innerHTML = `<div>${time}</div><div class="${isBuy ? 'type-buy' : 'type-sell'}">${tipo}</div><div>${brlVal}</div><div>${polVal}</div><div>${usdtVal}</div><div class="wallet-hash hide-mobile">${carteira}</div>`;
                         
                         tapeEl.prepend(row);
                         setTimeout(() => { row.classList.remove('new-tx'); }, 1500);
-                        if(tapeEl.children.length > 20) { tapeEl.removeChild(tapeEl.lastChild); }
+                        if(tapeEl.children.length > 25) tapeEl.removeChild(tapeEl.lastChild);
                         fetchUniswapData(); 
                     } catch (error) {}
                 }
@@ -458,26 +325,99 @@
             wsPool.onclose = () => setTimeout(initPolygonWebSocket, 3000);
         }
 
-        // SEGURANÇA E ÁUDIO
+        // ==========================================
+        // 4. MOTOR DE RISCO E ÁUDIO DINÂMICO (NOVO)
+        // ==========================================
         const minInput = document.getElementById('min-price');
         const maxInput = document.getElementById('max-price');
         
-        function checkLiquidityRange() {
+        // Essa variável armazena a intensidade da fuga do preço (0 a 1+)
+        let currentDeviationIntensity = 0; 
+
+        function processDynamicRisk() {
             const min = parseFloat(minInput.value); const max = parseFloat(maxInput.value);
-            if (isNaN(min) || isNaN(max)) return;
-            if (currentPriceBinance < min || currentPriceBinance > max) {
-                if (!bodyEl.classList.contains('alert-mode')) {
-                    bodyEl.classList.add('alert-mode'); alertStatusEl.innerText = "RISCO IMINENTE"; alertStatusEl.style.color = 'var(--danger-red)'; triggerAlarm();
+            if (isNaN(min) || isNaN(max) || min >= max) return;
+
+            const price = currentPriceBinance;
+            const amplitude = max - min;
+            const bufferZone = amplitude * 0.05; // 5% do Range
+
+            if (price < min || price > max) {
+                // ESTADO 3: FORA DO RANGE (CRÍTICO)
+                const distance = price < min ? (min - price) : (price - max);
+                // Calcula a intensidade: se fugir 10% do tamanho do range, a intensidade bate 1.0 (máxima agressividade inicial)
+                currentDeviationIntensity = Math.min(distance / (amplitude * 0.1), 2.5); 
+                
+                if (currentRiskState !== 'DANGER') {
+                    currentRiskState = 'DANGER';
+                    bodyEl.classList.remove('warning-mode'); bodyEl.classList.add('danger-mode');
+                    alertStatusEl.innerText = "IMPERMANENT LOSS"; alertStatusEl.style.color = 'var(--danger-red)';
+                    clearInterval(alarmInterval); triggerDynamicSiren(); 
+                }
+            } else if (price <= min + bufferZone || price >= max - bufferZone) {
+                // ESTADO 2: ZONA DE ALERTA (Últimos 5%)
+                if (currentRiskState !== 'WARNING') {
+                    currentRiskState = 'WARNING';
+                    bodyEl.classList.remove('danger-mode'); bodyEl.classList.add('warning-mode');
+                    alertStatusEl.innerText = "ATENÇÃO: 5% DO LIMITE"; alertStatusEl.style.color = 'var(--warning-yellow)';
+                    clearInterval(alarmInterval); triggerWarningSonar();
                 }
             } else {
-                if (bodyEl.classList.contains('alert-mode')) {
-                    bodyEl.classList.remove('alert-mode'); alertStatusEl.innerText = "SEGURO"; alertStatusEl.style.color = 'var(--success-green)'; stopAlarm();
+                // ESTADO 1: SEGURO
+                if (currentRiskState !== 'SAFE') {
+                    currentRiskState = 'SAFE';
+                    bodyEl.classList.remove('danger-mode', 'warning-mode');
+                    alertStatusEl.innerText = "SEGURO"; alertStatusEl.style.color = 'var(--success-green)';
+                    clearInterval(alarmInterval);
                 }
             }
         }
 
+        // O Sonar de Aviso (Toca a cada 1.5s com som elegante mas urgente)
+        function triggerWarningSonar() {
+            alarmInterval = setInterval(() => {
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime;
+                osc.type = 'sine'; osc.frequency.setValueAtTime(900, now); osc.frequency.exponentialRampToValueAtTime(1500, now + 0.2);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
+            }, 1500);
+        }
+
+        // A Sirene Dinâmica (Acelera e fica mais estridente conforme o preço foge)
+        function triggerDynamicSiren() {
+            // Um loop dinâmico que chama a si mesmo, porque a velocidade muda em tempo real
+            function playSiren() {
+                if (currentRiskState !== 'DANGER' || !audioCtx) return;
+                
+                const osc1 = audioCtx.createOscillator(); const osc2 = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
+                const now = audioCtx.currentTime;
+                
+                // Mutiplicador de frequência baseado no distanciamento
+                const freqMultiplier = 1 + (currentDeviationIntensity * 0.8);
+                
+                osc1.type = 'sawtooth'; osc2.type = 'square';
+                osc1.frequency.setValueAtTime(110 * freqMultiplier, now); osc1.frequency.exponentialRampToValueAtTime(440 * freqMultiplier, now + 0.3);
+                osc2.frequency.setValueAtTime(220 * freqMultiplier, now); osc2.frequency.exponentialRampToValueAtTime(880 * freqMultiplier, now + 0.3);
+                
+                gainNode.gain.setValueAtTime(0, now); 
+                gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); 
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                
+                osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination);
+                osc1.start(now); osc2.start(now); osc1.stop(now + 0.4); osc2.stop(now + 0.4);
+
+                // Acelera o tempo de repetição da sirene (mínimo de 150ms se estiver muito fora do range)
+                const nextPulseTime = Math.max(150, 800 - (currentDeviationIntensity * 400));
+                
+                alarmInterval = setTimeout(playSiren, nextPulseTime);
+            }
+            playSiren();
+        }
+
+        // Bipes padrões e diários (só tocam se o estado for SAFE para não embolar o áudio)
         function playAudioTone(type) {
-            if (!audioCtx || isAlarmPlaying) return;
+            if (!audioCtx) return;
             const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime;
             if (type === 'tick-up') {
                 osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
@@ -487,28 +427,13 @@
                 gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             } else if (type === 'pool-event') {
                 osc.type = 'triangle'; osc.frequency.setValueAtTime(2000, now); osc.frequency.exponentialRampToValueAtTime(4000, now + 0.1);
-                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.4, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
             }
             osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
         }
 
-        function playSirenPulse() {
-            if (!audioCtx) return;
-            const osc1 = audioCtx.createOscillator(); const osc2 = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
-            const now = audioCtx.currentTime;
-            osc1.type = 'sawtooth'; osc2.type = 'square';
-            osc1.frequency.setValueAtTime(110, now); osc1.frequency.exponentialRampToValueAtTime(440, now + 0.4);
-            osc2.frequency.setValueAtTime(220, now); osc2.frequency.exponentialRampToValueAtTime(880, now + 0.4);
-            gainNode.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.1); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-            osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination);
-            osc1.start(now); osc2.start(now); osc1.stop(now + 0.5); osc2.stop(now + 0.5);
-        }
-
-        function triggerAlarm() { if (!isAlarmPlaying) { isAlarmPlaying = true; playSirenPulse(); alarmInterval = setInterval(playSirenPulse, 800); } }
-        function stopAlarm() { isAlarmPlaying = false; clearInterval(alarmInterval); }
-
-        minInput.addEventListener('input', () => localStorage.setItem('minRange', minInput.value));
-        maxInput.addEventListener('input', () => localStorage.setItem('maxRange', maxInput.value));
+        minInput.addEventListener('input', () => { localStorage.setItem('minRange', minInput.value); processDynamicRisk(); });
+        maxInput.addEventListener('input', () => { localStorage.setItem('maxRange', maxInput.value); processDynamicRisk(); });
         window.addEventListener('load', () => {
             if (localStorage.getItem('minRange')) minInput.value = localStorage.getItem('minRange');
             if (localStorage.getItem('maxRange')) maxInput.value = localStorage.getItem('maxRange');
