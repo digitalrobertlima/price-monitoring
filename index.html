@@ -3,16 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Terminal RDESK | Sentinela Uniswap V3</title>
-    <!-- Ethers.js para decodificação de logs da Blockchain em tempo real -->
+    <title>RDESK Terminal | Wall Street de Bolso</title>
+    
+    <!-- Decodificador Blockchain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <!-- Motor Gráfico de Alta Frequência (TradingView) -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
         :root {
             --bg-base: #070707;
             --dekton-copper: #cda434;
-            --osb-warm: #d2a679;
+            --dekton-dark: #b8912d;
             --danger-red: #ff3366;
             --success-green: #00ff88;
             --glass-bg: rgba(15, 14, 14, 0.75);
@@ -29,227 +33,215 @@
             color: #fff;
             font-family: 'Rajdhani', sans-serif;
             min-height: 100vh;
-            padding: 15px;
+            padding: 10px;
             display: flex;
             flex-direction: column;
-            transition: background-color 0.3s ease;
+            overflow-x: hidden;
         }
 
-        /* GRID WALL STREET */
+        /* GRID PRINCIPAL */
         .terminal-grid {
             display: grid;
-            grid-template-columns: 1.1fr 1fr 1.6fr;
-            gap: 15px;
+            grid-template-columns: 1fr 1fr 1.6fr;
+            gap: 12px;
             width: 100%;
             max-width: 1600px;
             margin: 0 auto;
             flex-grow: 1;
         }
 
-        .panel {
+        /* PAINEL GRÁFICO (TRADINGVIEW) Ocupa o topo inteiro */
+        .chart-panel {
+            grid-column: 1 / -1;
             background: var(--glass-bg);
-            backdrop-filter: blur(12px);
             border: 1px solid var(--panel-border);
             border-radius: 12px;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
-            position: relative;
-            overflow: hidden;
+            height: 50vh; /* Altura ideal para mobile e desktop */
+            min-height: 350px;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
         }
 
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .chart-title { font-size: 1rem; text-transform: uppercase; letter-spacing: 2px; color: #888; font-weight: 700; }
+        .chart-title span { color: var(--dekton-copper); }
+
+        .timeframe-selector {
+            display: flex; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .tf-btn {
+            background: transparent; color: #888; border: none; padding: 6px 12px; border-radius: 4px;
+            font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        }
+        
+        .tf-btn.active { background: rgba(205, 164, 52, 0.2); color: var(--dekton-copper); }
+        .tf-btn:hover:not(.active) { color: #fff; }
+
+        .chart-container { flex-grow: 1; width: 100%; position: relative; }
+
+        /* PAINÉIS DE DADOS */
+        .panel {
+            background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 12px;
+            padding: 15px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
         .panel-header {
-            font-size: 0.85rem; text-transform: uppercase; letter-spacing: 3px; color: #888;
-            border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px; margin-bottom: 15px;
+            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; color: #888;
+            border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 12px;
             display: flex; justify-content: space-between; align-items: center;
         }
 
         .highlight-text { color: var(--dekton-copper); font-weight: 700; }
 
-        .price-huge {
-            font-family: 'Space Mono', monospace; font-size: 2.8rem; font-weight: 700;
-            line-height: 1; margin: 10px 0; transition: color 0.1s, text-shadow 0.1s;
-        }
+        .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 5px 0; transition: color 0.1s; }
 
         .data-row {
             display: flex; justify-content: space-between; font-family: 'Space Mono', monospace;
-            font-size: 0.9rem; padding: 8px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);
+            font-size: 0.85rem; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);
         }
         .data-label { font-family: 'Rajdhani', sans-serif; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* VARIAÇÕES GRID RETORNOU */
-        .variations-grid {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px;
-        }
-        .var-card {
-            background: rgba(0, 0, 0, 0.4); border-left: 2px solid rgba(255,255,255,0.1);
-            padding: 10px 5px; border-radius: 6px; text-align: center; display: flex; flex-direction: column; gap: 3px;
-        }
-        .var-label { font-size: 0.7rem; color: #aaa; letter-spacing: 1px; }
-        .var-value { font-family: 'Space Mono', monospace; font-size: 0.9rem; font-weight: 700; }
-        .positive { color: var(--success-green); border-left-color: var(--success-green); }
-        .negative { color: var(--danger-red); border-left-color: var(--danger-red); }
-
-        /* TAPE READING (LIVRO DE OFERTAS EXATO) */
-        .tape-container {
-            flex-grow: 1; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 6px; padding: 0; overflow-y: hidden; display: flex; flex-direction: column;
-        }
-
+        /* TAPE READING (MOBILE OTIMIZADO) */
+        .tape-container { flex-grow: 1; background: #0a0a0a; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
         .tape-header {
-            display: grid; grid-template-columns: 80px 100px 1fr 1fr 1fr 110px;
-            padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1);
-            font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #888; font-weight: 700;
+            display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.7rem; text-transform: uppercase; color: #888; font-weight: 700;
         }
-
-        .tape-body { display: flex; flex-direction: column; }
-
         .tape-row {
-            display: grid; grid-template-columns: 80px 100px 1fr 1fr 1fr 110px;
-            padding: 10px 15px; font-family: 'Space Mono', monospace; font-size: 0.85rem;
-            border-bottom: 1px solid rgba(255,255,255,0.02); align-items: center;
-            animation: slide-down 0.3s ease-out forwards;
+            display: grid; grid-template-columns: 60px 80px 1fr 1fr 1fr 90px; padding: 8px 10px;
+            font-family: 'Space Mono', monospace; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02);
+            align-items: center; animation: slide-down 0.3s ease-out forwards;
         }
-
-        .tape-row:hover { background: rgba(255,255,255,0.03); }
         .tape-row.new-tx { background: rgba(205, 164, 52, 0.15); }
         .type-buy { color: var(--success-green); }
         .type-sell { color: var(--danger-red); }
-        .wallet-hash { color: #aaa; font-size: 0.75rem; }
+        .wallet-hash { color: #aaa; font-size: 0.65rem; }
 
-        @keyframes slide-down {
-            0% { opacity: 0; transform: translateY(-15px); background: rgba(205, 164, 52, 0.3); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slide-down { 0% { opacity: 0; transform: translateY(-10px); background: rgba(205,164,52,0.3); } 100% { opacity: 1; transform: translateY(0); } }
 
-        /* CONTROLES E ALARMES */
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;}
+        /* CONTROLES */
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;}
         input {
-            background: rgba(0, 0, 0, 0.8); border: 1px solid var(--panel-border);
-            color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 1.1rem;
-            padding: 10px; border-radius: 6px; text-align: center; width: 100%; outline: none;
+            background: rgba(0,0,0,0.8); border: 1px solid var(--panel-border); color: var(--dekton-copper);
+            font-family: 'Space Mono', monospace; font-size: 1rem; padding: 8px; border-radius: 6px; text-align: center; width: 100%; outline: none;
         }
         input:focus { border-color: var(--dekton-copper); }
         
-        .spread-box {
-            background: rgba(0, 0, 0, 0.5); padding: 15px; border-radius: 8px; text-align: center;
-            margin-top: 15px; border: 1px solid rgba(255,255,255,0.05);
-        }
+        .spread-box { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; text-align: center; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); }
 
         .btn-start {
-            padding: 15px; background: linear-gradient(45deg, var(--dekton-copper), #e6b93e);
+            width: 100%; padding: 15px; background: linear-gradient(45deg, var(--dekton-copper), #e6b93e);
             border: none; border-radius: 8px; color: #000; font-family: 'Rajdhani', sans-serif;
-            font-size: 1.2rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
-            cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(205, 164, 52, 0.3);
+            font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
+            cursor: pointer; margin-bottom: 12px; box-shadow: 0 4px 15px rgba(205,164,52,0.3); position: sticky; top: 10px; z-index: 100;
         }
 
         .pulse-dot {
-            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            display: inline-block; width: 6px; height: 6px; border-radius: 50%;
             background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green);
             animation: ws-pulse 1.5s infinite alternate; margin-right: 5px;
         }
         @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
 
-        .tick-up { animation: flash-green 0.5s ease-out; }
-        .tick-down { animation: flash-red 0.5s ease-out; }
-        @keyframes flash-green { 0% { color: var(--success-green); text-shadow: 0 0 20px var(--success-green); } 100% { color: #fff; } }
-        @keyframes flash-red { 0% { color: var(--danger-red); text-shadow: 0 0 20px var(--danger-red); } 100% { color: #fff; } }
+        .tick-up { color: var(--success-green); text-shadow: 0 0 20px var(--success-green); }
+        .tick-down { color: var(--danger-red); text-shadow: 0 0 20px var(--danger-red); }
 
-        /* ESTADO DE ALERTA */
-        body.alert-mode .panel:first-child {
-            border-color: var(--danger-red); box-shadow: 0 0 40px rgba(255, 42, 42, 0.2);
-            animation: pulse-danger 1s infinite alternate;
-        }
-        @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255, 42, 42, 0.1); } 100% { box-shadow: inset 0 0 60px rgba(255, 42, 42, 0.4); } }
+        body.alert-mode .panel:first-child { border-color: var(--danger-red); animation: pulse-danger 1s infinite alternate; }
+        @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255,42,42,0.1); } 100% { box-shadow: inset 0 0 60px rgba(255,42,42,0.4); } }
 
-        @media (max-width: 1200px) {
+        /* RESPONSIVIDADE MOBILE ABSOLUTA */
+        @media (max-width: 950px) {
             .terminal-grid { grid-template-columns: 1fr; }
-            .tape-header, .tape-row { grid-template-columns: 70px 90px 1fr 1fr 1fr 90px; font-size: 0.75rem; }
+            .chart-panel { height: 45vh; min-height: 300px; }
+            .tape-header, .tape-row {
+                /* No celular, encolhe colunas e prioriza Valores, Tipo e BRL */
+                grid-template-columns: 50px 70px 1fr 1fr 1fr;
+                font-size: 0.65rem;
+                gap: 5px;
+            }
+            .tape-header div:last-child, .tape-row div:last-child { display: none; } /* Esconde a Hash da carteira no celular para não amassar a tabela */
         }
     </style>
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">Iniciar Motores (Áudio & Blockchain)</button>
+    <button id="btn-init" class="btn-start">Acionar Terminal Wall Street</button>
 
     <div class="terminal-grid">
         
-        <!-- PAINEL 1: MERCADO GLOBAL (Binance + Variações) -->
-        <div class="panel" id="panel-global">
+        <!-- NOVO: COCKPIT GRÁFICO (TRADINGVIEW) -->
+        <div class="chart-panel">
+            <div class="chart-header">
+                <div class="chart-title"><span class="pulse-dot" style="background:#fff; box-shadow:0 0 10px #fff"></span> POL/USDT <span>LIVE TACTICAL VIEW</span></div>
+                <div class="timeframe-selector" id="tf-buttons">
+                    <button class="tf-btn" data-interval="1m">1m</button>
+                    <button class="tf-btn" data-interval="5m">5m</button>
+                    <button class="tf-btn active" data-interval="15m">15m</button>
+                    <button class="tf-btn" data-interval="1h">1H</button>
+                    <button class="tf-btn" data-interval="4h">4H</button>
+                    <button class="tf-btn" data-interval="1d">1D</button>
+                </div>
+            </div>
+            <div id="tv-chart" class="chart-container"></div>
+        </div>
+        
+        <!-- PAINEL GLOBAL (Controles) -->
+        <div class="panel">
             <div class="panel-header">
-                <span><span class="pulse-dot"></span> Radar Global (WSS)</span>
-                <span class="highlight-text">BINANCE</span>
+                <span><span class="pulse-dot"></span> Binance Tracker</span>
+                <span class="highlight-text" id="alert-status">SEGURO</span>
             </div>
             <div id="price-binance" class="price-huge">0.0000</div>
             
             <div class="controls">
-                <div>
-                    <div class="data-label" style="font-size: 0.7rem; margin-bottom: 5px;">Mínima (USDT)</div>
-                    <input type="number" id="min-price" step="0.0001">
-                </div>
-                <div>
-                    <div class="data-label" style="font-size: 0.7rem; margin-bottom: 5px;">Máxima (USDT)</div>
-                    <input type="number" id="max-price" step="0.0001">
-                </div>
-            </div>
-
-            <!-- AS VARIAÇÕES VOLTARAM AQUI -->
-            <div class="variations-grid">
-                <div class="var-card" id="card-5m"><span class="var-label">5 MIN</span><span class="var-value" id="var-5m">--%</span></div>
-                <div class="var-card" id="card-15m"><span class="var-label">15 MIN</span><span class="var-value" id="var-15m">--%</span></div>
-                <div class="var-card" id="card-30m"><span class="var-label">30 MIN</span><span class="var-value" id="var-30m">--%</span></div>
-                <div class="var-card" id="card-1h"><span class="var-label">1 HORA</span><span class="var-value" id="var-1h">--%</span></div>
-                <div class="var-card" id="card-4h"><span class="var-label">4 HORAS</span><span class="var-value" id="var-4h">--%</span></div>
-                <div class="var-card" id="card-8h"><span class="var-label">8 HORAS</span><span class="var-value" id="var-8h">--%</span></div>
-                <div class="var-card" id="card-12h"><span class="var-label">12 HORAS</span><span class="var-value" id="var-12h">--%</span></div>
-                <div class="var-card" id="card-1d"><span class="var-label">1 DIA</span><span class="var-value" id="var-1d">--%</span></div>
-            </div>
-
-            <div id="alert-status" style="margin-top: 15px; text-align: center; font-weight: 700; color: #888; font-family: 'Space Mono'; font-size: 0.8rem;">
-                SENTINELA AGUARDANDO
+                <div><div class="data-label" style="font-size:0.65rem;">Mínima (Liquidez)</div><input type="number" id="min-price" step="0.0001"></div>
+                <div><div class="data-label" style="font-size:0.65rem;">Máxima (Liquidez)</div><input type="number" id="max-price" step="0.0001"></div>
             </div>
         </div>
 
-        <!-- PAINEL 2: DADOS EXATOS DA POOL -->
+        <!-- PAINEL LOCAL (Uniswap) -->
         <div class="panel">
             <div class="panel-header">
-                <span><span class="pulse-dot" id="dot-uni" style="background:var(--dekton-copper); box-shadow: 0 0 10px var(--dekton-copper)"></span> Liquidez Local</span>
-                <span class="highlight-text">UNISWAP V3</span>
+                <span><span class="pulse-dot" style="background:var(--dekton-copper)"></span> Uniswap V3 Pool</span>
+                <span class="highlight-text">EXATO</span>
             </div>
             <div id="price-uniswap" class="price-huge" style="color: var(--dekton-copper);">0.0000</div>
             
             <div class="spread-box">
-                <div class="data-label">Arbitragem / Spread</div>
-                <div id="spread-value" style="font-family: 'Space Mono'; font-size: 1.5rem; font-weight: 700; margin-top: 5px;">0.00%</div>
+                <div class="data-label" style="font-size:0.7rem;">Arbitragem (Spread)</div>
+                <div id="spread-value" style="font-family: 'Space Mono'; font-size: 1.2rem; font-weight: 700;">0.00%</div>
             </div>
 
-            <div style="margin-top: auto;">
-                <div class="data-row"><span class="data-label">Câmbio BRL Atual</span><span id="brl-rate">R$ 0,00</span></div>
-                <div class="data-row"><span class="data-label">Liquidez Total</span><span id="uni-liq">$0.00</span></div>
-                <div class="data-row" style="border: none;"><span class="data-label">Transações (24h)</span><span id="uni-txs">0</span></div>
+            <div style="margin-top: 10px;">
+                <div class="data-row"><span class="data-label">BRL Oracle</span><span id="brl-rate">R$ 0,00</span></div>
+                <div class="data-row"><span class="data-label">TVL (Liquidez)</span><span id="uni-liq">$0.00</span></div>
             </div>
         </div>
 
-        <!-- PAINEL 3: TAPE READING -->
+        <!-- LIVE TAPE (Blockchain) -->
         <div class="panel">
             <div class="panel-header">
-                <span><span class="pulse-dot" style="background:#fff; box-shadow: 0 0 10px #fff"></span> Live Tape (Polygon WSS)</span>
-                <span class="highlight-text">DECODIFICADOR ETHERS.JS</span>
+                <span><span class="pulse-dot" style="background:#fff"></span> Scanner Ethers.js</span>
+                <span class="highlight-text">POLYGON</span>
             </div>
-            
             <div class="tape-container">
                 <div class="tape-header">
-                    <div>Hora</div>
-                    <div>Tipo</div>
-                    <div>BRL</div>
-                    <div>POL</div>
-                    <div>USDTO</div>
-                    <div>Carteira</div>
+                    <div>Hora</div><div>Tipo</div><div>BRL</div><div>POL</div><div>USDT</div><div class="hide-mobile">Wallet</div>
                 </div>
-                <div class="tape-body" id="tape">
-                    <div style="padding: 20px; text-align: center; color: #555; font-family: 'Space Mono'; font-size: 0.8rem; grid-column: 1 / -1;">
-                        [ AGUARDANDO DECODIFICAÇÃO DE REDE... ]
+                <div id="tape" style="display: flex; flex-direction: column;">
+                    <div style="padding: 15px; text-align: center; color: #555; font-family: 'Space Mono'; font-size: 0.75rem;">
+                        [ AGUARDANDO DECODIFICAÇÃO ]
                     </div>
                 </div>
             </div>
@@ -260,21 +252,19 @@
     <script>
         const SYMBOL = 'POLUSDT';
         const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7';
-        const INTERVALS = ['5m', '15m', '30m', '1h', '4h', '8h', '12h', '1d'];
         
+        // ETHERS.JS Setup
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
         
-        let currentPriceBinance = 0;
-        let lastPriceBinance = 0;
-        let currentPriceUniswap = 0;
-        let usdBrlRate = 5.80; 
-        
-        let audioCtx = null;
-        let isAlarmPlaying = false;
-        let alarmInterval = null;
-        let firstSwapDetected = false;
+        let currentPriceBinance = 0, lastPriceBinance = 0, currentPriceUniswap = 0, usdBrlRate = 5.80;
+        let audioCtx = null, isAlarmPlaying = false, alarmInterval = null, firstSwapDetected = false;
+
+        // TRADINGVIEW Setup
+        let chart, candleSeries;
+        let currentInterval = '15m';
+        let klineWebSocket = null;
 
         const priceBinanceEl = document.getElementById('price-binance');
         const priceUniswapEl = document.getElementById('price-uniswap');
@@ -282,7 +272,92 @@
         const tapeEl = document.getElementById('tape');
         const alertStatusEl = document.getElementById('alert-status');
         const bodyEl = document.body;
+        const btnInit = document.getElementById('btn-init');
 
+        // INICIALIZAÇÃO GERAL
+        btnInit.addEventListener('click', async () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            
+            btnInit.style.display = 'none';
+            alertStatusEl.innerText = "SEGURO";
+            alertStatusEl.style.color = 'var(--success-green)';
+            
+            initTradingViewChart();
+            fetchBRLRate();
+            setInterval(fetchBRLRate, 300000);
+            
+            initBinanceWebSocket();
+            initPolygonWebSocket();
+            fetchUniswapData();
+            setInterval(fetchUniswapData, 10000);
+        });
+
+        // 1. MOTOR GRÁFICO (LIGHTWEIGHT CHARTS)
+        function initTradingViewChart() {
+            const chartContainer = document.getElementById('tv-chart');
+            
+            chart = LightweightCharts.createChart(chartContainer, {
+                layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#888' },
+                grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { color: '#cda434', style: 3 }, horzLine: { color: '#cda434', style: 3 } },
+                rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
+                timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, secondsVisible: false },
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#00ff88', downColor: '#ff3366', borderVisible: false,
+                wickUpColor: '#00ff88', wickDownColor: '#ff3366'
+            });
+
+            // Responsividade para redimensionar o gráfico automaticamente ao girar o celular
+            new ResizeObserver(entries => {
+                if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
+                const newRect = entries[0].contentRect;
+                chart.applyOptions({ height: newRect.height, width: newRect.width });
+            }).observe(chartContainer);
+
+            loadChartData(currentInterval);
+
+            // Controles de Tempo (Touch & Click)
+            document.querySelectorAll('.tf-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentInterval = e.target.getAttribute('data-interval');
+                    loadChartData(currentInterval);
+                });
+            });
+        }
+
+        async function loadChartData(interval) {
+            // 1. Busca passado (REST API)
+            try {
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=500`);
+                const data = await res.json();
+                const klines = data.map(d => ({
+                    time: Math.floor(d[0] / 1000), // Converte ms para segundos pro TradingView
+                    open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4])
+                }));
+                candleSeries.setData(klines);
+            } catch (e) { console.error("Erro ao buscar histórico", e); }
+
+            // 2. Conecta Futuro/Presente (WebSocket da Vela Específica)
+            if (klineWebSocket) klineWebSocket.close();
+            klineWebSocket = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@kline_${interval}`);
+            klineWebSocket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                const k = msg.k;
+                candleSeries.update({
+                    time: Math.floor(k.t / 1000),
+                    open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c)
+                });
+            };
+        }
+
+        // =====================================
+        // ROTINAS DE DADOS (RESTO DO SISTEMA)
+        // =====================================
         async function fetchBRLRate() {
             try {
                 const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
@@ -292,47 +367,6 @@
             } catch(e) {}
         }
 
-        // MOTOR DE VARIAÇÕES (RESTAURADO)
-        async function fetchVariations() {
-            for (let interval of INTERVALS) {
-                try {
-                    const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=2`);
-                    const data = await response.json();
-                    const openPrice = parseFloat(data[0][1]);
-                    const closePrice = parseFloat(data[data.length-1][4]);
-                    const variation = ((closePrice - openPrice) / openPrice) * 100;
-                    
-                    const valEl = document.getElementById(`var-${interval}`);
-                    const cardEl = document.getElementById(`card-${interval}`);
-                    const isPositive = variation >= 0;
-                    
-                    valEl.innerText = `${isPositive ? '+' : ''}${variation.toFixed(2)}%`;
-                    cardEl.className = 'var-card';
-                    cardEl.classList.add(isPositive ? 'positive' : 'negative');
-                } catch (e) {}
-            }
-        }
-
-        document.getElementById('btn-init').addEventListener('click', async () => {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            
-            document.getElementById('btn-init').style.display = 'none';
-            alertStatusEl.innerText = "[ DENTRO DA FAIXA SEGURA ]";
-            alertStatusEl.style.color = 'var(--success-green)';
-            
-            fetchBRLRate();
-            fetchVariations();
-            
-            setInterval(fetchBRLRate, 300000); 
-            setInterval(fetchVariations, 60000);
-            
-            initBinanceWebSocket();
-            initPolygonWebSocket();
-            fetchUniswapData();
-            setInterval(fetchUniswapData, 10000);
-        });
-
         function initBinanceWebSocket() {
             const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
             ws.onmessage = (event) => {
@@ -341,8 +375,9 @@
                 if (lastPriceBinance !== 0 && newPrice !== lastPriceBinance) {
                     priceBinanceEl.classList.remove('tick-up', 'tick-down');
                     void priceBinanceEl.offsetWidth; 
-                    priceBinanceEl.classList.add(newPrice > lastPriceBinance ? 'tick-up' : 'tick-down');
-                    playAudioTone(newPrice > lastPriceBinance ? 'tick-up' : 'tick-down');
+                    const isUp = newPrice > lastPriceBinance;
+                    priceBinanceEl.classList.add(isUp ? 'tick-up' : 'tick-down');
+                    playAudioTone(isUp ? 'tick-up' : 'tick-down');
                 }
                 lastPriceBinance = newPrice;
                 currentPriceBinance = newPrice;
@@ -362,7 +397,6 @@
                     currentPriceUniswap = parseFloat(pair.priceUsd);
                     priceUniswapEl.innerText = currentPriceUniswap.toFixed(4);
                     document.getElementById('uni-liq').innerText = `$${parseFloat(pair.liquidity.usd).toLocaleString('en-US')}`;
-                    document.getElementById('uni-txs').innerText = pair.txns.h24.buys + pair.txns.h24.sells;
                     updateSpread();
                 }
             } catch (e) {}
@@ -376,66 +410,55 @@
             }
         }
 
+        // SCANNER ETHERS.JS (TAPE READING)
         function initPolygonWebSocket() {
             const wsPool = new WebSocket('wss://polygon-bor-rpc.publicnode.com');
-            wsPool.onopen = () => {
-                wsPool.send(JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": ["logs", { "address": POOL_ADDRESS }] }));
-            };
-
+            wsPool.onopen = () => { wsPool.send(JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": ["logs", { "address": POOL_ADDRESS }] })); };
             wsPool.onmessage = (event) => {
                 const response = JSON.parse(event.data);
-                if (response.method === 'eth_subscription') {
-                    const log = response.params.result;
-                    
-                    if (log.topics[0] === SWAP_TOPIC) {
-                        if(!firstSwapDetected) { tapeEl.innerHTML = ''; firstSwapDetected = true; }
-                        playAudioTone('pool-event');
+                if (response.method === 'eth_subscription' && response.params.result.topics[0] === SWAP_TOPIC) {
+                    if(!firstSwapDetected) { tapeEl.innerHTML = ''; firstSwapDetected = true; }
+                    playAudioTone('pool-event');
+                    try {
+                        const log = response.params.result;
+                        const parsed = iface.parseLog(log);
+                        const amount0 = parseFloat(ethers.utils.formatUnits(parsed.args.amount0.toString(), 18));
+                        const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
                         
-                        try {
-                            const parsed = iface.parseLog(log);
-                            
-                            const amount0Str = parsed.args.amount0.toString();
-                            const amount1Str = parsed.args.amount1.toString();
-                            const amount0 = parseFloat(ethers.utils.formatUnits(amount0Str, 18));
-                            const amount1 = parseFloat(ethers.utils.formatUnits(amount1Str, 6));
-                            
-                            const isBuy = amount0 < 0;
-                            
-                            const tipo = isBuy ? 'Comprar<br>POL' : 'Vender<br>POL';
-                            const tipoClass = isBuy ? 'type-buy' : 'type-sell';
-                            
-                            const polVal = Math.abs(amount0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 4});
-                            const usdtVal = Math.abs(amount1).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 4});
-                            const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
-                            
-                            const recipient = parsed.args.recipient;
-                            const carteira = `${recipient.substring(0,6)}...${recipient.substring(38)}`;
-                            const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
-                            
-                            const row = document.createElement('div');
-                            row.className = 'tape-row new-tx';
-                            row.innerHTML = `
-                                <div>${time}</div>
-                                <div class="${tipoClass}">${tipo}</div>
-                                <div>${brlVal}</div>
-                                <div>${polVal}</div>
-                                <div>${usdtVal}</div>
-                                <div class="wallet-hash">${carteira}</div>
-                            `;
-                            
-                            tapeEl.prepend(row);
-                            setTimeout(() => { row.classList.remove('new-tx'); }, 1500);
-                            
-                            if(tapeEl.children.length > 25) { tapeEl.removeChild(tapeEl.lastChild); }
-                            fetchUniswapData(); 
-                            
-                        } catch (error) {}
-                    }
+                        const isBuy = amount0 < 0;
+                        const tipo = isBuy ? 'COMPRAR' : 'VENDER';
+                        const tipoClass = isBuy ? 'type-buy' : 'type-sell';
+                        
+                        const polVal = Math.abs(amount0).toLocaleString('pt-BR', {maximumFractionDigits: 1});
+                        const usdtVal = Math.abs(amount1).toLocaleString('pt-BR', {maximumFractionDigits: 2});
+                        const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+                        
+                        const recipient = parsed.args.recipient;
+                        const carteira = `${recipient.substring(0,4)}..${recipient.substring(40)}`;
+                        const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+                        
+                        const row = document.createElement('div');
+                        row.className = 'tape-row new-tx';
+                        row.innerHTML = `
+                            <div>${time}</div>
+                            <div class="${tipoClass}">${tipo}</div>
+                            <div>${brlVal}</div>
+                            <div>${polVal}</div>
+                            <div>${usdtVal}</div>
+                            <div class="wallet-hash hide-mobile">${carteira}</div>
+                        `;
+                        
+                        tapeEl.prepend(row);
+                        setTimeout(() => { row.classList.remove('new-tx'); }, 1500);
+                        if(tapeEl.children.length > 20) { tapeEl.removeChild(tapeEl.lastChild); }
+                        fetchUniswapData(); 
+                    } catch (error) {}
                 }
             };
             wsPool.onclose = () => setTimeout(initPolygonWebSocket, 3000);
         }
 
+        // SEGURANÇA E ÁUDIO
         const minInput = document.getElementById('min-price');
         const maxInput = document.getElementById('max-price');
         
@@ -444,17 +467,11 @@
             if (isNaN(min) || isNaN(max)) return;
             if (currentPriceBinance < min || currentPriceBinance > max) {
                 if (!bodyEl.classList.contains('alert-mode')) {
-                    bodyEl.classList.add('alert-mode');
-                    alertStatusEl.innerText = "[ IMPERMANENT LOSS - FORA DA FAIXA ]";
-                    alertStatusEl.style.color = 'var(--danger-red)';
-                    triggerAlarm();
+                    bodyEl.classList.add('alert-mode'); alertStatusEl.innerText = "RISCO IMINENTE"; alertStatusEl.style.color = 'var(--danger-red)'; triggerAlarm();
                 }
             } else {
                 if (bodyEl.classList.contains('alert-mode')) {
-                    bodyEl.classList.remove('alert-mode');
-                    alertStatusEl.innerText = "[ DENTRO DA FAIXA SEGURA ]";
-                    alertStatusEl.style.color = 'var(--success-green)';
-                    stopAlarm();
+                    bodyEl.classList.remove('alert-mode'); alertStatusEl.innerText = "SEGURO"; alertStatusEl.style.color = 'var(--success-green)'; stopAlarm();
                 }
             }
         }
