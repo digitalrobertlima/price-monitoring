@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RDESK Terminal | Wall Street de Bolso</title>
     
+    <!-- Decodificador Blockchain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <!-- Motor Gráfico -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
@@ -36,7 +38,9 @@
         .panel { background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 12px; padding: 15px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.8); transition: all 0.3s ease; }
         .panel-header { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 2px; color: #888; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
         .highlight-text { color: var(--dekton-copper); font-weight: 700; }
-        .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 5px 0; transition: color 0.1s; }
+        
+        .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 5px 0; transition: color 0.15s, text-shadow 0.15s; }
+        
         .data-row { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.85rem; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }
         .data-label { font-family: 'Rajdhani', sans-serif; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
 
@@ -50,7 +54,7 @@
 
         /* CONTROLES E INPUTS */
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;}
-        input { background: rgba(0,0,0,0.8); border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 1rem; padding: 8px; border-radius: 6px; text-align: center; width: 100%; outline: none; }
+        input { background: rgba(0,0,0,0.8); border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 0.95rem; padding: 8px; border-radius: 6px; text-align: center; width: 100%; outline: none; }
         input:focus { border-color: var(--dekton-copper); }
         .spread-box { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; text-align: center; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); }
 
@@ -59,15 +63,14 @@
 
         .pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green); animation: ws-pulse 1.5s infinite alternate; margin-right: 5px; }
         @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
-        .tick-up { color: var(--success-green); text-shadow: 0 0 20px var(--success-green); }
-        .tick-down { color: var(--danger-red); text-shadow: 0 0 20px var(--danger-red); }
+        
+        .tick-up { color: var(--success-green) !important; text-shadow: 0 0 20px var(--success-green); }
+        .tick-down { color: var(--danger-red) !important; text-shadow: 0 0 20px var(--danger-red); }
 
         /* ESTADOS DE ALERTA DINÂMICO */
-        /* Nível 1: Atenção (Amarelo) */
         body.warning-mode .panel:first-child { border-color: var(--warning-yellow); box-shadow: inset 0 0 30px rgba(255, 183, 3, 0.15); animation: pulse-warning 1.5s infinite alternate; }
         @keyframes pulse-warning { 0% { box-shadow: inset 0 0 10px rgba(255,183,3,0.1); } 100% { box-shadow: inset 0 0 40px rgba(255,183,3,0.3); } }
         
-        /* Nível 2: Impermanent Loss (Vermelho) */
         body.danger-mode .panel:first-child { border-color: var(--danger-red); animation: pulse-danger 0.5s infinite alternate; }
         @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255,42,42,0.2); } 100% { box-shadow: inset 0 0 80px rgba(255,42,42,0.6); } }
 
@@ -81,19 +84,18 @@
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">Acionar Terminal Wall Street</button>
+    <button id="btn-init" class="btn-start">Acionar Terminal Autônomo</button>
 
     <div class="terminal-grid">
         <div class="chart-panel">
             <div class="chart-header">
                 <div class="chart-title"><span class="pulse-dot" style="background:#fff; box-shadow:0 0 10px #fff"></span> POL/USDT <span>LIVE TACTICAL VIEW</span></div>
                 <div class="timeframe-selector" id="tf-buttons">
-                    <button class="tf-btn" data-interval="1m">1m</button>
-                    <button class="tf-btn" data-interval="5m">5m</button>
-                    <button class="tf-btn active" data-interval="15m">15m</button>
-                    <button class="tf-btn" data-interval="1h">1H</button>
-                    <button class="tf-btn" data-interval="4h">4H</button>
-                    <button class="tf-btn" data-interval="1d">1D</button>
+                    <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
+                    <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
+                    <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
+                    <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
+                    <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
                 </div>
             </div>
             <div id="tv-chart" class="chart-container"></div>
@@ -104,10 +106,11 @@
                 <span><span class="pulse-dot" id="binance-dot"></span> Binance Tracker</span>
                 <span class="highlight-text" id="alert-status">AGUARDANDO INÍCIO</span>
             </div>
-            <div id="price-binance" class="price-huge">0.0000</div>
+            <!-- Modificado para 6 casas decimais e animação bruta -->
+            <div id="price-binance" class="price-huge">0.000000</div>
             <div class="controls">
-                <div><div class="data-label" style="font-size:0.65rem;">Mínima (Liquidez)</div><input type="number" id="min-price" step="0.0001"></div>
-                <div><div class="data-label" style="font-size:0.65rem;">Máxima (Liquidez)</div><input type="number" id="max-price" step="0.0001"></div>
+                <div><div class="data-label" style="font-size:0.65rem;">Mínima (Liquidez)</div><input type="number" id="min-price" step="0.000001"></div>
+                <div><div class="data-label" style="font-size:0.65rem;">Máxima (Liquidez)</div><input type="number" id="max-price" step="0.000001"></div>
             </div>
         </div>
 
@@ -116,10 +119,11 @@
                 <span><span class="pulse-dot" style="background:var(--dekton-copper)"></span> Uniswap V3 Pool</span>
                 <span class="highlight-text">EXATO</span>
             </div>
-            <div id="price-uniswap" class="price-huge" style="color: var(--dekton-copper);">0.0000</div>
+            <!-- Preço da Uniswap agora com capacidade de oscilação visual -->
+            <div id="price-uniswap" class="price-huge" style="color: var(--dekton-copper);">0.000000</div>
             <div class="spread-box">
                 <div class="data-label" style="font-size:0.7rem;">Arbitragem (Spread)</div>
-                <div id="spread-value" style="font-family: 'Space Mono'; font-size: 1.2rem; font-weight: 700;">0.00%</div>
+                <div id="spread-value" style="font-family: 'Space Mono'; font-size: 1.2rem; font-weight: 700;">0.000%</div>
             </div>
             <div style="margin-top: 10px;">
                 <div class="data-row"><span class="data-label">BRL Oracle</span><span id="brl-rate">R$ 0,00</span></div>
@@ -151,11 +155,18 @@
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
         
-        let currentPriceBinance = 0, lastPriceBinance = 0, currentPriceUniswap = 0, usdBrlRate = 5.80;
+        let currentPriceBinance = 0, lastPriceBinance = 0;
+        let currentPriceUniswap = 0, lastPriceUniswap = 0; 
+        let usdBrlRate = 5.80;
         let audioCtx = null, alarmInterval = null, firstSwapDetected = false;
-        let currentRiskState = 'SAFE'; // SAFE, WARNING, DANGER
+        let currentRiskState = 'SAFE'; 
+        let currentDeviationIntensity = 0; 
 
-        let chart, candleSeries, currentInterval = '15m', klineWebSocket = null;
+        // VARIÁVEIS DO GRÁFICO (Motor Sintético)
+        let chart, candleSeries;
+        let currentInterval = '15m';
+        let currentIntervalSeconds = 900;
+        let syntheticCandle = null;
 
         const priceBinanceEl = document.getElementById('price-binance');
         const priceUniswapEl = document.getElementById('price-uniswap');
@@ -165,28 +176,25 @@
         const bodyEl = document.body;
         const btnInit = document.getElementById('btn-init');
 
-        // BOTÃO DE IGNIÇÃO ANTI-FREEZE
         btnInit.addEventListener('click', async () => {
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') await audioCtx.resume();
-            } catch (e) {
-                console.warn("Áudio não autorizado pelo navegador, rodando em modo silencioso.", e);
-            }
+            } catch (e) { console.warn("Modo Silencioso."); }
             
             btnInit.style.display = 'none';
             alertStatusEl.innerText = "SEGURO"; alertStatusEl.style.color = 'var(--success-green)';
             tapeEl.innerHTML = '<div style="padding:15px;text-align:center;color:#888;font-family:\'Space Mono\';font-size:0.75rem;">[ OUVINDO REDE POLYGON... ]</div>';
             
-            // Isolando a inicialização de cada motor para evitar "freeze" geral
-            setTimeout(() => { try { initTradingViewChart(); } catch(e) { console.error("TV Error:", e); } }, 0);
+            // Try-Catch em cada inicialização garante que nada quebre a interface inteira
+            setTimeout(() => { try { initTradingViewChart(); } catch(e) { console.error(e); } }, 0);
             setTimeout(() => { try { fetchBRLRate(); setInterval(fetchBRLRate, 300000); } catch(e){} }, 50);
             setTimeout(() => { try { initBinanceWebSocket(); } catch(e){} }, 100);
             setTimeout(() => { try { initPolygonWebSocket(); } catch(e){} }, 150);
-            setTimeout(() => { try { fetchUniswapData(); setInterval(fetchUniswapData, 10000); } catch(e){} }, 200);
+            setTimeout(() => { try { fetchUniswapTVL(); setInterval(fetchUniswapTVL, 20000); } catch(e){} }, 200);
         });
 
-        // 1. MOTOR TRADINGVIEW BLINDADO
+        // 1. MOTOR GRÁFICO (TRADINGVIEW) + SINTETIZADOR DE VELAS
         function initTradingViewChart() {
             const chartContainer = document.getElementById('tv-chart');
             chart = LightweightCharts.createChart(chartContainer, {
@@ -196,77 +204,91 @@
                 rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
                 timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, secondsVisible: false },
             });
-            candleSeries = chart.addCandlestickSeries({ upColor: '#00ff88', downColor: '#ff3366', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff3366' });
+            
+            // Configuração para exibir 6 casas decimais
+            candleSeries = chart.addCandlestickSeries({ 
+                upColor: '#00ff88', downColor: '#ff3366', borderVisible: false, 
+                wickUpColor: '#00ff88', wickDownColor: '#ff3366',
+                priceFormat: { type: 'price', precision: 6, minMove: 0.000001 }
+            });
 
             new ResizeObserver(entries => {
                 if (entries.length === 0 || entries[0].target !== chartContainer) return;
                 chart.applyOptions({ height: entries[0].contentRect.height, width: entries[0].contentRect.width });
             }).observe(chartContainer);
 
-            loadChartData(currentInterval);
-
+            // Vinculando Botões ANTES da chamada da API (evita o bloqueio de eventos)
             document.querySelectorAll('.tf-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
                     e.target.classList.add('active');
                     currentInterval = e.target.getAttribute('data-interval');
-                    loadChartData(currentInterval);
+                    currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
+                    syntheticCandle = null; // Reseta a vela sintética
+                    loadChartHistory(currentInterval);
                 });
             });
+
+            loadChartHistory(currentInterval);
         }
 
-        async function loadChartData(interval) {
+        async function loadChartHistory(interval) {
             try {
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=500`);
-                if (!res.ok) throw new Error("Binance API falhou");
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=300`);
+                if (!res.ok) throw new Error("API Restrita");
                 const data = await res.json();
-                const klines = data.map(d => ({ time: Math.floor(d[0] / 1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
+                const klines = data.map(d => ({ 
+                    time: Math.floor(d[0] / 1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) 
+                }));
                 candleSeries.setData(klines);
-            } catch (e) { console.error("Falha ao carregar histórico TV"); }
-
-            if (klineWebSocket) klineWebSocket.close();
-            klineWebSocket = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@kline_${interval}`);
-            klineWebSocket.onmessage = (event) => {
-                try {
-                    const k = JSON.parse(event.data).k;
-                    candleSeries.update({ time: Math.floor(k.t / 1000), open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c) });
-                } catch(e) { /* Ignora se houver conflito de timestamp temporal */ }
-            };
+            } catch (e) {
+                console.warn("Bloqueio de CORS/API. O gráfico desenhará velas sinteticamente a partir de agora.");
+                candleSeries.setData([]); // Limpa o gráfico para desenhar a partir de agora
+            }
         }
 
-        // 2. DADOS EXTERNOS
+        // Função que desenha o gráfico vivo se baseando em qualquer dado que chegar
+        function updateSyntheticCandle(price) {
+            if (!candleSeries) return;
+            const nowSec = Math.floor(Date.now() / 1000);
+            const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
+
+            if (!syntheticCandle || syntheticCandle.time !== blockTime) {
+                syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price };
+            } else {
+                syntheticCandle.high = Math.max(syntheticCandle.high, price);
+                syntheticCandle.low = Math.min(syntheticCandle.low, price);
+                syntheticCandle.close = price;
+            }
+            candleSeries.update(syntheticCandle);
+        }
+
+
+        // 2. DADOS EXTERNOS LATERAIS
         async function fetchBRLRate() {
             try { const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL'); const data = await res.json(); usdBrlRate = parseFloat(data.USDBRL.ask); document.getElementById('brl-rate').innerText = `R$ ${usdBrlRate.toFixed(4).replace('.',',')}`; } catch(e) {}
         }
 
-        async function fetchUniswapData() {
+        async function fetchUniswapTVL() {
             try {
                 const res = await fetch(`https://api.dexscreener.com/latest/dex/pairs/polygon/${POOL_ADDRESS}`);
                 const data = await res.json();
                 if(data.pairs && data.pairs[0]) {
-                    currentPriceUniswap = parseFloat(data.pairs[0].priceUsd);
-                    priceUniswapEl.innerText = currentPriceUniswap.toFixed(4);
                     document.getElementById('uni-liq').innerText = `$${parseFloat(data.pairs[0].liquidity.usd).toLocaleString('en-US')}`;
-                    updateSpread();
+                    // Inicialização caso a Uniswap esteja parada
+                    if (currentPriceUniswap === 0) updateUniswapUI(parseFloat(data.pairs[0].priceUsd));
                 }
             } catch (e) {}
         }
 
-        function updateSpread() {
-            if(currentPriceBinance > 0 && currentPriceUniswap > 0) {
-                const spread = ((currentPriceUniswap - currentPriceBinance) / currentPriceBinance) * 100;
-                spreadEl.innerText = `${spread > 0 ? '+' : ''}${spread.toFixed(3)}%`;
-                spreadEl.style.color = Math.abs(spread) > 0.2 ? 'var(--dekton-copper)' : '#fff';
-            }
-        }
-
-        // 3. MOTORES WEBSOCKET
+        // 3. MOTORES DE TEMPO REAL
         function initBinanceWebSocket() {
             const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
             const dot = document.getElementById('binance-dot');
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 const newPrice = parseFloat(data.c);
+                
                 if (lastPriceBinance !== 0 && newPrice !== lastPriceBinance) {
                     priceBinanceEl.classList.remove('tick-up', 'tick-down');
                     void priceBinanceEl.offsetWidth; 
@@ -276,13 +298,38 @@
                 }
                 lastPriceBinance = newPrice;
                 currentPriceBinance = newPrice;
-                priceBinanceEl.innerText = currentPriceBinance.toFixed(4);
+                priceBinanceEl.innerText = currentPriceBinance.toFixed(6); // Precisão de 6 casas
                 
-                dot.style.opacity = dot.style.opacity == 1 ? 0.3 : 1; // Efeito de piscar
+                dot.style.opacity = dot.style.opacity == 1 ? 0.3 : 1; 
+                
                 updateSpread();
                 processDynamicRisk();
+                updateSyntheticCandle(currentPriceBinance); // Alimenta o Gráfico
             };
             ws.onclose = () => setTimeout(initBinanceWebSocket, 2000);
+        }
+
+        // UNISWAP: Atualiza o painel, aplica animações de piscar verde/vermelho
+        function updateUniswapUI(newPrice) {
+            if (lastPriceUniswap !== 0 && newPrice !== lastPriceUniswap) {
+                priceUniswapEl.classList.remove('tick-up', 'tick-down');
+                priceUniswapEl.style.color = ''; // Remove cor hardcoded
+                void priceUniswapEl.offsetWidth; // Reflow
+                const isUp = newPrice > lastPriceUniswap;
+                priceUniswapEl.classList.add(isUp ? 'tick-up' : 'tick-down');
+                
+                // Volta para a cor Dekton após 1 segundo da oscilação
+                setTimeout(() => {
+                    priceUniswapEl.classList.remove('tick-up', 'tick-down');
+                    priceUniswapEl.style.color = 'var(--dekton-copper)';
+                }, 1000);
+            }
+            
+            lastPriceUniswap = newPrice;
+            currentPriceUniswap = newPrice;
+            priceUniswapEl.innerText = currentPriceUniswap.toFixed(6); // 6 Casas
+            updateSpread();
+            updateSyntheticCandle(currentPriceUniswap); // Alimenta o gráfico também com os solavancos da pool
         }
 
         function initPolygonWebSocket() {
@@ -303,6 +350,10 @@
                         const amount0 = parseFloat(ethers.utils.formatUnits(parsed.args.amount0.toString(), 18));
                         const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
                         
+                        // O CÁLCULO EXATO DE PREÇO DA TRANSAÇÃO DA UNISWAP EM TEMPO REAL
+                        const exactTradePrice = Math.abs(amount1 / amount0);
+                        updateUniswapUI(exactTradePrice);
+                        
                         const isBuy = amount0 < 0;
                         const tipo = isBuy ? 'COMPRAR' : 'VENDER';
                         const polVal = Math.abs(amount0).toLocaleString('pt-BR', {maximumFractionDigits: 1});
@@ -318,21 +369,26 @@
                         tapeEl.prepend(row);
                         setTimeout(() => { row.classList.remove('new-tx'); }, 1500);
                         if(tapeEl.children.length > 25) tapeEl.removeChild(tapeEl.lastChild);
-                        fetchUniswapData(); 
+                        
                     } catch (error) {}
                 }
             };
             wsPool.onclose = () => setTimeout(initPolygonWebSocket, 3000);
         }
 
+        function updateSpread() {
+            if(currentPriceBinance > 0 && currentPriceUniswap > 0) {
+                const spread = ((currentPriceUniswap - currentPriceBinance) / currentPriceBinance) * 100;
+                spreadEl.innerText = `${spread > 0 ? '+' : ''}${spread.toFixed(3)}%`;
+                spreadEl.style.color = Math.abs(spread) > 0.2 ? 'var(--dekton-copper)' : '#fff';
+            }
+        }
+
         // ==========================================
-        // 4. MOTOR DE RISCO E ÁUDIO DINÂMICO (NOVO)
+        // 4. MOTOR DE RISCO E ÁUDIO DINÂMICO
         // ==========================================
         const minInput = document.getElementById('min-price');
         const maxInput = document.getElementById('max-price');
-        
-        // Essa variável armazena a intensidade da fuga do preço (0 a 1+)
-        let currentDeviationIntensity = 0; 
 
         function processDynamicRisk() {
             const min = parseFloat(minInput.value); const max = parseFloat(maxInput.value);
@@ -340,12 +396,10 @@
 
             const price = currentPriceBinance;
             const amplitude = max - min;
-            const bufferZone = amplitude * 0.05; // 5% do Range
+            const bufferZone = amplitude * 0.05; 
 
             if (price < min || price > max) {
-                // ESTADO 3: FORA DO RANGE (CRÍTICO)
                 const distance = price < min ? (min - price) : (price - max);
-                // Calcula a intensidade: se fugir 10% do tamanho do range, a intensidade bate 1.0 (máxima agressividade inicial)
                 currentDeviationIntensity = Math.min(distance / (amplitude * 0.1), 2.5); 
                 
                 if (currentRiskState !== 'DANGER') {
@@ -355,7 +409,6 @@
                     clearInterval(alarmInterval); triggerDynamicSiren(); 
                 }
             } else if (price <= min + bufferZone || price >= max - bufferZone) {
-                // ESTADO 2: ZONA DE ALERTA (Últimos 5%)
                 if (currentRiskState !== 'WARNING') {
                     currentRiskState = 'WARNING';
                     bodyEl.classList.remove('danger-mode'); bodyEl.classList.add('warning-mode');
@@ -363,7 +416,6 @@
                     clearInterval(alarmInterval); triggerWarningSonar();
                 }
             } else {
-                // ESTADO 1: SEGURO
                 if (currentRiskState !== 'SAFE') {
                     currentRiskState = 'SAFE';
                     bodyEl.classList.remove('danger-mode', 'warning-mode');
@@ -373,7 +425,6 @@
             }
         }
 
-        // O Sonar de Aviso (Toca a cada 1.5s com som elegante mas urgente)
         function triggerWarningSonar() {
             alarmInterval = setInterval(() => {
                 if (!audioCtx) return;
@@ -384,38 +435,28 @@
             }, 1500);
         }
 
-        // A Sirene Dinâmica (Acelera e fica mais estridente conforme o preço foge)
         function triggerDynamicSiren() {
-            // Um loop dinâmico que chama a si mesmo, porque a velocidade muda em tempo real
             function playSiren() {
                 if (currentRiskState !== 'DANGER' || !audioCtx) return;
-                
                 const osc1 = audioCtx.createOscillator(); const osc2 = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
                 const now = audioCtx.currentTime;
-                
-                // Mutiplicador de frequência baseado no distanciamento
                 const freqMultiplier = 1 + (currentDeviationIntensity * 0.8);
                 
                 osc1.type = 'sawtooth'; osc2.type = 'square';
                 osc1.frequency.setValueAtTime(110 * freqMultiplier, now); osc1.frequency.exponentialRampToValueAtTime(440 * freqMultiplier, now + 0.3);
                 osc2.frequency.setValueAtTime(220 * freqMultiplier, now); osc2.frequency.exponentialRampToValueAtTime(880 * freqMultiplier, now + 0.3);
                 
-                gainNode.gain.setValueAtTime(0, now); 
-                gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); 
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
                 
                 osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination);
                 osc1.start(now); osc2.start(now); osc1.stop(now + 0.4); osc2.stop(now + 0.4);
 
-                // Acelera o tempo de repetição da sirene (mínimo de 150ms se estiver muito fora do range)
                 const nextPulseTime = Math.max(150, 800 - (currentDeviationIntensity * 400));
-                
                 alarmInterval = setTimeout(playSiren, nextPulseTime);
             }
             playSiren();
         }
 
-        // Bipes padrões e diários (só tocam se o estado for SAFE para não embolar o áudio)
         function playAudioTone(type) {
             if (!audioCtx) return;
             const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime;
@@ -427,7 +468,7 @@
                 gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             } else if (type === 'pool-event') {
                 osc.type = 'triangle'; osc.frequency.setValueAtTime(2000, now); osc.frequency.exponentialRampToValueAtTime(4000, now + 0.1);
-                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.4, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
             }
             osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3);
         }
