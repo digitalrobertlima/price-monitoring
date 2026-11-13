@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V12</title>
+    <title>RDESK Command | Liquidity & PIX Sentinel V13</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -142,7 +142,7 @@
         }
 
         /* COLUNA 1: OHLC */
-        .variations-col { width: 180px; flex-shrink: 0; }
+        .variations-col { width: 175px; flex-shrink: 0; }
         .var-grid {
             display: flex;
             flex-direction: column;
@@ -223,9 +223,9 @@
         .dist-marker { position: absolute; top: -4px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #fff; transition: left 0.3s; z-index: 10; transform: translateX(-50%); }
         .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.62rem; margin-top: 4px; }
 
-        /* COLUNA 3: COMANDO + SNIPER + SALDOS BRZ/BRLA + SCANNER + TAPE */
+        /* COLUNA 3: COMANDO + MODO PIX DIRETO */
         .cmd-col {
-            width: 365px;
+            width: 375px;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
@@ -235,9 +235,38 @@
         .cmd-col::-webkit-scrollbar { width: 3px; }
         .cmd-col::-webkit-scrollbar-thumb { background: rgba(205, 164, 52, 0.25); border-radius: 3px; }
 
+        .mode-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: #000;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .mode-tab {
+            background: transparent;
+            border: none;
+            color: #666;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.66rem;
+            font-weight: 700;
+            padding: 8px 6px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .mode-tab.active {
+            color: var(--dekton-copper);
+            border-bottom-color: var(--dekton-copper);
+            background: rgba(205, 164, 52, 0.06);
+        }
+        .mode-tab.pix-tab.active {
+            color: var(--success-green);
+            border-bottom-color: var(--success-green);
+            background: rgba(0, 255, 136, 0.06);
+        }
+
         .price-huge {
             font-family: 'Space Mono', monospace;
-            font-size: 1.8rem;
+            font-size: 1.75rem;
             font-weight: 700;
             padding: 5px 10px 2px;
             text-align: center;
@@ -252,7 +281,7 @@
             background: rgba(0, 0, 0, 0.5);
         }
         .macro-cell {
-            padding: 5px 10px;
+            padding: 4px 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -260,9 +289,8 @@
         }
         .macro-cell:last-child { border-right: none; }
         .macro-label { font-size: 0.56rem; color: #666; letter-spacing: 1px; }
-        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.76rem; font-weight: 700; color: #ddd; }
+        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.74rem; font-weight: 700; color: #ddd; }
 
-        /* CAIXA DE SALDOS LIVRES NA POLYGON (BRZ / BRLA / USDT0 / WPOL) */
         .tokens-strip {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -280,8 +308,8 @@
             flex-direction: column;
             align-items: center;
         }
-        .tok-sym { font-size: 0.58rem; color: var(--dekton-copper); font-weight: 700; letter-spacing: 0.5px; }
-        .tok-amt { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: #ccc; }
+        .tok-sym { font-size: 0.56rem; color: var(--dekton-copper); font-weight: 700; }
+        .tok-amt { font-family: 'Space Mono', monospace; font-size: 0.64rem; color: #ccc; }
 
         /* SNIPER PRO */
         .strategy-box {
@@ -296,7 +324,7 @@
             display: flex;
             justify-content: space-between;
             font-family: 'Space Mono', monospace;
-            font-size: 0.66rem;
+            font-size: 0.65rem;
             color: #aaa;
             align-items: center;
         }
@@ -306,10 +334,10 @@
             padding: 1px 5px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 0.58rem;
+            font-size: 0.56rem;
         }
         .regime-pill {
-            font-size: 0.56rem;
+            font-size: 0.55rem;
             padding: 1px 5px;
             border-radius: 3px;
             border: 1px solid rgba(255,255,255,0.15);
@@ -336,10 +364,10 @@
             gap: 7px;
         }
         .section-tag {
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             color: #888;
             text-transform: uppercase;
-            letter-spacing: 1.1px;
+            letter-spacing: 1px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -351,9 +379,9 @@
         }
 
         .input-row { display: flex; gap: 5px; }
-        input[type="text"], input[type="number"] {
+        input[type="text"], input[type="number"], select {
             background: #000;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.12);
             color: var(--dekton-copper);
             font-family: 'Space Mono', monospace;
             font-size: 0.72rem;
@@ -363,7 +391,7 @@
             width: 100%;
             min-width: 0;
         }
-        input:focus { border-color: var(--dekton-copper); }
+        input:focus, select:focus { border-color: var(--dekton-copper); }
 
         .btn-gold {
             background: var(--dekton-copper);
@@ -379,6 +407,79 @@
             flex-shrink: 0;
         }
         .btn-gold:hover { filter: brightness(1.1); }
+
+        .btn-pix-exec {
+            background: var(--success-green);
+            border: none;
+            padding: 8px 10px;
+            border-radius: 4px;
+            color: #000;
+            font-family: 'Space Mono', monospace;
+            font-weight: 700;
+            font-size: 0.72rem;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+            transition: filter 0.15s;
+        }
+        .btn-pix-exec:hover { filter: brightness(1.1); }
+
+        /* MÓDULO CALCULADORA PIX DIRETO */
+        .pix-box {
+            padding: 10px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            background: rgba(0, 255, 136, 0.02);
+        }
+        .pix-box.active { display: flex; }
+        .radar-box.hidden { display: none; }
+
+        .pix-quick-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+        }
+        .pix-chip {
+            background: #090909;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #aaa;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.58rem;
+            padding: 4px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .pix-chip:hover { border-color: var(--success-green); color: var(--success-green); }
+
+        .pix-receipt {
+            background: #040404;
+            border: 1px solid rgba(0, 255, 136, 0.22);
+            border-radius: 5px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.66rem;
+        }
+        .receipt-line {
+            display: flex;
+            justify-content: space-between;
+            color: #999;
+        }
+        .receipt-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px dashed rgba(255, 255, 255, 0.12);
+            padding-top: 6px;
+            margin-top: 2px;
+            color: var(--success-green);
+            font-size: 0.88rem;
+            font-weight: 700;
+        }
 
         .manual-box {
             background: rgba(255, 255, 255, 0.02);
@@ -399,7 +500,7 @@
             display: flex;
             flex-direction: column;
             gap: 5px;
-            max-height: 165px;
+            max-height: 155px;
             overflow-y: auto;
         }
         .positions-list::-webkit-scrollbar { width: 3px; }
@@ -410,7 +511,7 @@
             justify-content: space-between;
             align-items: center;
             font-family: 'Space Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.64rem;
             padding: 6px 8px;
             background: rgba(255, 255, 255, 0.03);
             border-radius: 4px;
@@ -431,7 +532,7 @@
         }
         .pos-del:hover { color: var(--danger-red); }
 
-        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 120px; }
+        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 115px; }
         .tape-header {
             display: grid;
             grid-template-columns: 52px 46px 1fr 1fr;
@@ -451,7 +552,7 @@
             grid-template-columns: 52px 46px 1fr 1fr;
             padding: 5px 10px;
             font-family: 'Space Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.64rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.02);
             align-items: center;
         }
@@ -491,12 +592,12 @@
 
     <div class="topbar">
         <div class="brand-title">
-            <span>RDESK SENTINEL V12</span>
+            <span>RDESK SENTINEL V13</span>
             <span id="alert-status" style="font-size:0.68rem; color:var(--success-green); border:1px solid rgba(0,255,136,0.3); padding:1px 6px; border-radius:3px;">SEGURO</span>
         </div>
         <div class="top-controls">
-            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc" target="_blank" rel="noopener noreferrer" title="Converter USDT0 para BRZ na Polygon">SWAP → BRZ</a>
-            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0xE6A537a407488807F0bbeb0038B79004f19DDDFb" target="_blank" rel="noopener noreferrer" title="Converter USDT0 para BRLA na Polygon">SWAP → BRLA</a>
+            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc" target="_blank" rel="noopener noreferrer">SWAP → BRZ</a>
+            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0xE6A537a407488807F0bbeb0038B79004f19DDDFb" target="_blank" rel="noopener noreferrer">SWAP → BRLA</a>
             <button id="btn-audio" class="top-btn">SOM: OFF</button>
             <button id="btn-copy-link" class="top-btn">COPIAR LINK</button>
             <button id="btn-export-json" class="top-btn">BAIXAR JSON</button>
@@ -560,9 +661,9 @@
 
         <div class="cmd-col" id="col-right">
             <div class="panel" id="panel-radar" style="flex-shrink:0;">
-                <div class="panel-header">
-                    <span><span class="pulse-dot" style="background:var(--success-green)"></span> POL / USDT0</span>
-                    <span id="storage-badge" style="color:#666; font-size:0.56rem;">3x BACKUP OK</span>
+                <div class="mode-tabs">
+                    <button class="mode-tab active" id="tab-radar">1. RADAR & POOLS</button>
+                    <button class="mode-tab pix-tab" id="tab-pix">2. SAQUE PIX DIRETO</button>
                 </div>
                 
                 <div id="price-global" class="price-huge">0.000000</div>
@@ -598,45 +699,104 @@
                     </div>
                 </div>
 
-                <!-- MOTOR SNIPER PRO -->
-                <div class="strategy-box">
-                    <div class="strat-row">
-                        <span>Âncora (24h)</span>
-                        <span style="color:#fff;" id="strat-macro">...</span>
+                <!-- ABA 1: RADAR, SNIPER E SCANNER WEB3 -->
+                <div id="view-radar" class="radar-box">
+                    <div class="strategy-box">
+                        <div class="strat-row">
+                            <span>Âncora (24h)</span>
+                            <span style="color:#fff;" id="strat-macro">...</span>
+                        </div>
+                        <div class="strat-row">
+                            <span><span class="sniper-badge">SNIPER PRO</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
+                            <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.6rem;">--</span>
+                        </div>
+                        <div class="strat-row">
+                            <strong style="color:var(--success-green); font-size:0.72rem;" id="strat-sniper">...</strong>
+                            <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
+                        </div>
                     </div>
-                    <div class="strat-row">
-                        <span><span class="sniper-badge">SNIPER PRO</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
-                        <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.6rem;">--</span>
-                    </div>
-                    <div class="strat-row">
-                        <strong style="color:var(--success-green); font-size:0.72rem;" id="strat-sniper">...</strong>
-                        <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
+
+                    <div class="scanner-box">
+                        <div class="section-tag">
+                            <span>Scanner Web3 + Tarifas Live</span>
+                            <span class="route-status" id="route-status">PRONTO</span>
+                        </div>
+                        <div class="input-row">
+                            <input type="text" id="wallet-address" placeholder="Carteira Polygon (0x...)">
+                            <button id="btn-scan" class="btn-gold">SCAN</button>
+                        </div>
+
+                        <div class="manual-box">
+                            <div class="section-tag">
+                                <span style="color:var(--dekton-copper);">Range Manual (Offline)</span>
+                            </div>
+                            <div class="manual-grid">
+                                <input type="number" id="manual-min" placeholder="Mín" step="0.00001">
+                                <input type="number" id="manual-max" placeholder="Máx" step="0.00001">
+                                <input type="text" id="manual-tag" placeholder="Nome">
+                                <button id="btn-add-manual" class="btn-gold">+ADD</button>
+                            </div>
+                        </div>
+
+                        <div id="positions-list" class="positions-list"></div>
                     </div>
                 </div>
 
-                <div class="scanner-box">
+                <!-- ABA 2: CALCULADORA LÍQUIDA & DISPARADOR PIX OFF-RAMP -->
+                <div id="view-pix" class="pix-box">
                     <div class="section-tag">
-                        <span>1-3. Scanner Web3 + Tarifas Live</span>
-                        <span class="route-status" id="route-status">PRONTO</span>
+                        <span style="color:var(--success-green);">Simulador PIX Líquido (Zero Custódia)</span>
+                        <span style="color:#666;">POLYGON</span>
                     </div>
+
                     <div class="input-row">
-                        <input type="text" id="wallet-address" placeholder="Carteira Polygon (0x...)">
-                        <button id="btn-scan" class="btn-gold">SCAN</button>
+                        <select id="pix-asset" style="width: 38%;">
+                            <option value="USDT0">USDT0</option>
+                            <option value="POL">POL</option>
+                        </select>
+                        <input type="number" id="pix-amount" placeholder="Qtd (ex: 50)" step="0.01" value="50">
                     </div>
 
-                    <div class="manual-box">
-                        <div class="section-tag">
-                            <span style="color:var(--dekton-copper);">4ª Tática: Range Manual (Offline)</span>
+                    <div class="pix-quick-row">
+                        <button class="pix-chip" id="chip-use-usdt">USAR USDT0</button>
+                        <button class="pix-chip" id="chip-use-wpol">USAR WPOL</button>
+                        <button class="pix-chip" id="chip-use-fees">USAR TARIFAS</button>
+                    </div>
+
+                    <div class="section-tag">
+                        <span>Rota de Liquidação Bancária</span>
+                    </div>
+                    <select id="pix-route">
+                        <option value="pagfinance">PagFinance (Sem KYC | POL ou USDT0 | 2% mín R$1,20)</option>
+                        <option value="nakpix_coupon">NakPix c/ Cupom (Sem KYC | USDT0 Polygon | 2%)</option>
+                        <option value="nakpix_std">NakPix Padrão (Sem KYC | USDT0 Polygon | 4%)</option>
+                        <option value="depix">DePix / Liquid (Sem KYC | Afiliado | ~1,8%)</option>
+                        <option value="kyc_cex">Bipa / Binance (Conta Própria KYC | ~0,1% + PIX Grátis)</option>
+                    </select>
+
+                    <div class="pix-receipt">
+                        <div class="receipt-line">
+                            <span>Bruto Convertido:</span>
+                            <span id="rec-gross">R$ 0,00 ($ 0.00)</span>
                         </div>
-                        <div class="manual-grid">
-                            <input type="number" id="manual-min" placeholder="Mín" step="0.00001">
-                            <input type="number" id="manual-max" placeholder="Máx" step="0.00001">
-                            <input type="text" id="manual-tag" placeholder="Nome">
-                            <button id="btn-add-manual" class="btn-gold">+ADD</button>
+                        <div class="receipt-line">
+                            <span>Swap DEX + Gás Rede:</span>
+                            <span id="rec-network" style="color:var(--warning-yellow);">- R$ 0,00</span>
+                        </div>
+                        <div class="receipt-line">
+                            <span>Taxa Ponte Off-Ramp:</span>
+                            <span id="rec-fee" style="color:var(--danger-red);">- R$ 0,00</span>
+                        </div>
+                        <div class="receipt-total">
+                            <span>PIX LÍQUIDO REAL:</span>
+                            <span id="rec-net">R$ 0,00</span>
                         </div>
                     </div>
 
-                    <div id="positions-list" class="positions-list"></div>
+                    <button class="btn-pix-exec" id="btn-launch-pix">COPIAR QTD & ABRIR PONTE PIX ↗</button>
+                    <div id="pix-hint" style="font-size:0.62rem; color:#777; line-height:1.3;">
+                        O painel nunca custodia seus fundos. Você assina direto na sua carteira e o provedor liquida o PIX.
+                    </div>
                 </div>
             </div>
 
@@ -685,6 +845,7 @@
         };
 
         let walletBalances = { wpol: 0, usdt0: 0, brz: 0, brla: 0 };
+        let totalUnclaimedFeesUsd = 0;
 
         let sniperTelemetry = {
             atr14: 0,
@@ -712,7 +873,130 @@
         ];
 
         // =========================================================================
-        // SANITIZAÇÃO E VALIDAÇÃO DE SEGURANÇA (CONTRA XSS E PAYLOADS CORROMPIDOS)
+        // ALTERNÂNCIA DE ABAS & CALCULADORA LÍQUIDA DE PIX
+        // =========================================================================
+        const tabRadar = document.getElementById('tab-radar');
+        const tabPix = document.getElementById('tab-pix');
+        const viewRadar = document.getElementById('view-radar');
+        const viewPix = document.getElementById('view-pix');
+
+        tabRadar.addEventListener('click', () => {
+            tabRadar.classList.add('active');
+            tabPix.classList.remove('active');
+            viewRadar.classList.remove('hidden');
+            viewPix.classList.remove('active');
+        });
+
+        tabPix.addEventListener('click', () => {
+            tabPix.classList.add('active');
+            tabRadar.classList.remove('active');
+            viewRadar.classList.add('hidden');
+            viewPix.classList.add('active');
+            recalculatePixReceipt();
+        });
+
+        function recalculatePixReceipt() {
+            const asset = document.getElementById('pix-asset').value;
+            const amount = parseFloat(document.getElementById('pix-amount').value) || 0;
+            const route = document.getElementById('pix-route').value;
+
+            const polPriceUsd = currentPriceGlobal > 0 ? currentPriceGlobal : 0.087;
+            const usdValue = asset === 'POL' ? (amount * polPriceUsd) : amount;
+            const grossBrl = usdValue * usdBrlRate;
+
+            let networkCostBrl = 0.03; // Gás Polygon base (~R$ 0,03)
+            let bridgeFeeBrl = 0;
+            let hint = '';
+
+            if (route === 'pagfinance') {
+                // PagFinance aceita POL e USDT0 direto na Polygon (2%, piso R$ 1,20)
+                bridgeFeeBrl = grossBrl > 0 ? Math.max(1.20, grossBrl * 0.02) : 0;
+                hint = asset === 'POL'
+                    ? 'PagFinance aceita POL direto na Polygon sem precisar trocar antes.'
+                    : 'PagFinance aceita USDT0 direto na Polygon e liquida o PIX em segundos.';
+            } else if (route === 'nakpix_coupon') {
+                // NakPix exige USDT0 na Polygon (se sair de POL, soma swap 0.05%)
+                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005 + 0.03;
+                bridgeFeeBrl = grossBrl * 0.02;
+                hint = asset === 'POL'
+                    ? 'Rota exige USDT0: primeiro troque POL → USDT0 (0,05%) e envie para o NakPix.'
+                    : 'Envie exatamente a quantidade de USDT0 na rede Polygon; estorno automático se falhar.';
+            } else if (route === 'nakpix_std') {
+                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005 + 0.03;
+                bridgeFeeBrl = grossBrl * 0.04;
+                hint = 'Taxa padrão NakPix (4%) sobre USDT0 na Polygon sem cadastro.';
+            } else if (route === 'depix') {
+                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005;
+                networkCostBrl += 0.15; // Ponte Liquid
+                bridgeFeeBrl = grossBrl * 0.018;
+                hint = 'Liquidação via rede Liquid (DePix) com privacidade e programa de afiliados sem PJ.';
+            } else if (route === 'kyc_cex') {
+                if (asset === 'POL') networkCostBrl += grossBrl * 0.001; // Trade spot 0.1%
+                bridgeFeeBrl = 0; // PIX de saque gratuito na Binance/Bipa
+                hint = 'Menor taxa para saque em conta de mesma titularidade (CPF/CNPJ) via Polygon.';
+            }
+
+            if (grossBrl <= 0) networkCostBrl = 0;
+            const netPixBrl = Math.max(0, grossBrl - networkCostBrl - bridgeFeeBrl);
+
+            document.getElementById('rec-gross').textContent = `R$ ${grossBrl.toFixed(2)} ($ ${usdValue.toFixed(2)})`;
+            document.getElementById('rec-network').textContent = `- R$ ${networkCostBrl.toFixed(2)}`;
+            document.getElementById('rec-fee').textContent = `- R$ ${bridgeFeeBrl.toFixed(2)}`;
+            document.getElementById('rec-net').textContent = `R$ ${netPixBrl.toFixed(2)}`;
+            document.getElementById('pix-hint').textContent = hint;
+        }
+
+        ['pix-asset', 'pix-amount', 'pix-route'].forEach(id => {
+            document.getElementById(id).addEventListener('input', recalculatePixReceipt);
+            document.getElementById(id).addEventListener('change', recalculatePixReceipt);
+        });
+
+        document.getElementById('chip-use-usdt').addEventListener('click', () => {
+            document.getElementById('pix-asset').value = 'USDT0';
+            document.getElementById('pix-amount').value = walletBalances.usdt0 > 0 ? walletBalances.usdt0.toFixed(4) : '50';
+            recalculatePixReceipt();
+        });
+
+        document.getElementById('chip-use-wpol').addEventListener('click', () => {
+            document.getElementById('pix-asset').value = 'POL';
+            document.getElementById('pix-amount').value = walletBalances.wpol > 0 ? walletBalances.wpol.toFixed(4) : '500';
+            recalculatePixReceipt();
+        });
+
+        document.getElementById('chip-use-fees').addEventListener('click', () => {
+            document.getElementById('pix-asset').value = 'USDT0';
+            document.getElementById('pix-amount').value = totalUnclaimedFeesUsd > 0 ? totalUnclaimedFeesUsd.toFixed(4) : '1.00';
+            recalculatePixReceipt();
+        });
+
+        document.getElementById('btn-launch-pix').addEventListener('click', () => {
+            const amount = document.getElementById('pix-amount').value || '0';
+            const asset = document.getElementById('pix-asset').value;
+            const route = document.getElementById('pix-route').value;
+
+            navigator.clipboard.writeText(String(amount)).catch(() => {});
+
+            const urls = {
+                pagfinance: 'https://pag.finance',
+                nakpix_coupon: 'https://app.uniswap.org/swap?chain=polygon&inputCurrency=0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270&outputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+                nakpix_std: 'https://app.uniswap.org/swap?chain=polygon&inputCurrency=0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270&outputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+                depix: 'https://depixapp.com',
+                kyc_cex: 'https://bipa.app'
+            };
+
+            const btn = document.getElementById('btn-launch-pix');
+            btn.textContent = `COPIADO (${amount} ${asset})! ABRINDO...`;
+            setTimeout(() => { btn.textContent = 'COPIAR QTD & ABRIR PONTE PIX ↗'; }, 2500);
+
+            if ((route === 'nakpix_coupon' || route === 'nakpix_std') && asset === 'USDT0') {
+                alert(`Quantidade ${amount} USDT0 copiada! Cole na ponte NakPix na rede Polygon para receber seu PIX.`);
+                return;
+            }
+            window.open(urls[route] || 'https://pag.finance', '_blank', 'noopener,noreferrer');
+        });
+
+        // =========================================================================
+        // SANITIZAÇÃO E VALIDAÇÃO DE SEGURANÇA
         // =========================================================================
         function sanitizeLabel(str) {
             return String(str || '').replace(/[<>"'&]/g, '').trim().slice(0, 28) || 'Faixa';
@@ -758,11 +1042,11 @@
         }
 
         // =========================================================================
-        // 3 BACKUPS INDEPENDENTES (LocalStorage + IndexedDB + URL Hash)
+        // 3 BACKUPS INDEPENDENTES
         // =========================================================================
         function saveTripleBackup() {
             const payload = JSON.stringify(appState);
-            try { localStorage.setItem('rdesk_v12_backup', payload); } catch (e) {}
+            try { localStorage.setItem('rdesk_v13_backup', payload); } catch (e) {}
             try {
                 const req = indexedDB.open('RDESK_VAULT', 1);
                 req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
@@ -776,11 +1060,6 @@
                 const encoded = btoa(unescape(encodeURIComponent(payload)));
                 history.replaceState(null, '', '#rdesk=' + encoded);
             } catch (e) {}
-
-            const badge = document.getElementById('storage-badge');
-            badge.textContent = 'SALVO (3X)';
-            badge.style.color = 'var(--success-green)';
-            setTimeout(() => { badge.style.color = '#666'; badge.textContent = '3x BACKUP OK'; }, 1500);
         }
 
         async function loadFromTripleBackup() {
@@ -793,7 +1072,7 @@
                 }
             } catch (e) {}
             try {
-                const ls = localStorage.getItem('rdesk_v12_backup') || localStorage.getItem('rdesk_v11_backup');
+                const ls = localStorage.getItem('rdesk_v13_backup') || localStorage.getItem('rdesk_v12_backup');
                 if (ls) {
                     applyValidatedState(JSON.parse(ls));
                     return;
@@ -857,7 +1136,7 @@
         });
 
         // =========================================================================
-        // MATEMÁTICA NATIVA UNISWAP V3: TARIFAS NÃO RECOLHIDAS EM TEMPO REAL (256-BIT)
+        // TARIFAS NÃO RECOLHIDAS EM TEMPO REAL (256-BIT) & SALDOS LIVRES
         // =========================================================================
         function subUint256(a, b) {
             return a.gte(b) ? a.sub(b) : MAX_UINT256.sub(b).add(a).add(1);
@@ -875,23 +1154,10 @@
                 const upper = poolState.ticksMap[pos.tickUpper];
                 if (!lower || !upper) return { owed0: 0, owed1: 0, usd: 0 };
 
-                let below0, below1;
-                if (tickCurrent >= pos.tickLower) {
-                    below0 = lower.feeGrowthOutside0X128;
-                    below1 = lower.feeGrowthOutside1X128;
-                } else {
-                    below0 = subUint256(fg0, lower.feeGrowthOutside0X128);
-                    below1 = subUint256(fg1, lower.feeGrowthOutside1X128);
-                }
-
-                let above0, above1;
-                if (tickCurrent < pos.tickUpper) {
-                    above0 = upper.feeGrowthOutside0X128;
-                    above1 = upper.feeGrowthOutside1X128;
-                } else {
-                    above0 = subUint256(fg0, upper.feeGrowthOutside0X128);
-                    above1 = subUint256(fg1, upper.feeGrowthOutside1X128);
-                }
+                const below0 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside0X128 : subUint256(fg0, lower.feeGrowthOutside0X128);
+                const below1 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside1X128 : subUint256(fg1, lower.feeGrowthOutside1X128);
+                const above0 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside0X128 : subUint256(fg0, upper.feeGrowthOutside0X128);
+                const above1 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside1X128 : subUint256(fg1, upper.feeGrowthOutside1X128);
 
                 const inside0 = subUint256(subUint256(fg0, below0), above0);
                 const inside1 = subUint256(subUint256(fg1, below1), above1);
@@ -932,7 +1198,6 @@
                     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
                     const pool = new ethers.Contract(POOL_ADDRESS, poolABI, provider);
 
-                    // 1. Lê saldos livres na Polygon (WPOL, USDT0, BRZ, BRLA)
                     const wpolC = new ethers.Contract(POL_ADDRESS, erc20ABI, provider);
                     const usdtC = new ethers.Contract(USDT_ADDRESS, erc20ABI, provider);
                     const brzC = new ethers.Contract(BRZ_ADDRESS, erc20ABI, provider);
@@ -957,7 +1222,6 @@
                     document.getElementById('bal-brz').textContent = walletBalances.brz.toFixed(2);
                     document.getElementById('bal-brla').textContent = walletBalances.brla.toFixed(2);
 
-                    // 2. Se houver posições Web3, lê estado da pool e ticks para calcular tarifas ao vivo
                     if (appState.web3Positions.length > 0) {
                         const [slot0, fg0, fg1] = await withTimeout(Promise.all([
                             pool.slot0(),
@@ -994,6 +1258,7 @@
                             totalFeesUsd += fees.usd;
                         });
 
+                        totalUnclaimedFeesUsd = totalFeesUsd;
                         document.getElementById('fees-total-usd').textContent = `$ ${totalFeesUsd.toFixed(4)}`;
                         document.getElementById('fees-total-brl').textContent = `R$ ${(totalFeesUsd * usdBrlRate).toFixed(4)}`;
                         renderAllPositions();
@@ -1304,7 +1569,7 @@
         document.getElementById('btn-scan').addEventListener('click', runUnstoppableScan);
 
         // =========================================================================
-        // 4ª TÁTICA: INSERÇÃO MANUAL MULTI-FAIXA
+        // INSERÇÃO MANUAL MULTI-FAIXA
         // =========================================================================
         function addManualPosition(minVal, maxVal, tagVal) {
             const min = parseFloat(minVal);
@@ -1350,7 +1615,7 @@
         }
 
         // =========================================================================
-        // RENDERIZAÇÃO SEGURA (DOM API SEM INNERHTML DINÂMICO)
+        // RENDERIZAÇÃO SEGURA (DOM API)
         // =========================================================================
         function getAllPositions() {
             return [...appState.web3Positions, ...appState.manualPositions];
@@ -1672,6 +1937,7 @@
                 updateLiveCandle(currentPriceGlobal);
                 recalculateLiveSniperBounds();
                 updateFocusedMetrics();
+                recalculatePixReceipt();
             };
             ws.onclose = () => setTimeout(initGlobalTracker, 3000);
         }
@@ -1721,6 +1987,7 @@
                 const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
                 usdBrlRate = parseFloat((await res.json()).USDBRL.ask);
                 document.getElementById('macro-usd').textContent = `R$ ${usdBrlRate.toFixed(4)}`;
+                recalculatePixReceipt();
             } catch (e) {}
         }
 
@@ -1769,7 +2036,7 @@
                 if (activeResizer === 1) {
                     leftCol.style.width = Math.max(110, Math.min(340, e.clientX - 8)) + 'px';
                 } else if (activeResizer === 2) {
-                    rightCol.style.width = Math.max(250, Math.min(540, window.innerWidth - e.clientX - 8)) + 'px';
+                    rightCol.style.width = Math.max(260, Math.min(540, window.innerWidth - e.clientX - 8)) + 'px';
                 }
             });
 
@@ -1800,6 +2067,7 @@
             initPolygonScanner();
             fetchMacroData();
             setInterval(fetchMacroData, 30000);
+            recalculatePixReceipt();
 
             if (appState.wallet) {
                 await runUnstoppableScan();
