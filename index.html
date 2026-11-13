@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V10</title>
+    <title>RDESK Command | Liquidity Sentinel V11</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -39,7 +39,6 @@
             user-select: none;
         }
 
-        /* BARRA SUPERIOR COMPACTA */
         .topbar {
             display: flex;
             justify-content: space-between;
@@ -85,7 +84,6 @@
         .top-btn:hover { border-color: var(--dekton-copper); color: #fff; }
         .top-btn.active-audio { border-color: var(--success-green); color: var(--success-green); }
 
-        /* WORKSPACE REDIMENSIONÁVEL */
         .terminal-grid {
             display: flex;
             width: 100%;
@@ -120,7 +118,6 @@
             flex-shrink: 0;
         }
 
-        /* ALÇAS DE REDIMENSIONAMENTO COM O MOUSE */
         .resizer {
             width: 8px;
             cursor: col-resize;
@@ -144,10 +141,7 @@
         }
 
         /* COLUNA 1: OHLC */
-        .variations-col {
-            width: 190px;
-            flex-shrink: 0;
-        }
+        .variations-col { width: 185px; flex-shrink: 0; }
         .var-grid {
             display: flex;
             flex-direction: column;
@@ -173,11 +167,7 @@
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.06) 0%, transparent 100%); }
 
         /* COLUNA 2: GRÁFICO + PATRIMÔNIO */
-        .tactical-col {
-            flex: 1 1 360px;
-            display: flex;
-            flex-direction: column;
-        }
+        .tactical-col { flex: 1 1 360px; display: flex; flex-direction: column; }
         .chart-header {
             display: flex;
             justify-content: space-between;
@@ -201,19 +191,9 @@
             font-weight: 700;
             cursor: pointer;
         }
-        .tf-btn.active {
-            background: var(--dekton-copper);
-            color: #000;
-            border-color: var(--dekton-copper);
-        }
-        .chart-wrapper {
-            flex-grow: 1;
-            width: 100%;
-            min-height: 180px;
-            position: relative;
-        }
+        .tf-btn.active { background: var(--dekton-copper); color: #000; border-color: var(--dekton-copper); }
+        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 180px; position: relative; }
 
-        /* BARRA INFERIOR DO GRÁFICO: PATRIMÔNIO E DISTRIBUIÇÃO */
         .wallet-panel {
             display: grid;
             grid-template-columns: 1fr 1.2fr;
@@ -241,9 +221,9 @@
         .dist-marker { position: absolute; top: -4px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #fff; transition: left 0.3s; z-index: 10; transform: translateX(-50%); }
         .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.65rem; margin-top: 4px; }
 
-        /* COLUNA 3: COMANDO + MULTI-SCANNER + 4ª TÁTICA MANUAL + TAPE */
+        /* COLUNA 3: COMANDO + SNIPER PRO + MULTI-SCANNER + TAPE */
         .cmd-col {
-            width: 340px;
+            width: 355px;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
@@ -270,39 +250,47 @@
             background: rgba(0, 0, 0, 0.5);
         }
         .macro-cell {
-            padding: 6px 10px;
+            padding: 5px 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             border-right: 1px solid rgba(255, 255, 255, 0.04);
         }
         .macro-cell:last-child { border-right: none; }
-        .macro-label { font-size: 0.6rem; color: #666; letter-spacing: 1px; }
-        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; color: #ddd; }
+        .macro-label { font-size: 0.58rem; color: #666; letter-spacing: 1px; }
+        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.78rem; font-weight: 700; color: #ddd; }
 
-        /* INTELIGÊNCIA SNIPER 15M */
+        /* INTELIGÊNCIA SNIPER PRO (15M ATR + EMA SKEW) */
         .strategy-box {
-            background: rgba(205, 164, 52, 0.05);
+            background: rgba(205, 164, 52, 0.06);
             padding: 8px 10px;
             border-bottom: 1px solid var(--dekton-dim);
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
         .strat-row {
             display: flex;
             justify-content: space-between;
             font-family: 'Space Mono', monospace;
-            font-size: 0.7rem;
+            font-size: 0.68rem;
             color: #aaa;
-            margin-bottom: 4px;
             align-items: center;
         }
-        .strat-row:last-child { margin-bottom: 0; }
         .sniper-badge {
             background: var(--success-green);
             color: #000;
             padding: 1px 5px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 0.62rem;
+            font-size: 0.6rem;
+        }
+        .regime-pill {
+            font-size: 0.58rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.15);
+            color: var(--dekton-copper);
         }
         .apply-sniper-btn {
             background: transparent;
@@ -310,14 +298,13 @@
             color: var(--success-green);
             font-family: 'Space Mono', monospace;
             font-size: 0.6rem;
-            padding: 1px 5px;
+            padding: 1px 6px;
             border-radius: 3px;
             cursor: pointer;
             margin-left: 4px;
         }
         .apply-sniper-btn:hover { background: var(--success-green); color: #000; }
 
-        /* SCANNER WEB3 + 4ª TÁTICA MANUAL */
         .scanner-box {
             padding: 10px;
             background: rgba(0, 0, 0, 0.45);
@@ -370,7 +357,6 @@
         }
         .btn-gold:hover { filter: brightness(1.1); }
 
-        /* 4ª TÁTICA: INSERÇÃO MANUAL PERMANENTE */
         .manual-box {
             background: rgba(255, 255, 255, 0.02);
             border: 1px dashed rgba(205, 164, 52, 0.28);
@@ -386,7 +372,6 @@
             gap: 4px;
         }
 
-        /* LISTA DE POSIÇÕES ATIVAS (WEB3 + MANUAIS) */
         .positions-list {
             display: flex;
             flex-direction: column;
@@ -423,8 +408,7 @@
         }
         .pos-del:hover { color: var(--danger-red); }
 
-        /* TAPE READING */
-        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 140px; }
+        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 135px; }
         .tape-header {
             display: grid;
             grid-template-columns: 52px 46px 1fr 1fr;
@@ -467,7 +451,6 @@
         body.warning-mode .panel#panel-radar { border-color: var(--warning-yellow); }
         body.danger-mode .panel#panel-radar { border-color: var(--danger-red); box-shadow: inset 0 0 40px rgba(255,42,64,0.25); }
 
-        /* RESPONSIVIDADE PARA TELA DIVIDIDA (SPLIT-SCREEN) */
         @media (max-width: 980px) {
             body { overflow-y: auto; height: auto; }
             .terminal-grid { flex-direction: column; height: auto; }
@@ -482,10 +465,9 @@
 </head>
 <body>
 
-    <!-- BARRA DE COMANDO E 3 BACKUPS -->
     <div class="topbar">
         <div class="brand-title">
-            <span>RDESK SENTINEL V10</span>
+            <span>RDESK SENTINEL V11</span>
             <span id="alert-status" style="font-size:0.7rem; color:var(--success-green); border:1px solid rgba(0,255,136,0.3); padding:1px 6px; border-radius:3px;">SEGURO</span>
         </div>
         <div class="top-controls">
@@ -499,7 +481,6 @@
 
     <div class="terminal-grid" id="workspace">
         
-        <!-- PAINEL 1: VARIAÇÕES OHLC -->
         <div class="panel variations-col" id="col-left">
             <div class="panel-header"><span><span class="pulse-dot" style="background:#fff"></span> OHLC</span></div>
             <div class="var-grid" id="variations-grid">
@@ -509,7 +490,6 @@
 
         <div class="resizer" id="resizer-1" title="Arraste para redimensionar"></div>
 
-        <!-- PAINEL 2: GRÁFICO E DISTRIBUIÇÃO -->
         <div class="panel tactical-col" id="col-center">
             <div class="chart-header">
                 <div class="tf-group" id="tf-buttons">
@@ -547,7 +527,6 @@
 
         <div class="resizer" id="resizer-2" title="Arraste para redimensionar"></div>
 
-        <!-- PAINEL 3: RADAR + 3 ROTAS WEB3 + 4ª TÁTICA MANUAL + TAPE -->
         <div class="cmd-col" id="col-right">
             <div class="panel" id="panel-radar" style="flex-shrink:0;">
                 <div class="panel-header">
@@ -568,22 +547,22 @@
                     </div>
                 </div>
 
-                <!-- INTELIGÊNCIA SNIPER 15M -->
+                <!-- MOTOR SNIPER PRO (ATR 15M + SKEW TENDÊNCIA) -->
                 <div class="strategy-box">
                     <div class="strat-row">
-                        <span>Macro (24h)</span>
+                        <span>Âncora (24h)</span>
                         <span style="color:#fff;" id="strat-macro">...</span>
                     </div>
                     <div class="strat-row">
-                        <span><span class="sniper-badge">SNIPER 15M</span></span>
-                        <span>
-                            <strong style="color:var(--success-green);" id="strat-sniper">...</strong>
-                            <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
-                        </span>
+                        <span><span class="sniper-badge">SNIPER PRO</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
+                        <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.62rem;">--</span>
+                    </div>
+                    <div class="strat-row">
+                        <strong style="color:var(--success-green); font-size:0.74rem;" id="strat-sniper">...</strong>
+                        <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
                     </div>
                 </div>
 
-                <!-- SCANNER WEB3 (3 ROTAS) + 4ª TÁTICA MANUAL -->
                 <div class="scanner-box">
                     <div class="section-tag">
                         <span>1-3. Scanner Web3 (Multi-Rota)</span>
@@ -594,7 +573,6 @@
                         <button id="btn-scan" class="btn-gold">SCAN</button>
                     </div>
 
-                    <!-- 4ª TÁTICA: INSERÇÃO MANUAL PERMANENTE -->
                     <div class="manual-box">
                         <div class="section-tag">
                             <span style="color:var(--dekton-copper);">4ª Tática: Range Manual (Offline)</span>
@@ -607,12 +585,10 @@
                         </div>
                     </div>
 
-                    <!-- LISTA UNIFICADA DE POSIÇÕES -->
                     <div id="positions-list" class="positions-list"></div>
                 </div>
             </div>
 
-            <!-- SCANNER DEX POLYGON -->
             <div class="panel tape-container">
                 <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Fluxo DEX (0.05%)</span></div>
                 <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRL</div><div>Qtd (POL)</div></div>
@@ -629,7 +605,6 @@
         const USDT_ADDRESS = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
         const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
 
-        // POOL DE RPCs POLYGON PARA FAILOVER EM CASCATA
         const POLYGON_RPCS = [
             'https://polygon-bor-rpc.publicnode.com',
             'https://1rpc.io/matic',
@@ -643,18 +618,26 @@
 
         let currentPriceGlobal = 0, lastPriceGlobal = 0;
         let usdBrlRate = 5.65;
-        let audioEnabled = false, audioCtx = null, alarmInterval = null;
+        let audioEnabled = false, audioCtx = null;
         let currentRiskState = 'SAFE';
 
-        // ESTADO UNIFICADO (PERSISTIDO EM 3 BACKUPS)
         let appState = {
             wallet: '',
-            web3Positions: [],   // [{ id, min, max, tickLower, tickUpper, liquidity, label, source: 'web3' }]
-            manualPositions: [], // [{ id, min, max, label, source: 'manual' }]
+            web3Positions: [],
+            manualPositions: [],
             focusedId: null
         };
 
-        let lastSniperRange = { min: 0, max: 0 };
+        // Parâmetros em tempo real do Motor Sniper 15m
+        let sniperTelemetry = {
+            atr14: 0,
+            downWeight: 0.5,
+            upWeight: 0.5,
+            regimeText: 'LATERAL 50/50',
+            min: 0,
+            max: 0
+        };
+
         let chart = null, candleSeries = null;
         let positionLines = [];
         let currentInterval = '15m', currentIntervalSeconds = 900;
@@ -672,15 +655,11 @@
         ];
 
         // =========================================================================
-        // SISTEMA DE 3 BACKUPS INDEPENDENTES (LocalStorage + IndexedDB + URL Hash)
+        // 3 BACKUPS INDEPENDENTES (LocalStorage + IndexedDB + URL Hash)
         // =========================================================================
         function saveTripleBackup() {
             const payload = JSON.stringify(appState);
-
-            // BACKUP 1A: LocalStorage
-            try { localStorage.setItem('rdesk_v10_backup', payload); } catch (e) {}
-
-            // BACKUP 1B: IndexedDB (Cofre Secundário)
+            try { localStorage.setItem('rdesk_v11_backup', payload); } catch (e) {}
             try {
                 const req = indexedDB.open('RDESK_VAULT', 1);
                 req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
@@ -690,8 +669,6 @@
                     tx.objectStore('state').put(payload, 'latest');
                 };
             } catch (e) {}
-
-            // BACKUP 2: URL Hash Autossuficiente (#rdesk=...)
             try {
                 const encoded = btoa(unescape(encodeURIComponent(payload)));
                 history.replaceState(null, '', '#rdesk=' + encoded);
@@ -704,7 +681,6 @@
         }
 
         async function loadFromTripleBackup() {
-            // Prioridade 1: URL Hash (se abriu link salvo/compartilhado)
             try {
                 if (window.location.hash.startsWith('#rdesk=')) {
                     const b64 = window.location.hash.replace('#rdesk=', '');
@@ -713,17 +689,13 @@
                     if (parsed) { appState = { ...appState, ...parsed }; return; }
                 }
             } catch (e) {}
-
-            // Prioridade 2: LocalStorage
             try {
-                const ls = localStorage.getItem('rdesk_v10_backup');
+                const ls = localStorage.getItem('rdesk_v11_backup') || localStorage.getItem('rdesk_v10_backup');
                 if (ls) {
                     const parsed = JSON.parse(ls);
                     if (parsed) { appState = { ...appState, ...parsed }; return; }
                 }
             } catch (e) {}
-
-            // Prioridade 3: IndexedDB
             try {
                 await new Promise((resolve) => {
                     const req = indexedDB.open('RDESK_VAULT', 1);
@@ -746,7 +718,6 @@
             } catch (e) {}
         }
 
-        // BACKUP 3: Exportar / Importar Arquivo JSON
         document.getElementById('btn-export-json').addEventListener('click', () => {
             const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -757,10 +728,7 @@
             URL.revokeObjectURL(url);
         });
 
-        document.getElementById('btn-import-json').addEventListener('click', () => {
-            document.getElementById('file-import').click();
-        });
-
+        document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('file-import').click());
         document.getElementById('file-import').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -772,9 +740,7 @@
                     if (appState.wallet) document.getElementById('wallet-address').value = appState.wallet;
                     saveTripleBackup();
                     renderAllPositions();
-                } catch (err) {
-                    alert('Arquivo JSON inválido.');
-                }
+                } catch (err) { alert('Arquivo JSON inválido.'); }
             };
             reader.readAsText(file);
         });
@@ -789,10 +755,101 @@
         });
 
         // =========================================================================
-        // 3 CAMADAS DE LEITURA WEB3 (FAILOVER EM CASCATA)
+        // MOTOR SNIPER PRO (DESACOPLADO EM 15M: ATR 14 + EMA 9/21 SKEW)
+        // =========================================================================
+        function computeEMA(values, period) {
+            const k = 2 / (period + 1);
+            let ema = values[0];
+            for (let i = 1; i < values.length; i++) {
+                ema = values[i] * k + ema * (1 - k);
+            }
+            return ema;
+        }
+
+        async function refreshSniperModel15m() {
+            try {
+                // Busca sempre 100 candles de 15m (25 horas), independente do zoom do gráfico
+                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=15m&limit=100`);
+                const raw = await res.json();
+                const candles = raw.map(d => ({
+                    open: parseFloat(d[1]),
+                    high: parseFloat(d[2]),
+                    low: parseFloat(d[3]),
+                    close: parseFloat(d[4])
+                }));
+
+                if (candles.length < 30) return;
+
+                // 1. Âncora Macro 24h (últimos 96 candles de 15m)
+                const macroSlice = candles.slice(-96);
+                let max24 = 0, min24 = Infinity;
+                macroSlice.forEach(c => { max24 = Math.max(max24, c.high); min24 = Math.min(min24, c.low); });
+                document.getElementById('strat-macro').innerText = `${min24.toFixed(5)} <> ${max24.toFixed(5)}`;
+
+                // 2. True Range & ATR(14) nos últimos 15 candles de 15m
+                const trs = [];
+                for (let i = candles.length - 15; i < candles.length; i++) {
+                    const curr = candles[i];
+                    const prev = candles[i - 1];
+                    const tr = Math.max(
+                        curr.high - curr.low,
+                        Math.abs(curr.high - prev.close),
+                        Math.abs(curr.low - prev.close)
+                    );
+                    trs.push(tr);
+                }
+                const atr14 = trs.reduce((a, b) => a + b, 0) / trs.length;
+
+                // 3. Viés Direcional via EMA 9 vs EMA 21
+                const closes = candles.map(c => c.close);
+                const ema9 = computeEMA(closes.slice(-30), 9);
+                const ema21 = computeEMA(closes.slice(-45), 21);
+                const rawBias = atr14 > 0 ? (ema9 - ema21) / atr14 : 0;
+                const clampedBias = Math.max(-1, Math.min(1, rawBias));
+
+                // Converte o viés em assimetria de faixa (Skew entre 32% e 68%)
+                let upWeight = 0.50 + (clampedBias * 0.18);
+                let downWeight = 1 - upWeight;
+
+                let regimeText = 'LATERAL 50/50';
+                if (clampedBias > 0.25) regimeText = `ALTA ${Math.round(downWeight*100)}/${Math.round(upWeight*100)}`;
+                else if (clampedBias < -0.25) regimeText = `BAIXA ${Math.round(downWeight*100)}/${Math.round(upWeight*100)}`;
+
+                sniperTelemetry.atr14 = atr14;
+                sniperTelemetry.upWeight = upWeight;
+                sniperTelemetry.downWeight = downWeight;
+                sniperTelemetry.regimeText = regimeText;
+
+                if (currentPriceGlobal === 0) {
+                    currentPriceGlobal = closes[closes.length - 1];
+                }
+                recalculateLiveSniperBounds();
+            } catch (e) {}
+        }
+
+        function recalculateLiveSniperBounds() {
+            if (currentPriceGlobal <= 0 || sniperTelemetry.atr14 <= 0) return;
+
+            // Largura total = 2.5x ATR(14) de 15m (alta concentração sem sair em ruído normal)
+            const totalSpan = sniperTelemetry.atr14 * 2.5;
+            const sMin = currentPriceGlobal - (totalSpan * sniperTelemetry.downWeight);
+            const sMax = currentPriceGlobal + (totalSpan * sniperTelemetry.upWeight);
+
+            sniperTelemetry.min = sMin;
+            sniperTelemetry.max = sMax;
+
+            const widthPct = ((sMax - sMin) / sMin) * 100;
+            const concMult = Math.round(1 / (1 - Math.sqrt(sMin / sMax)));
+
+            document.getElementById('sniper-regime').innerText = sniperTelemetry.regimeText;
+            document.getElementById('sniper-efficiency').innerText = `${widthPct.toFixed(2)}% (~${concMult}x)`;
+            document.getElementById('strat-sniper').innerText = `${sMin.toFixed(5)} <> ${sMax.toFixed(5)}`;
+        }
+
+        // =========================================================================
+        // 3 CAMADAS DE LEITURA WEB3
         // =========================================================================
         function ticksToHumanPrice(tickLower, tickUpper, isToken0Pol) {
-            // Fórmula oficial Uniswap V3 para WPOL (18 dec) / USDT (6 dec): diferença = 10^12
             if (isToken0Pol) {
                 return {
                     min: Math.pow(1.0001, Number(tickLower)) * 1e12,
@@ -813,7 +870,6 @@
             ]);
         }
 
-        // CAMADA 1: Ethers.js percorrendo múltiplos RPCs Polygon
         async function fetchViaMultiRpcEthers(address) {
             const nfpmABI = [
                 "function balanceOf(address) view returns (uint256)",
@@ -857,18 +913,14 @@
                     }
                     routeStatusEl.innerText = `OK (RPC #${i+1})`;
                     return found;
-                } catch (err) {
-                    console.warn(`RPC ${rpcUrl} falhou:`, err.message);
-                }
+                } catch (err) {}
             }
-            throw new Error('Todos os RPCs Ethers falharam');
+            throw new Error('Todos os RPCs falharam');
         }
 
-        // CAMADA 2: Chamada JSON-RPC Bruta (eth_call direto via fetch)
         async function fetchViaRawJsonRpc(address) {
             routeStatusEl.innerText = 'ROTA 2 (HEX RAW)...';
             const cleanAddr = address.replace('0x', '').padStart(64, '0');
-            // balanceOf(address) selector = 0x70a08231
             const res = await withTimeout(fetch('https://polygon-bor-rpc.publicnode.com', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -925,7 +977,6 @@
             return found;
         }
 
-        // CAMADA 3: Subgraph Indexado (Fallback)
         async function fetchViaSubgraph(address) {
             routeStatusEl.innerText = 'ROTA 3 (SUBGRAPH)...';
             const query = `{
@@ -961,7 +1012,6 @@
             return found;
         }
 
-        // ORQUESTRADOR DO SCANNER (TENTA ROTA 1 -> ROTA 2 -> ROTA 3 -> CACHE)
         async function runUnstoppableScan() {
             const rawAddr = document.getElementById('wallet-address').value.trim();
             if (!ethers.utils.isAddress(rawAddr)) {
@@ -976,7 +1026,6 @@
             routeStatusEl.style.color = 'var(--dekton-copper)';
 
             let scannedPositions = null;
-
             try {
                 scannedPositions = await fetchViaMultiRpcEthers(address);
             } catch (e1) {
@@ -1007,7 +1056,7 @@
         document.getElementById('btn-scan').addEventListener('click', runUnstoppableScan);
 
         // =========================================================================
-        // 4ª TÁTICA: INSERÇÃO MANUAL MULTI-FAIXA (SEMPRE DISPONÍVEL)
+        // 4ª TÁTICA: INSERÇÃO MANUAL MULTI-FAIXA
         // =========================================================================
         function addManualPosition(minVal, maxVal, tagVal) {
             const min = parseFloat(minVal);
@@ -1018,13 +1067,7 @@
             }
             const id = 'man-' + Date.now();
             const label = (tagVal && tagVal.trim()) ? tagVal.trim() : `Manual #${appState.manualPositions.length + 1}`;
-            appState.manualPositions.push({
-                id,
-                min,
-                max,
-                label,
-                source: 'manual'
-            });
+            appState.manualPositions.push({ id, min, max, label, source: 'manual' });
             appState.focusedId = id;
             saveTripleBackup();
             renderAllPositions();
@@ -1041,8 +1084,8 @@
         });
 
         document.getElementById('btn-use-sniper').addEventListener('click', () => {
-            if (lastSniperRange.min > 0 && lastSniperRange.max > 0) {
-                addManualPosition(lastSniperRange.min.toFixed(6), lastSniperRange.max.toFixed(6), 'Sniper 15m');
+            if (sniperTelemetry.min > 0 && sniperTelemetry.max > 0) {
+                addManualPosition(sniperTelemetry.min.toFixed(6), sniperTelemetry.max.toFixed(6), `Sniper ${sniperTelemetry.regimeText.split(' ')[0]}`);
             }
         });
 
@@ -1059,7 +1102,7 @@
         }
 
         // =========================================================================
-        // RENDERIZAÇÃO DAS POSIÇÕES, LINHAS NO GRÁFICO E CÁLCULO DE LIQUIDEZ V3
+        // RENDERIZAÇÃO DAS POSIÇÕES, LINHAS NO GRÁFICO E MÉTRICAS V3
         // =========================================================================
         function getAllPositions() {
             return [...appState.web3Positions, ...appState.manualPositions];
@@ -1070,7 +1113,6 @@
             const all = getAllPositions();
             listEl.innerHTML = '';
 
-            // Limpa linhas antigas do gráfico com segurança
             if (candleSeries && positionLines.length > 0) {
                 positionLines.forEach(line => {
                     try { candleSeries.removePriceLine(line); } catch (e) {}
@@ -1114,7 +1156,6 @@
                 item.querySelector('.pos-del').addEventListener('click', (ev) => removePosition(pos.id, ev));
                 listEl.appendChild(item);
 
-                // Desenha Mínima e Máxima no Gráfico
                 if (candleSeries) {
                     positionLines.push(candleSeries.createPriceLine({
                         price: pos.min,
@@ -1149,18 +1190,14 @@
             const max = focused.max;
             const price = currentPriceGlobal;
 
-            // Proporção matemática Uniswap V3 (sqrtPrice)
             const sqrtP = Math.sqrt(price);
             const sqrtA = Math.sqrt(min);
             const sqrtB = Math.sqrt(max);
 
             let usdtPct = 50;
-            if (price <= min) {
-                usdtPct = 0;
-            } else if (price >= max) {
-                usdtPct = 100;
-            } else {
-                // Razão de valor em USD dentro da faixa concentrada V3
+            if (price <= min) usdtPct = 0;
+            else if (price >= max) usdtPct = 100;
+            else {
                 const amt0 = (1 / sqrtP) - (1 / sqrtB);
                 const amt1 = sqrtP - sqrtA;
                 const val0Usd = amt0 * price;
@@ -1175,7 +1212,6 @@
             document.getElementById('lbl-pol').innerText = `${polPct.toFixed(1)}% POL`;
             document.getElementById('lbl-usdt').innerText = `${usdtPct.toFixed(1)}% USDT`;
 
-            // Se a posição veio da Web3 com liquidez real, calcula valor exato em USD e BRL
             if (focused.liquidity && focused.tickLower !== undefined) {
                 const L = parseFloat(focused.liquidity);
                 const sP = Math.sqrt(price * 1e-12);
@@ -1183,11 +1219,9 @@
                 const sB = Math.pow(1.0001, focused.tickUpper / 2);
 
                 let raw0 = 0, raw1 = 0;
-                if (sP <= sA) {
-                    raw0 = L * ((1 / sA) - (1 / sB));
-                } else if (sP >= sB) {
-                    raw1 = L * (sB - sA);
-                } else {
+                if (sP <= sA) raw0 = L * ((1 / sA) - (1 / sB));
+                else if (sP >= sB) raw1 = L * (sB - sA);
+                else {
                     raw0 = L * ((1 / sP) - (1 / sB));
                     raw1 = L * (sP - sA);
                 }
@@ -1242,7 +1276,7 @@
         }
 
         // =========================================================================
-        // GRÁFICO TRADINGVIEW & INTELIGÊNCIA SNIPER 15M
+        // GRÁFICO TRADINGVIEW & FEEDS EM TEMPO REAL
         // =========================================================================
         function initTradingViewChart() {
             const container = document.getElementById('tv-chart');
@@ -1296,7 +1330,6 @@
                     close: parseFloat(d[4])
                 }));
                 candleSeries.setData(klines);
-                updateSniperIntelligence(klines);
                 renderAllPositions();
             } catch (e) {}
         }
@@ -1315,30 +1348,6 @@
             candleSeries.update(syntheticCandle);
         }
 
-        function updateSniperIntelligence(klines) {
-            if (klines.length < 25) return;
-            const macroSlice = klines.slice(-96);
-            let maxHigh = 0, minLow = Infinity;
-            macroSlice.forEach(k => { maxHigh = Math.max(maxHigh, k.high); minLow = Math.min(minLow, k.low); });
-            document.getElementById('strat-macro').innerText = `${minLow.toFixed(5)} <> ${maxHigh.toFixed(5)}`;
-
-            // Cálculo Sniper focado na volatilidade recente (16 velas)
-            const micro = klines.slice(-16);
-            const avg = micro.reduce((acc, k) => acc + k.close, 0) / micro.length;
-            const variance = micro.reduce((acc, k) => acc + Math.pow(k.close - avg, 2), 0) / micro.length;
-            const stdDev = Math.sqrt(variance);
-
-            // Túnel de alta rotação (1.15x desvio padrão)
-            const sniperMin = avg - (stdDev * 1.15);
-            const sniperMax = avg + (stdDev * 1.15);
-            lastSniperRange = { min: sniperMin, max: sniperMax };
-
-            document.getElementById('strat-sniper').innerText = `${sniperMin.toFixed(5)} <> ${sniperMax.toFixed(5)}`;
-        }
-
-        // =========================================================================
-        // FEEDS EM TEMPO REAL (BINANCE WS + POLYGON DEX WS + CÂMBIO BRL)
-        // =========================================================================
         async function buildVariationsPanel() {
             const grid = document.getElementById('variations-grid');
             let html = '';
@@ -1374,6 +1383,7 @@
                     document.getElementById('macro-pol-brl').innerText = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
                 }
                 updateLiveCandle(currentPriceGlobal);
+                recalculateLiveSniperBounds();
                 updateFocusedMetrics();
             };
             ws.onclose = () => setTimeout(initGlobalTracker, 2500);
@@ -1421,9 +1431,6 @@
             } catch (e) {}
         }
 
-        // =========================================================================
-        // ÁUDIO & REDIMENSIONAMENTO DE PAINÉIS COM O MOUSE
-        // =========================================================================
         document.getElementById('btn-audio').addEventListener('click', async () => {
             const btn = document.getElementById('btn-audio');
             if (!audioEnabled) {
@@ -1461,18 +1468,15 @@
             const rightCol = document.getElementById('col-right');
 
             let activeResizer = null;
-
             res1.addEventListener('mousedown', () => { activeResizer = 1; res1.classList.add('dragging'); });
             res2.addEventListener('mousedown', () => { activeResizer = 2; res2.classList.add('dragging'); });
 
             window.addEventListener('mousemove', (e) => {
                 if (!activeResizer) return;
                 if (activeResizer === 1) {
-                    const newW = Math.max(110, Math.min(340, e.clientX - 8));
-                    leftCol.style.width = newW + 'px';
+                    leftCol.style.width = Math.max(110, Math.min(340, e.clientX - 8)) + 'px';
                 } else if (activeResizer === 2) {
-                    const newW = Math.max(250, Math.min(540, window.innerWidth - e.clientX - 8));
-                    rightCol.style.width = newW + 'px';
+                    rightCol.style.width = Math.max(250, Math.min(540, window.innerWidth - e.clientX - 8)) + 'px';
                 }
             });
 
@@ -1485,9 +1489,6 @@
             });
         }
 
-        // =========================================================================
-        // INICIALIZAÇÃO AUTOMÁTICA
-        // =========================================================================
         window.addEventListener('DOMContentLoaded', async () => {
             setupResizers();
             await loadFromTripleBackup();
@@ -1498,6 +1499,8 @@
 
             initTradingViewChart();
             renderAllPositions();
+            refreshSniperModel15m();
+            setInterval(refreshSniperModel15m, 15000);
             buildVariationsPanel();
             setInterval(buildVariationsPanel, 60000);
             initGlobalTracker();
