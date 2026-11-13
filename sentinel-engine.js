@@ -74,10 +74,32 @@ let sniperTelemetry = {
     max: 0
 };
 
+// Telemetria real da Pool Uniswap V3 & Escultor de Meta (R$/min)
+let poolTelemetry = {
+    activeLiquidityRaw: 0,
+    volumeUsdPerMin: 2800, // Fallback conservador até leitura on-chain/API concluir
+    feesUsdPerMin: 1.40,
+    source: 'inicial'
+};
+
+let yieldTargetState = {
+    customTargetBrlPerMin: null,
+    baselineBrlPerMin: 0,
+    projectedBrlPerMin: 0,
+    sculptedTickLower: null,
+    sculptedTickUpper: null,
+    sculptedMin: 0,
+    sculptedMax: 0,
+    riskLabel: 'SNIPER BASE',
+    riskColor: 'var(--success-green)',
+    cappedByPool: false
+};
+
 let autoPilotPlan = null;
 
 let chart = null, candleSeries = null;
 let positionLines = [];
+let previewLines = [];
 let currentInterval = '15m', currentIntervalSeconds = 900;
 let syntheticCandle = null;
 
@@ -132,8 +154,360 @@ function ticksToHumanPrice(tickLower, tickUpper, isToken0Pol) {
     }
 }
 
+function computeRangeTokenShares(price, pMin, pMax) {
+    if (price <= pMin) return { targetWpolShare: 1.0, targetUsdtShare: 0.0 };
+    if (price >= pMax) return { targetWpolShare: 0.0, targetUsdtShare: 1.0 };
+
+    const sqrtP = Math.sqrt(price);
+    const sqrtA = Math.sqrt(pMin);
+    const sqrtB = Math.sqrt(pMax);
+    const amt0 = (1 / sqrtP) - (1 / sqrtB);
+    const amt1 = sqrtP - sqrtA;
+    const v0 = amt0 * price;
+    const v1 = amt1;
+    const targetUsdtShare = v1 / (v0 + v1);
+    return {
+        targetWpolShare: 1 - targetUsdtShare,
+        targetUsdtShare
+    };
+}
+
+// Liquidez concentrada raw (escala 1e12) para capital USD em [pMin, pMax]
+function estimateUserRawLiquidity(capitalUsd, price, pMin, pMax) {
+    if (capitalUsd <= 0 || price <= 0 || pMin >= pMax) return 0;
+    const clampedP = Math.max(pMin * 1.00001, Math.min(pMax * 0.99999, price));
+    const sqrtP = Math.sqrt(clampedP);
+    const sqrtA = Math.sqrt(pMin);
+    const sqrtB = Math.sqrt(pMax);
+    const denom = (2 * sqrtP) - (clampedP / sqrtB) - sqrtA;
+    if (denom <= 1e-12) return 0;
+    return (capitalUsd * 1e12) / denom;
+}
+
+function estimateBrlPerMinForRange(capitalUsd, price, pMin, pMax) {
+    if (capitalUsd <= 0 || price <= 0) return 0;
+    const userL = estimateUserRawLiquidity(capitalUsd, price, pMin, pMax);
+    const poolL = poolTelemetry.activeLiquidityRaw > 0
+        ? poolTelemetry.activeLiquidityRaw
+        : Math.max(userL * 80, 1e18);
+    const share = userL / (poolL + userL);
+    const usdPerMin = poolTelemetry.feesUsdPerMin * share;
+    return usdPerMin * usdBrlCommercial;
+}
+
 function getMotherRate() {
     return usdtToBrzRate > 0 ? usdtToBrzRate : usdBrlCommercial;
+}
+
+// =========================================================================
+// TELEMETRIA REAL DA POOL (LIQUIDEZ ATIVA ON-CHAIN + VOLUME USD/MIN)
+// =========================================================================
+async function refreshPoolVolumeAndLiquidity() {
+    // 1. Lê liquidez ativa exata no contrato da Pool Uniswap V3
+    for (const rpcUrl of POLYGON_RPCS) {
+        try {
+            const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+            const pool = new ethers.Contract(POOL_ADDRESS, [
+                "function liquidity() view returns (uint128)"
+            ], provider);
+            const liqBN = await withTimeout(pool.liquidity(), 4000);
+            if (liqBN && liqBN.gt(0)) {
+                poolTelemetry.activeLiquidityRaw = parseFloat(liqBN.toString());
+                break;
+            }
+        } catch (e) {}
+    }
+
+    // 2. Lê volume real (24h e 5m) da pool POL/USDT0 na Polygon via GeckoTerminal
+    try {
+        const res = await withTimeout(
+            fetch(`https://api.geckoterminal.com/api/v2/networks/polygon_pos/pools/${POOL_ADDRESS}`),
+            4500
+        );
+        const json = await res.json();
+        const volObj = json?.data?.attributes?.volume_usd;
+        if (volObj) {
+            const h24 = parseFloat(volObj.h24) || 0;
+            const m5 = parseFloat(volObj.m5) || 0;
+            const avgPerMin24h = h24 / 1440;
+            const recentPerMin5m = m5 / 5;
+            const blendedUsdPerMin = recentPerMin5m > 0
+                ? (avgPerMin24h * 0.65) + (recentPerMin5m * 0.35)
+                : avgPerMin24h;
+
+            if (blendedUsdPerMin > 0) {
+                poolTelemetry.volumeUsdPerMin = blendedUsdPerMin;
+                poolTelemetry.feesUsdPerMin = blendedUsdPerMin * (POOL_FEE_TIER / 1_000_000);
+                poolTelemetry.source = 'on-chain + gecko';
+            }
+        }
+    } catch (e) {}
+
+    recomputeAutoPilotPlan();
+}
+
+// =========================================================================
+// INTERFACE INTERATIVA DE META DE RENDIMENTO (R$/MIN) & PRÉVIA NO GRÁFICO
+// =========================================================================
+function ensureYieldTargetUI() {
+    if (document.getElementById('yield-target-box')) return;
+    const summaryEl = document.getElementById('ap-plan-summary');
+    if (!summaryEl || !summaryEl.parentNode) return;
+
+    const box = document.createElement('div');
+    box.id = 'yield-target-box';
+    box.style.cssText = [
+        'margin: 6px 0;',
+        'padding: 7px 8px;',
+        'background: rgba(0, 212, 255, 0.05);',
+        'border: 1px solid rgba(0, 212, 255, 0.25);',
+        'border-radius: 6px;',
+        'display: flex;',
+        'flex-direction: column;',
+        'gap: 5px;'
+    ].join('');
+
+    const diagnosisEl = document.createElement('div');
+    diagnosisEl.id = 'yt-diagnosis-text';
+    diagnosisEl.style.cssText = 'font-size: 0.64rem; color: #ddd; line-height: 1.35;';
+    diagnosisEl.textContent = 'Calculando potencial de rendimento por minuto com seu saldo...';
+
+    const promptRow = document.createElement('div');
+    promptRow.style.cssText = 'display: flex; align-items: center; gap: 5px; margin-top: 2px;';
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = 'yt-target-input';
+    lbl.style.cssText = 'font-size: 0.62rem; color: var(--cyan-accent); font-weight: 700; white-space: nowrap;';
+    lbl.textContent = 'META R$/MIN:';
+
+    const input = document.createElement('input');
+    input.id = 'yt-target-input';
+    input.type = 'number';
+    input.step = '0.001';
+    input.min = '0';
+    input.placeholder = 'Ex: 0.050';
+    input.style.cssText = [
+        'flex: 1;',
+        'min-width: 70px;',
+        'background: #090909;',
+        'border: 1px solid rgba(0, 212, 255, 0.45);',
+        'color: #fff;',
+        'font-size: 0.72rem;',
+        'font-weight: 700;',
+        'padding: 4px 6px;',
+        'border-radius: 4px;',
+        'font-family: inherit;'
+    ].join('');
+
+    const clearBtn = document.createElement('button');
+    clearBtn.id = 'yt-clear-btn';
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'AUTO';
+    clearBtn.title = 'Voltar para o range Sniper automático';
+    clearBtn.style.cssText = [
+        'background: rgba(255,255,255,0.08);',
+        'border: 1px solid rgba(255,255,255,0.2);',
+        'color: #ccc;',
+        'font-size: 0.58rem;',
+        'font-weight: 700;',
+        'padding: 4px 6px;',
+        'border-radius: 4px;',
+        'cursor: pointer;'
+    ].join('');
+
+    promptRow.append(lbl, input, clearBtn);
+
+    const chipsRow = document.createElement('div');
+    chipsRow.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;';
+
+    const presets = [
+        { id: 'yt-preset-1x', label: 'SNIPER 1x', mult: 1.0 },
+        { id: 'yt-preset-15x', label: 'META 1.5x', mult: 1.5 },
+        { id: 'yt-preset-25x', label: 'TURBO 2.5x', mult: 2.5 },
+        { id: 'yt-preset-4x', label: 'SCALP 4x', mult: 4.0 }
+    ];
+
+    presets.forEach(p => {
+        const chip = document.createElement('button');
+        chip.id = p.id;
+        chip.type = 'button';
+        chip.textContent = p.label;
+        chip.style.cssText = [
+            'background: rgba(205, 164, 52, 0.12);',
+            'border: 1px solid rgba(205, 164, 52, 0.35);',
+            'color: var(--dekton-copper);',
+            'font-size: 0.56rem;',
+            'font-weight: 700;',
+            'padding: 3px 2px;',
+            'border-radius: 4px;',
+            'cursor: pointer;'
+        ].join('');
+        chip.addEventListener('click', () => {
+            if (p.mult === 1.0) {
+                yieldTargetState.customTargetBrlPerMin = null;
+                input.value = '';
+            } else if (yieldTargetState.baselineBrlPerMin > 0) {
+                const targetVal = Number((yieldTargetState.baselineBrlPerMin * p.mult).toFixed(4));
+                yieldTargetState.customTargetBrlPerMin = targetVal;
+                input.value = targetVal;
+            }
+            recomputeAutoPilotPlan();
+        });
+        chipsRow.appendChild(chip);
+    });
+
+    const feedbackEl = document.createElement('div');
+    feedbackEl.id = 'yt-sculpt-feedback';
+    feedbackEl.style.cssText = 'font-size: 0.61rem; color: var(--success-green); line-height: 1.3;';
+
+    input.addEventListener('input', () => {
+        const val = parseFloat(input.value);
+        if (Number.isFinite(val) && val > 0) {
+            yieldTargetState.customTargetBrlPerMin = val;
+        } else {
+            yieldTargetState.customTargetBrlPerMin = null;
+        }
+        recomputeAutoPilotPlan();
+    });
+
+    clearBtn.addEventListener('click', () => {
+        yieldTargetState.customTargetBrlPerMin = null;
+        input.value = '';
+        recomputeAutoPilotPlan();
+    });
+
+    box.append(diagnosisEl, promptRow, chipsRow, feedbackEl);
+    summaryEl.parentNode.insertBefore(box, summaryEl);
+}
+
+function updateChartPreviewLines(pMin, pMax, isCustomTarget) {
+    if (!candleSeries) return;
+    if (previewLines.length > 0) {
+        previewLines.forEach(line => {
+            try { candleSeries.removePriceLine(line); } catch (e) {}
+        });
+        previewLines = [];
+    }
+    if (!isCustomTarget || pMin <= 0 || pMax <= pMin) return;
+
+    previewLines.push(candleSeries.createPriceLine({
+        price: pMin,
+        color: '#00d4ff',
+        lineWidth: 1,
+        lineStyle: 3,
+        axisLabelVisible: true,
+        title: 'META MIN'
+    }));
+    previewLines.push(candleSeries.createPriceLine({
+        price: pMax,
+        color: '#00d4ff',
+        lineWidth: 1,
+        lineStyle: 3,
+        axisLabelVisible: true,
+        title: 'META MAX'
+    }));
+}
+
+// =========================================================================
+// SOLVER INVERSO DE RANGE PARA META EM R$/MIN (BUSCA BINÁRIA ALINHADA)
+// =========================================================================
+function solveRangeForTargetBrlPerMin(targetBrlPerMin, capitalUsd, price, defaultTickLower, defaultTickUpper) {
+    const defaultPrices = ticksToHumanPrice(defaultTickLower, defaultTickUpper, true);
+    const baselineBrlMin = estimateBrlPerMinForRange(capitalUsd, price, defaultPrices.min, defaultPrices.max);
+
+    // Sem meta customizada: usa range Sniper padrão
+    if (!targetBrlPerMin || targetBrlPerMin <= 0 || capitalUsd <= 0 || price <= 0) {
+        return {
+            tickLower: defaultTickLower,
+            tickUpper: defaultTickUpper,
+            pMin: defaultPrices.min,
+            pMax: defaultPrices.max,
+            baselineBrlMin,
+            projectedBrlMin: baselineBrlMin,
+            riskLabel: 'SNIPER SEGURO',
+            riskColor: 'var(--success-green)',
+            cappedByPool: false,
+            isCustom: false
+        };
+    }
+
+    // Limite físico mínimo: 2 tick spacings (0.20% de largura) para evitar revert/out-of-range instantâneo
+    const centerTick = humanPriceToAlignedTick(price, true, false);
+    const tightestLower = centerTick - POOL_TICK_SPACING;
+    const tightestUpper = centerTick + POOL_TICK_SPACING;
+    const tightestPrices = ticksToHumanPrice(tightestLower, tightestUpper, true);
+    const maxPossibleBrlMin = estimateBrlPerMinForRange(capitalUsd, price, tightestPrices.min, tightestPrices.max);
+
+    let chosenLower = defaultTickLower;
+    let chosenUpper = defaultTickUpper;
+    let cappedByPool = false;
+
+    if (targetBrlPerMin >= maxPossibleBrlMin) {
+        chosenLower = tightestLower;
+        chosenUpper = tightestUpper;
+        cappedByPool = true;
+    } else {
+        // Busca binária no span S mantendo o viés assimétrico da EMA (downWeight / upWeight)
+        let lowSpan = price * 0.002;
+        let highSpan = price * 0.60;
+        const dW = sniperTelemetry.downWeight || 0.5;
+        const uW = sniperTelemetry.upWeight || 0.5;
+
+        for (let iter = 0; iter < 32; iter++) {
+            const midSpan = (lowSpan + highSpan) / 2;
+            const candMin = Math.max(price * 0.1, price - (midSpan * dW));
+            const candMax = price + (midSpan * uW);
+            const estBrl = estimateBrlPerMinForRange(capitalUsd, price, candMin, candMax);
+
+            if (estBrl > targetBrlPerMin) {
+                // Rendimento acima da meta -> podemos alargar o range para ganhar segurança
+                lowSpan = midSpan;
+            } else {
+                // Rendimento abaixo da meta -> precisamos estreitar o range
+                highSpan = midSpan;
+            }
+        }
+
+        const finalSpan = (lowSpan + highSpan) / 2;
+        const rawMin = Math.max(price * 0.1, price - (finalSpan * dW));
+        const rawMax = price + (finalSpan * uW);
+
+        chosenLower = humanPriceToAlignedTick(rawMin, true, false);
+        chosenUpper = humanPriceToAlignedTick(rawMax, true, true);
+        if (chosenUpper - chosenLower < POOL_TICK_SPACING * 2) {
+            chosenLower = tightestLower;
+            chosenUpper = tightestUpper;
+        }
+    }
+
+    const sculptedPrices = ticksToHumanPrice(chosenLower, chosenUpper, true);
+    const projectedBrlMin = estimateBrlPerMinForRange(capitalUsd, price, sculptedPrices.min, sculptedPrices.max);
+    const span = sculptedPrices.max - sculptedPrices.min;
+    const atr = sniperTelemetry.atr14 > 0 ? sniperTelemetry.atr14 : (price * 0.01);
+    const atrRatio = span / atr;
+
+    let riskLabel = 'EQUILIBRADO';
+    let riskColor = 'var(--success-green)';
+    if (atrRatio < 0.85) {
+        riskLabel = 'SCALPER EXTREMO (SAI RÁPIDO)';
+        riskColor = 'var(--danger-red)';
+    } else if (atrRatio < 1.8) {
+        riskLabel = 'AGRESSIVO (ESTREITO)';
+        riskColor = 'var(--warning-yellow)';
+    }
+
+    return {
+        tickLower: chosenLower,
+        tickUpper: chosenUpper,
+        pMin: sculptedPrices.min,
+        pMax: sculptedPrices.max,
+        baselineBrlMin,
+        projectedBrlMin,
+        riskLabel,
+        riskColor,
+        cappedByPool,
+        isCustom: true
+    };
 }
 
 // =========================================================================
@@ -431,18 +805,79 @@ if (window.ethereum) {
 }
 
 // =========================================================================
-// PILOTO AUTOMÁTICO 100% UNISWAP V3 (MULTI-STEP + SIMULAÇÃO ANTI-REVERT)
+// MOTOR UNIFICADO DE PREPARO DE SALDO (PARA NOVA POOL OU + ADICIONAR)
+// =========================================================================
+function buildLiquidityPrepPlan(targetWpolShare, targetUsdtShare, price, minDeployUsd = 1.0) {
+    const motherRate = getMotherRate();
+    const usablePol = Math.max(0, walletBalances.pol - GAS_RESERVE_POL);
+    const valPolUsd = usablePol * price;
+    const valWpolUsd = walletBalances.wpol * price;
+    const valUsdtUsd = walletBalances.usdt0;
+    const valBrzUsd = walletBalances.brz / motherRate;
+    const valBrlaUsd = walletBalances.brla / (usdtToBrlaRate > 0 ? usdtToBrlaRate : motherRate);
+
+    const totalDeployableUsd = valPolUsd + valWpolUsd + valUsdtUsd + valBrzUsd + valBrlaUsd;
+    const totalDeployableBrz = totalDeployableUsd * motherRate;
+
+    if (totalDeployableUsd < minDeployUsd) return null;
+
+    const targetUsdtUsd = totalDeployableUsd * targetUsdtShare;
+    const targetWpolUsd = totalDeployableUsd * targetWpolShare;
+
+    const swapSteps = [];
+
+    if (valBrzUsd > 0.25) {
+        swapSteps.push({ fromSym: 'BRZ', toSym: 'USDT0', amountFloat: walletBalances.brz });
+    }
+    if (valBrlaUsd > 0.25) {
+        swapSteps.push({ fromSym: 'BRLA', toSym: 'USDT0', amountFloat: walletBalances.brla });
+    }
+    if (valPolUsd > 0.25) {
+        swapSteps.push({ fromSym: 'POL', toSym: 'WPOL', amountFloat: usablePol });
+    }
+
+    const projectedUsdtUsd = valUsdtUsd + valBrzUsd + valBrlaUsd;
+    const projectedWpolUsd = valWpolUsd + valPolUsd;
+
+    if (projectedUsdtUsd > targetUsdtUsd + 0.30) {
+        const usdtToSwapForWpol = Math.min(projectedUsdtUsd, projectedUsdtUsd - targetUsdtUsd);
+        if (usdtToSwapForWpol > 0.25) {
+            swapSteps.push({ fromSym: 'USDT0', toSym: 'WPOL', amountFloat: usdtToSwapForWpol });
+        }
+    } else if (projectedWpolUsd > targetWpolUsd + 0.30) {
+        const wpolToSwapForUsdt = Math.min(walletBalances.wpol + usablePol, (projectedWpolUsd - targetWpolUsd) / price);
+        if (wpolToSwapForUsdt > 0.5) {
+            swapSteps.push({ fromSym: 'WPOL', toSym: 'USDT0', amountFloat: wpolToSwapForUsdt });
+        }
+    }
+
+    return {
+        totalDeployableUsd,
+        totalDeployableBrz,
+        targetWpolShare,
+        targetUsdtShare,
+        swapSteps
+    };
+}
+
+// =========================================================================
+// PILOTO AUTOMÁTICO 100% UNISWAP V3 (COM ESCULTOR DE META R$/MIN)
 // =========================================================================
 function recomputeAutoPilotPlan(onChainPoolPrice) {
+    ensureYieldTargetUI();
+
     const capEl = document.getElementById('ap-available-capital');
     const summaryEl = document.getElementById('ap-plan-summary');
     const btnEl = document.getElementById('btn-start-earning');
+    const diagEl = document.getElementById('yt-diagnosis-text');
+    const fbEl = document.getElementById('yt-sculpt-feedback');
 
     if (!capEl || !summaryEl || !btnEl) return;
 
     if (!connectedSignerAddress && !appState.wallet) {
         capEl.textContent = 'Capital Livre: 0.00 BRZ';
-        summaryEl.textContent = 'Conecte sua Rabby Wallet para calcular o plano de liquidez 100% Uniswap V3 com reserva de gás (1.5 POL).';
+        summaryEl.textContent = 'Conecte sua Rabby Wallet para simular quanto seu saldo rende por minuto na Uniswap V3.';
+        if (diagEl) diagEl.textContent = 'Conecte a carteira para calcular R$/minuto com seu saldo.';
         if (!isAutoPilotRunning) btnEl.textContent = 'CONECTAR RABBY & COMEÇAR A GANHAR';
         autoPilotPlan = null;
         return;
@@ -454,105 +889,95 @@ function recomputeAutoPilotPlan(onChainPoolPrice) {
     const motherRate = getMotherRate();
 
     const usablePol = Math.max(0, walletBalances.pol - GAS_RESERVE_POL);
-    const valPolUsd = usablePol * price;
-    const valWpolUsd = walletBalances.wpol * price;
-    const valUsdtUsd = walletBalances.usdt0;
-    const valBrzUsd = walletBalances.brz / motherRate;
-    const valBrlaUsd = walletBalances.brla / (usdtToBrlaRate > 0 ? usdtToBrlaRate : motherRate);
-
-    const totalDeployableUsd = valPolUsd + valWpolUsd + valUsdtUsd + valBrzUsd + valBrlaUsd;
+    const totalDeployableUsd = (usablePol * price) + (walletBalances.wpol * price) + walletBalances.usdt0 + (walletBalances.brz / motherRate) + (walletBalances.brla / (usdtToBrlaRate > 0 ? usdtToBrlaRate : motherRate));
     const totalDeployableBrz = totalDeployableUsd * motherRate;
+    const totalDeployableBrl = totalDeployableUsd * usdBrlCommercial;
 
-    capEl.textContent = `Capital Livre: ${totalDeployableBrz.toFixed(2)} BRZ ($${totalDeployableUsd.toFixed(2)})`;
+    capEl.textContent = `Capital Livre: ${totalDeployableBrz.toFixed(2)} BRZ (R$ ${totalDeployableBrl.toFixed(2)})`;
 
-    if (totalDeployableUsd < 1.0) {
+    // Range Sniper base (2.5x ATR)
+    const halfSpanDefault = price * 0.025;
+    const rawMin = sniperTelemetry.min > 0 ? Math.min(sniperTelemetry.min, price - halfSpanDefault * 0.6) : (price - halfSpanDefault);
+    const rawMax = sniperTelemetry.max > 0 ? Math.max(sniperTelemetry.max, price + halfSpanDefault * 0.6) : (price + halfSpanDefault);
+
+    let baseTickLower = humanPriceToAlignedTick(rawMin, true, false);
+    let baseTickUpper = humanPriceToAlignedTick(rawMax, true, true);
+    if (baseTickUpper - baseTickLower < POOL_TICK_SPACING * 4) {
+        baseTickLower -= POOL_TICK_SPACING * 2;
+        baseTickUpper += POOL_TICK_SPACING * 2;
+    }
+
+    // Resolve faixa (Sniper base ou esculpida pela meta R$/min)
+    const solved = solveRangeForTargetBrlPerMin(
+        yieldTargetState.customTargetBrlPerMin,
+        totalDeployableUsd,
+        price,
+        baseTickLower,
+        baseTickUpper
+    );
+
+    yieldTargetState.baselineBrlPerMin = solved.baselineBrlMin;
+    yieldTargetState.projectedBrlPerMin = solved.projectedBrlMin;
+    yieldTargetState.sculptedTickLower = solved.tickLower;
+    yieldTargetState.sculptedTickUpper = solved.tickUpper;
+    yieldTargetState.sculptedMin = solved.pMin;
+    yieldTargetState.sculptedMax = solved.pMax;
+    yieldTargetState.riskLabel = solved.riskLabel;
+    yieldTargetState.riskColor = solved.riskColor;
+    yieldTargetState.cappedByPool = solved.cappedByPool;
+
+    if (diagEl) {
+        const baseHour = solved.baselineBrlMin * 60;
+        const baseDay = baseHour * 24;
+        diagEl.innerHTML =
+            `Olha, com <b>R$ ${totalDeployableBrl.toFixed(2)}</b> no range Sniper seguro você consegue ` +
+            `<b style="color:var(--success-green)">R$ ${solved.baselineBrlMin.toFixed(4)}/min</b> ` +
+            `(R$ ${baseHour.toFixed(2)}/h | R$ ${baseDay.toFixed(2)}/dia). Quanto quer tentar buscar?`;
+    }
+
+    if (fbEl) {
+        const widthPct = (((solved.pMax - solved.pMin) / solved.pMin) * 100).toFixed(2);
+        const concMult = Math.max(1, Math.round(1 / (1 - Math.sqrt(solved.pMin / solved.pMax))));
+        if (solved.isCustom) {
+            const projHour = solved.projectedBrlMin * 60;
+            const capNote = solved.cappedByPool ? ' [Teto técnico da pool]' : '';
+            fbEl.style.color = solved.riskColor;
+            fbEl.textContent =
+                `Alvo: ~R$ ${solved.projectedBrlMin.toFixed(4)}/min (R$ ${projHour.toFixed(2)}/h) • ` +
+                `Largura ${widthPct}% (~${concMult}x) • ${solved.riskLabel}${capNote}`;
+        } else {
+            fbEl.style.color = '#888';
+            fbEl.textContent = `Modo Sniper ativo: largura ${widthPct}% (~${concMult}x concentração).`;
+        }
+    }
+
+    updateChartPreviewLines(solved.pMin, solved.pMax, solved.isCustom);
+
+    const shares = computeRangeTokenShares(price, solved.pMin, solved.pMax);
+    const prep = buildLiquidityPrepPlan(shares.targetWpolShare, shares.targetUsdtShare, price, 1.0);
+    if (!prep) {
         summaryEl.textContent = `Saldo livre insuficiente ($${totalDeployableUsd.toFixed(2)}). Mantenha pelo menos 1.5 POL para gás + capital disponível.`;
         autoPilotPlan = null;
         return;
     }
 
-    const halfSpanDefault = price * 0.025;
-    const rawMin = sniperTelemetry.min > 0 ? Math.min(sniperTelemetry.min, price - halfSpanDefault * 0.6) : (price - halfSpanDefault);
-    const rawMax = sniperTelemetry.max > 0 ? Math.max(sniperTelemetry.max, price + halfSpanDefault * 0.6) : (price + halfSpanDefault);
-
-    let tickLower = humanPriceToAlignedTick(rawMin, true, false);
-    let tickUpper = humanPriceToAlignedTick(rawMax, true, true);
-    if (tickUpper - tickLower < POOL_TICK_SPACING * 4) {
-        tickLower -= POOL_TICK_SPACING * 2;
-        tickUpper += POOL_TICK_SPACING * 2;
-    }
-
-    const alignedPrices = ticksToHumanPrice(tickLower, tickUpper, true);
-    const pMin = alignedPrices.min;
-    const pMax = alignedPrices.max;
-
-    const sqrtP = Math.sqrt(price);
-    const sqrtA = Math.sqrt(pMin);
-    const sqrtB = Math.sqrt(pMax);
-
-    let targetUsdtShare = 0.5;
-    if (price <= pMin) targetUsdtShare = 0.0;
-    else if (price >= pMax) targetUsdtShare = 1.0;
-    else {
-        const amt0 = (1 / sqrtP) - (1 / sqrtB);
-        const amt1 = sqrtP - sqrtA;
-        const v0 = amt0 * price;
-        const v1 = amt1;
-        targetUsdtShare = v1 / (v0 + v1);
-    }
-    const targetWpolShare = 1 - targetUsdtShare;
-
-    const targetUsdtUsd = totalDeployableUsd * targetUsdtShare;
-    const targetWpolUsd = totalDeployableUsd * targetWpolShare;
-
-    const swapSteps = [];
-
-    if (valBrzUsd > 0.35) {
-        swapSteps.push({ fromSym: 'BRZ', toSym: 'USDT0', amountFloat: walletBalances.brz });
-    }
-    if (valBrlaUsd > 0.35) {
-        swapSteps.push({ fromSym: 'BRLA', toSym: 'USDT0', amountFloat: walletBalances.brla });
-    }
-
-    const projectedUsdtUsd = valUsdtUsd + valBrzUsd + valBrlaUsd;
-    const projectedWpolUsd = valWpolUsd;
-
-    if (projectedUsdtUsd > targetUsdtUsd + 0.45) {
-        const usdtToSwapForWpol = Math.min(projectedUsdtUsd, projectedUsdtUsd - targetUsdtUsd);
-        if (usdtToSwapForWpol > 0.35) {
-            swapSteps.push({ fromSym: 'USDT0', toSym: 'WPOL', amountFloat: usdtToSwapForWpol });
-        }
-    } else if (projectedWpolUsd > targetWpolUsd + 0.45) {
-        const wpolToSwapForUsdt = Math.min(walletBalances.wpol, (projectedWpolUsd - targetWpolUsd) / price);
-        if (wpolToSwapForUsdt > 1.0) {
-            swapSteps.push({ fromSym: 'WPOL', toSym: 'USDT0', amountFloat: wpolToSwapForUsdt });
-        }
-    } else if (valPolUsd > 0.8 && projectedWpolUsd < targetWpolUsd - 0.45) {
-        const polNeededUsd = Math.min(valPolUsd, targetWpolUsd - projectedWpolUsd);
-        if (polNeededUsd > 0.35) {
-            swapSteps.push({ fromSym: 'POL', toSym: 'WPOL', amountFloat: polNeededUsd / price });
-        }
-    }
-
     autoPilotPlan = {
-        totalDeployableUsd,
-        totalDeployableBrz,
-        tickLower,
-        tickUpper,
-        pMin,
-        pMax,
-        targetWpolShare,
-        targetUsdtShare,
-        swapSteps
+        ...prep,
+        tickLower: solved.tickLower,
+        tickUpper: solved.tickUpper,
+        pMin: solved.pMin,
+        pMax: solved.pMax
     };
 
-    const actionDesc = swapSteps.length > 0
-        ? `Ajuste V3: ${swapSteps.map(s => `${s.amountFloat.toFixed(2)} ${s.fromSym}→${s.toSym}`).join(' + ')}`
-        : `Balanceado (${Math.round(targetWpolShare*100)}% WPOL / ${Math.round(targetUsdtShare*100)}% USDT0)`;
+    const actionDesc = prep.swapSteps.length > 0
+        ? `Ajuste V3: ${prep.swapSteps.map(s => `${s.amountFloat.toFixed(2)} ${s.fromSym}→${s.toSym}`).join(' + ')}`
+        : `Balanceado (${Math.round(shares.targetWpolShare*100)}% WPOL / ${Math.round(shares.targetUsdtShare*100)}% USDT0)`;
 
-    summaryEl.textContent = `Faixa: ${pMin.toFixed(5)} ↔ ${pMax.toFixed(5)} | ${actionDesc}`;
+    summaryEl.textContent = `Faixa Escolhida: ${solved.pMin.toFixed(5)} ↔ ${solved.pMax.toFixed(5)} | ${actionDesc}`;
     if (!isAutoPilotRunning) {
-        btnEl.textContent = 'COMEÇAR A GANHAR (UNISWAP V3)';
+        btnEl.textContent = solved.isCustom
+            ? `ABRIR NA META R$ ${solved.projectedBrlMin.toFixed(4)}/MIN`
+            : 'COMEÇAR A GANHAR (UNISWAP V3)';
     }
 }
 
@@ -585,6 +1010,27 @@ async function getExactOnChainPoolPrice(provider) {
     }
 }
 
+async function runSwapStepsSequence(swapSteps, signer, onStatus) {
+    for (let i = 0; i < swapSteps.length; i++) {
+        const act = swapSteps[i];
+        const tokIn = TOKENS[act.fromSym];
+
+        await refreshLivePoolFeesAndBalances();
+        const liveAvail = walletBalances[act.fromSym.toLowerCase()] || 0;
+        const safeAmount = act.fromSym === 'POL'
+            ? Math.min(act.amountFloat, Math.max(0, liveAvail - GAS_RESERVE_POL))
+            : Math.min(act.amountFloat, liveAvail);
+
+        if (safeAmount <= 0.05) continue;
+
+        const amountWei = ethers.utils.parseUnits(safeAmount.toFixed(tokIn.decimals), tokIn.decimals);
+        if (onStatus) onStatus(`Passo ${i+1}/${swapSteps.length}: Cotando ${act.fromSym} → ${act.toSym} na Uniswap V3...`);
+
+        const quoteObj = await quoteUniswapV3OnChain(act.fromSym, act.toSym, amountWei);
+        await executeUniswapV3Swap(act.fromSym, act.toSym, amountWei, quoteObj, signer, onStatus);
+    }
+}
+
 async function runAutoPilotWorkflow() {
     if (isAutoPilotRunning) return;
 
@@ -611,26 +1057,9 @@ async function runAutoPilotWorkflow() {
             throw new Error('Saldo livre insuficiente (mantenha pelo menos 1.5 POL para gás + capital).');
         }
 
-        for (let i = 0; i < autoPilotPlan.swapSteps.length; i++) {
-            const act = autoPilotPlan.swapSteps[i];
-            const tokIn = TOKENS[act.fromSym];
-
-            await refreshLivePoolFeesAndBalances();
-            const liveAvail = walletBalances[act.fromSym.toLowerCase()] || 0;
-            const safeAmount = act.fromSym === 'POL'
-                ? Math.min(act.amountFloat, Math.max(0, liveAvail - GAS_RESERVE_POL))
-                : Math.min(act.amountFloat, liveAvail);
-
-            if (safeAmount <= 0.05) continue;
-
-            const amountWei = ethers.utils.parseUnits(safeAmount.toFixed(tokIn.decimals), tokIn.decimals);
-            setAutoPilotStepUI(2, `Passo ${i+1}/${autoPilotPlan.swapSteps.length}: Cotando ${act.fromSym} → ${act.toSym} na Uniswap V3...`, false);
-
-            const quoteObj = await quoteUniswapV3OnChain(act.fromSym, act.toSym, amountWei);
-            await executeUniswapV3Swap(act.fromSym, act.toSym, amountWei, quoteObj, signer, (msg) => {
-                setAutoPilotStepUI(2, msg, false);
-            });
-        }
+        await runSwapStepsSequence(autoPilotPlan.swapSteps, signer, (msg) => {
+            setAutoPilotStepUI(2, msg, false);
+        });
 
         const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
             "function balanceOf(address) view returns (uint256)",
@@ -708,6 +1137,8 @@ async function runAutoPilotWorkflow() {
         setAutoPilotStepUI(4, 'SUCESSO! Posição aberta e rendendo tarifas na Uniswap V3!', false);
         playBeep(1318, 0.35, 'sine');
 
+        updateChartPreviewLines(0, 0, false);
+
         await runUnstoppableScan();
         if (appState.focusedId) {
             appState.pnlOverrides[appState.focusedId] = {
@@ -725,15 +1156,164 @@ async function runAutoPilotWorkflow() {
     } finally {
         isAutoPilotRunning = false;
         btn.disabled = false;
-        btn.textContent = 'COMEÇAR A GANHAR (UNISWAP V3)';
+        recomputeAutoPilotPlan();
     }
 }
 
 document.getElementById('btn-start-earning').addEventListener('click', runAutoPilotWorkflow);
 
 // =========================================================================
-// EXECUÇÃO ON-CHAIN UNISWAP V3: COLHER TARIFAS, WITHDRAW & REBALANCEAR
+// EXECUÇÃO ON-CHAIN UNISWAP V3: + ADICIONAR, COLHER, REBALANCEAR & WITHDRAW
 // =========================================================================
+async function executeIncreaseLiquidityOnChain(tokenId, e) {
+    if (e) e.stopPropagation();
+    if (isAutoPilotRunning) return;
+
+    if (!connectedSignerAddress) {
+        const ok = await connectWeb3Wallet();
+        if (!ok) return;
+    }
+
+    const feedbackEl = document.getElementById('nft-tx-feedback');
+    isAutoPilotRunning = true;
+
+    try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+
+        feedbackEl.style.color = 'var(--cyan-accent)';
+        feedbackEl.textContent = `Lendo faixa exata do NFT #${tokenId} e saldo livre...`;
+
+        await refreshLivePoolFeesAndBalances();
+        const realPoolPrice = await getExactOnChainPoolPrice(provider);
+
+        const nfpmAbi = [
+            "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
+            "function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline) params) payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)"
+        ];
+        const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmAbi, signer);
+        const posOnChain = await nfpm.positions(ethers.BigNumber.from(tokenId));
+
+        const t0 = posOnChain.token0.toLowerCase();
+        const prices = ticksToHumanPrice(posOnChain.tickLower, posOnChain.tickUpper, t0 === POL_ADDRESS);
+        const shares = computeRangeTokenShares(realPoolPrice, prices.min, prices.max);
+
+        const addPlan = buildLiquidityPrepPlan(shares.targetWpolShare, shares.targetUsdtShare, realPoolPrice, 0.50);
+        if (!addPlan) {
+            throw new Error('Saldo livre insuficiente na carteira (mantenha pelo menos 1.5 POL para gás + capital).');
+        }
+
+        const confirmAdd = confirm(
+            `Adicionar saldo restante no NFT #${tokenId} sem fechar a posição?\n\n` +
+            `• Capital livre disponível: ${addPlan.totalDeployableBrz.toFixed(2)} BRZ ($${addPlan.totalDeployableUsd.toFixed(2)})\n` +
+            `• Faixa atual do NFT: ${prices.min.toFixed(5)} ↔ ${prices.max.toFixed(5)}\n` +
+            `• Proporção alvo: ${Math.round(shares.targetWpolShare * 100)}% WPOL / ${Math.round(shares.targetUsdtShare * 100)}% USDT0`
+        );
+        if (!confirmAdd) {
+            feedbackEl.textContent = '';
+            return;
+        }
+
+        await runSwapStepsSequence(addPlan.swapSteps, signer, (msg) => {
+            feedbackEl.style.color = 'var(--cyan-accent)';
+            feedbackEl.textContent = msg;
+        });
+
+        const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
+            "function balanceOf(address) view returns (uint256)",
+            "function allowance(address, address) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)"
+        ], signer);
+        const usdtC = new ethers.Contract(TOKENS.USDT0.address, [
+            "function balanceOf(address) view returns (uint256)",
+            "function allowance(address, address) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)"
+        ], signer);
+
+        const [balWpolBN, balUsdtBN] = await Promise.all([
+            wpolC.balanceOf(connectedSignerAddress),
+            usdtC.balanceOf(connectedSignerAddress)
+        ]);
+
+        if (balWpolBN.isZero() && balUsdtBN.isZero()) {
+            throw new Error('Nenhum saldo WPOL ou USDT0 disponível após conversão.');
+        }
+
+        if (balWpolBN.gt(0)) {
+            const allow0 = await wpolC.allowance(connectedSignerAddress, NFPM_ADDRESS);
+            if (allow0.lt(balWpolBN)) {
+                feedbackEl.textContent = `Assine na Rabby: aprovar WPOL exato para NFT #${tokenId}...`;
+                const tx0 = await wpolC.approve(NFPM_ADDRESS, balWpolBN);
+                await tx0.wait();
+            }
+        }
+
+        if (balUsdtBN.gt(0)) {
+            const allow1 = await usdtC.allowance(connectedSignerAddress, NFPM_ADDRESS);
+            if (allow1.lt(balUsdtBN)) {
+                feedbackEl.textContent = `Assine na Rabby: aprovar USDT0 exato para NFT #${tokenId}...`;
+                const tx1 = await usdtC.approve(NFPM_ADDRESS, balUsdtBN);
+                await tx1.wait();
+            }
+        }
+
+        feedbackEl.textContent = `Simulando increaseLiquidity no NFT #${tokenId} (anti-revert & anti-MEV)...`;
+        const deadline = Math.floor(Date.now() / 1000) + 1200;
+        const baseIncParams = {
+            tokenId: ethers.BigNumber.from(tokenId),
+            amount0Desired: balWpolBN,
+            amount1Desired: balUsdtBN,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline
+        };
+
+        const simRes = await nfpm.callStatic.increaseLiquidity(baseIncParams);
+        if (!simRes || simRes.liquidity.isZero()) {
+            throw new Error('Liquidez adicional simulada igual a zero. Verifique o saldo livre.');
+        }
+
+        const protectedIncParams = {
+            ...baseIncParams,
+            amount0Min: simRes.amount0.mul(985).div(1000),
+            amount1Min: simRes.amount1.mul(985).div(1000)
+        };
+
+        feedbackEl.textContent = `Assine na Rabby: adicionar liquidez ao NFT #${tokenId}...`;
+        const incTx = await nfpm.increaseLiquidity(protectedIncParams, { gasLimit: 500000 });
+
+        feedbackEl.textContent = `Enviada (${incTx.hash.slice(0, 10)}...) Confirmando na Polygon...`;
+        const receipt = await incTx.wait();
+        const gasPaidPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
+
+        const posKey = `web3-${tokenId}`;
+        const prevOv = appState.pnlOverrides[posKey] || {};
+        const prevInitBrz = Number.isFinite(Number(prevOv.initBrz)) ? Number(prevOv.initBrz) : 0;
+        const prevGasPol = Number.isFinite(Number(prevOv.openGasPol)) ? Number(prevOv.openGasPol) : 0;
+
+        appState.pnlOverrides[posKey] = {
+            ...prevOv,
+            initBrz: Number((prevInitBrz + addPlan.totalDeployableBrz).toFixed(2)),
+            openGasPol: Number((prevGasPol + gasPaidPol).toFixed(5)),
+            autoChecked: true
+        };
+        saveTripleBackup();
+
+        feedbackEl.style.color = 'var(--success-green)';
+        feedbackEl.textContent = `+${addPlan.totalDeployableBrz.toFixed(2)} BRZ adicionados direto ao NFT #${tokenId}!`;
+        playBeep(1318, 0.3, 'sine');
+
+        await runUnstoppableScan();
+        syncPnlInputsWithFocused();
+        recalculateRealPnL();
+    } catch (err) {
+        feedbackEl.style.color = 'var(--danger-red)';
+        feedbackEl.textContent = err?.error?.message || err?.reason || err?.message || 'Adição cancelada na carteira.';
+    } finally {
+        isAutoPilotRunning = false;
+    }
+}
+
 async function executeCollectFeesOnChain(tokenId, e) {
     if (e) e.stopPropagation();
     if (!connectedSignerAddress) {
@@ -854,7 +1434,10 @@ async function executeWithdrawPositionOnChain(tokenId, e, skipConfirm = false) {
 
 async function executeRebalancePositionOnChain(tokenId, e) {
     if (e) e.stopPropagation();
-    const ok = confirm(`Rebalancear NFT #${tokenId}? Isso vai:\n1. Encerrar e sacar 100% da posição #${tokenId}\n2. Ajustar WPOL/USDT0 na Uniswap V3\n3. Reabrir na nova faixa Sniper atual.`);
+    const targetDesc = yieldTargetState.customTargetBrlPerMin
+        ? `na faixa esculpida para meta R$ ${yieldTargetState.projectedBrlPerMin.toFixed(4)}/min`
+        : 'na nova faixa Sniper atual';
+    const ok = confirm(`Rebalancear NFT #${tokenId}? Isso vai:\n1. Encerrar e sacar 100% da posição #${tokenId}\n2. Ajustar WPOL/USDT0 na Uniswap V3\n3. Reabrir ${targetDesc}.`);
     if (!ok) return;
 
     const closed = await executeWithdrawPositionOnChain(tokenId, null, true);
@@ -885,19 +1468,24 @@ async function autoDetectPositionOpeningCost(pos, provider) {
         appState.pnlOverrides[pos.id].autoChecked = true;
 
         if (logs && logs.length > 0) {
-            const firstLog = logs[0];
-            const receipt = await provider.getTransactionReceipt(firstLog.transactionHash);
-            const gasPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
+            let totalGasPol = 0;
+            let totalInitBrz = 0;
+            const motherRate = getMotherRate();
 
-            const decoded = ethers.utils.defaultAbiCoder.decode(['uint128', 'uint256', 'uint256'], firstLog.data);
-            const initPol = parseFloat(ethers.utils.formatUnits(decoded[1], 18));
-            const initUsdt = parseFloat(ethers.utils.formatUnits(decoded[2], 6));
-            const initUsd = (initPol * currentPriceGlobal) + initUsdt;
-            const initBrz = initUsd * getMotherRate();
+            for (const lg of logs) {
+                const receipt = await provider.getTransactionReceipt(lg.transactionHash);
+                totalGasPol += parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
 
-            if (gasPol > 0) appState.pnlOverrides[pos.id].openGasPol = Number(gasPol.toFixed(5));
-            if (initBrz > 0 && !appState.pnlOverrides[pos.id].initBrz) {
-                appState.pnlOverrides[pos.id].initBrz = Number(initBrz.toFixed(2));
+                const decoded = ethers.utils.defaultAbiCoder.decode(['uint128', 'uint256', 'uint256'], lg.data);
+                const initPol = parseFloat(ethers.utils.formatUnits(decoded[1], 18));
+                const initUsdt = parseFloat(ethers.utils.formatUnits(decoded[2], 6));
+                const initUsd = (initPol * currentPriceGlobal) + initUsdt;
+                totalInitBrz += initUsd * motherRate;
+            }
+
+            if (totalGasPol > 0) appState.pnlOverrides[pos.id].openGasPol = Number(totalGasPol.toFixed(5));
+            if (totalInitBrz > 0 && !appState.pnlOverrides[pos.id].initBrz) {
+                appState.pnlOverrides[pos.id].initBrz = Number(totalInitBrz.toFixed(2));
             }
             saveTripleBackup();
             syncPnlInputsWithFocused();
@@ -1485,7 +2073,7 @@ function applyValidatedState(raw) {
 // =========================================================================
 function saveTripleBackup() {
     const payload = JSON.stringify(appState);
-    try { localStorage.setItem('rdesk_v19_backup', payload); } catch (e) {}
+    try { localStorage.setItem('rdesk_v21_backup', payload); } catch (e) {}
     try {
         const req = indexedDB.open('RDESK_VAULT', 1);
         req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
@@ -1499,7 +2087,7 @@ function saveTripleBackup() {
 
 async function loadFromTripleBackup() {
     try {
-        const ls = localStorage.getItem('rdesk_v19_backup') || localStorage.getItem('rdesk_v18_backup') || localStorage.getItem('rdesk_v17_backup');
+        const ls = localStorage.getItem('rdesk_v21_backup') || localStorage.getItem('rdesk_v20_backup') || localStorage.getItem('rdesk_v19_backup');
         if (ls) {
             applyValidatedState(JSON.parse(ls));
             return;
@@ -1617,6 +2205,7 @@ async function refreshLivePoolFeesAndBalances() {
 
     const poolABI = [
         "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
+        "function liquidity() view returns (uint128)",
         "function feeGrowthGlobal0X128() view returns (uint256)",
         "function feeGrowthGlobal1X128() view returns (uint256)",
         "function ticks(int24) view returns (uint128 liquidityGross, int128 liquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128, int56 tickCumulativeOutside, uint160 secondsPerLiquidityOutsideX128, uint32 secondsOutside, bool initialized)"
@@ -1633,13 +2222,18 @@ async function refreshLivePoolFeesAndBalances() {
             const brzC = new ethers.Contract(TOKENS.BRZ.address, erc20ABI, provider);
             const brlaC = new ethers.Contract(TOKENS.BRLA.address, erc20ABI, provider);
 
-            const [bPolNative, bWpol, bUsdt, bBrz, bBrla] = await withTimeout(Promise.all([
+            const [bPolNative, bWpol, bUsdt, bBrz, bBrla, poolLiqBN] = await withTimeout(Promise.all([
                 provider.getBalance(appState.wallet),
                 wpolC.balanceOf(appState.wallet),
                 usdtC.balanceOf(appState.wallet),
                 brzC.balanceOf(appState.wallet),
-                brlaC.balanceOf(appState.wallet)
+                brlaC.balanceOf(appState.wallet),
+                pool.liquidity().catch(() => null)
             ]), 4500);
+
+            if (poolLiqBN && poolLiqBN.gt(0)) {
+                poolTelemetry.activeLiquidityRaw = parseFloat(poolLiqBN.toString());
+            }
 
             walletBalances = {
                 pol: parseFloat(ethers.utils.formatUnits(bPolNative, 18)),
@@ -2018,8 +2612,14 @@ document.getElementById('btn-add-manual').addEventListener('click', () => {
 });
 
 document.getElementById('btn-use-sniper').addEventListener('click', () => {
-    if (sniperTelemetry.min > 0 && sniperTelemetry.max > 0) {
-        addManualPosition(sniperTelemetry.min.toFixed(6), sniperTelemetry.max.toFixed(6), `Sniper ${sniperTelemetry.regimeText.split(' ')[0]}`);
+    const targetMin = yieldTargetState.customTargetBrlPerMin ? yieldTargetState.sculptedMin : sniperTelemetry.min;
+    const targetMax = yieldTargetState.customTargetBrlPerMin ? yieldTargetState.sculptedMax : sniperTelemetry.max;
+    const tag = yieldTargetState.customTargetBrlPerMin
+        ? `Meta R$${yieldTargetState.projectedBrlPerMin.toFixed(3)}/m`
+        : `Sniper ${sniperTelemetry.regimeText.split(' ')[0]}`;
+
+    if (targetMin > 0 && targetMax > 0) {
+        addManualPosition(targetMin.toFixed(6), targetMax.toFixed(6), tag);
     }
 });
 
@@ -2037,7 +2637,7 @@ function removePosition(id, e) {
 }
 
 // =========================================================================
-// RENDERIZAÇÃO SEGURA DOS CARDS DE POSIÇÃO (COLHER, REBALANCEAR & WITHDRAW)
+// RENDERIZAÇÃO SEGURA DOS CARDS (+ ADICIONAR, COLHER, REBALANCEAR & WITHDRAW)
 // =========================================================================
 function getAllPositions() {
     return [...appState.web3Positions, ...appState.manualPositions];
@@ -2058,7 +2658,7 @@ function renderAllPositions() {
     if (all.length === 0) {
         const emptyDiv = document.createElement('div');
         emptyDiv.style.cssText = 'color:#555; font-size:0.65rem; text-align:center; padding:6px;';
-        emptyDiv.textContent = 'Nenhuma faixa ativa. Clique em COMEÇAR A GANHAR acima.';
+        emptyDiv.textContent = 'Nenhuma faixa ativa. Defina sua meta acima e clique em COMEÇAR A GANHAR.';
         listEl.appendChild(emptyDiv);
         document.getElementById('focused-label').textContent = 'FOCO: NENHUMA POSIÇÃO';
         return;
@@ -2112,6 +2712,15 @@ function renderAllPositions() {
         if (pos.source === 'web3' && pos.tokenId) {
             const actionsRow = document.createElement('div');
             actionsRow.className = 'pos-actions-row';
+            actionsRow.style.flexWrap = 'wrap';
+
+            const addBtn = document.createElement('button');
+            addBtn.className = 'btn-nft-collect';
+            addBtn.style.borderColor = 'var(--success-green)';
+            addBtn.style.color = 'var(--success-green)';
+            addBtn.textContent = '+ ADICIONAR';
+            addBtn.title = 'Injeta o saldo livre da carteira direto neste NFT sem fechar a posição';
+            addBtn.addEventListener('click', (ev) => executeIncreaseLiquidityOnChain(pos.tokenId, ev));
 
             const collectBtn = document.createElement('button');
             collectBtn.className = 'btn-nft-collect';
@@ -2124,7 +2733,7 @@ function renderAllPositions() {
             rebalBtn.style.borderColor = 'var(--cyan-accent)';
             rebalBtn.style.color = 'var(--cyan-accent)';
             rebalBtn.textContent = 'REBALANCEAR';
-            rebalBtn.title = 'Fecha esta posição, ajusta WPOL/USDT0 e reabre na faixa Sniper atual';
+            rebalBtn.title = 'Fecha esta posição, ajusta WPOL/USDT0 e reabre na faixa Sniper ou Meta atual';
             rebalBtn.addEventListener('click', (ev) => executeRebalancePositionOnChain(pos.tokenId, ev));
 
             const withdrawBtn = document.createElement('button');
@@ -2133,7 +2742,7 @@ function renderAllPositions() {
             withdrawBtn.title = 'Fecha 100% da posição e devolve capital + tarifas para sua Rabby Wallet';
             withdrawBtn.addEventListener('click', (ev) => executeWithdrawPositionOnChain(pos.tokenId, ev));
 
-            actionsRow.append(collectBtn, rebalBtn, withdrawBtn);
+            actionsRow.append(addBtn, collectBtn, rebalBtn, withdrawBtn);
             item.appendChild(actionsRow);
         }
 
@@ -2502,6 +3111,7 @@ function setupResizers() {
 
 window.addEventListener('DOMContentLoaded', async () => {
     setupResizers();
+    ensureYieldTargetUI();
     await loadFromTripleBackup();
 
     if (appState.wallet) {
@@ -2513,6 +3123,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderAllPositions();
     refreshMotherCurrencyOracle();
     setInterval(refreshMotherCurrencyOracle, 25000);
+    refreshPoolVolumeAndLiquidity();
+    setInterval(refreshPoolVolumeAndLiquidity, 30000);
     refreshSniperModel15m();
     setInterval(refreshSniperModel15m, 15000);
     buildVariationsPanel();
