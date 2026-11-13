@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity & PIX Sentinel V13</title>
+    <title>RDESK Command | Liquidity, PnL BRZ/BRLA & PIX Sentinel V15</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -63,6 +63,20 @@
             gap: 8px;
         }
 
+        .mother-currency-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(205, 164, 52, 0.06);
+            border: 1px solid rgba(205, 164, 52, 0.22);
+            border-radius: 4px;
+            padding: 3px 9px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.62rem;
+            color: #ccc;
+        }
+        .mc-item span { color: var(--dekton-copper); font-weight: 700; }
+
         .top-controls {
             display: flex;
             align-items: center;
@@ -75,7 +89,7 @@
             border: 1px solid var(--panel-border);
             color: #bbb;
             font-family: 'Space Mono', monospace;
-            font-size: 0.66rem;
+            font-size: 0.64rem;
             padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;
@@ -84,6 +98,7 @@
         }
         .top-btn:hover { border-color: var(--dekton-copper); color: #fff; }
         .top-btn.active-audio { border-color: var(--success-green); color: var(--success-green); }
+        .top-btn.wallet-connected { border-color: var(--cyan-accent); color: var(--cyan-accent); background: rgba(0, 212, 255, 0.08); }
 
         .terminal-grid {
             display: flex;
@@ -142,7 +157,7 @@
         }
 
         /* COLUNA 1: OHLC */
-        .variations-col { width: 175px; flex-shrink: 0; }
+        .variations-col { width: 165px; flex-shrink: 0; }
         .var-grid {
             display: flex;
             flex-direction: column;
@@ -163,12 +178,12 @@
             align-items: center;
         }
         .var-label { font-size: 0.64rem; color: #777; font-weight: 600; }
-        .var-value { font-family: 'Space Mono', monospace; font-size: 0.76rem; font-weight: 700; }
+        .var-value { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-weight: 700; }
         .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.06) 0%, transparent 100%); }
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.06) 0%, transparent 100%); }
 
-        /* COLUNA 2: GRÁFICO + PATRIMÔNIO + TARIFAS AO VIVO */
-        .tactical-col { flex: 1 1 360px; display: flex; flex-direction: column; }
+        /* COLUNA 2: GRÁFICO + PATRIMÔNIO + LUCRO LÍQUIDO REAL (MOEDA MÃE) */
+        .tactical-col { flex: 1 1 380px; display: flex; flex-direction: column; }
         .chart-header {
             display: flex;
             justify-content: space-between;
@@ -193,39 +208,80 @@
             cursor: pointer;
         }
         .tf-btn.active { background: var(--dekton-copper); color: #000; border-color: var(--dekton-copper); }
-        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 170px; position: relative; }
+        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 150px; position: relative; }
 
         .wallet-panel {
             display: grid;
-            grid-template-columns: 1fr 1fr 1.15fr;
+            grid-template-columns: 1fr 1fr 1.1fr;
             gap: 1px;
             background: rgba(255, 255, 255, 0.05);
             border-top: 1px solid rgba(255, 255, 255, 0.05);
             flex-shrink: 0;
         }
-        .wallet-card { background: #070707; padding: 9px 11px; }
-        .wallet-title { font-size: 0.58rem; color: #666; letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 3px; }
-        .wallet-value { font-family: 'Space Mono', monospace; font-size: 1.12rem; font-weight: 700; color: #fff; }
+        .wallet-card { background: #070707; padding: 8px 10px; }
+        .wallet-title { font-size: 0.56rem; color: #666; letter-spacing: 1.3px; text-transform: uppercase; margin-bottom: 2px; }
+        .wallet-value { font-family: 'Space Mono', monospace; font-size: 1.05rem; font-weight: 700; color: #fff; }
         .fees-live-val { color: var(--success-green); text-shadow: 0 0 12px rgba(0,255,136,0.28); }
         .distribution-bar {
             width: 100%;
-            height: 16px;
+            height: 14px;
             background: #111;
             border-radius: 4px;
             display: flex;
             overflow: hidden;
-            margin-top: 6px;
+            margin-top: 5px;
             border: 1px solid rgba(255, 255, 255, 0.06);
             position: relative;
         }
         .dist-pol { height: 100%; background: repeating-linear-gradient(90deg, var(--pol-color), var(--pol-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s; }
         .dist-usdt { height: 100%; background: repeating-linear-gradient(90deg, var(--usdt-color), var(--usdt-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s; }
         .dist-marker { position: absolute; top: -4px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #fff; transition: left 0.3s; z-index: 10; transform: translateX(-50%); }
-        .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.62rem; margin-top: 4px; }
+        .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.6rem; margin-top: 3px; }
 
-        /* COLUNA 3: COMANDO + MODO PIX DIRETO */
+        /* PAINEL DE LUCRO LÍQUIDO REAL (MOEDA MÃE BRZ/BRLA) */
+        .pnl-strip {
+            background: #050505;
+            border-top: 1px solid rgba(205, 164, 52, 0.25);
+            padding: 7px 10px;
+            display: grid;
+            grid-template-columns: 1.15fr 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .pnl-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .pnl-mini-row {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.58rem;
+            color: #888;
+        }
+        .pnl-mini-row input {
+            padding: 2px 5px;
+            font-size: 0.64rem;
+            height: 21px;
+        }
+        .pnl-metric {
+            background: #0a0a0a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 5px 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        .pnl-metric-lbl { font-size: 0.55rem; color: #777; text-transform: uppercase; letter-spacing: 1px; }
+        .pnl-metric-val { font-family: 'Space Mono', monospace; font-size: 0.86rem; font-weight: 700; }
+        .pnl-metric-sub { font-family: 'Space Mono', monospace; font-size: 0.58rem; color: #777; }
+
+        /* COLUNA 3: COMANDO + SWAP DEX NATIVO + PIX INTELIGENTE */
         .cmd-col {
-            width: 375px;
+            width: 405px;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
@@ -237,7 +293,7 @@
 
         .mode-tabs {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1.15fr;
             background: #000;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
@@ -246,9 +302,9 @@
             border: none;
             color: #666;
             font-family: 'Space Mono', monospace;
-            font-size: 0.66rem;
+            font-size: 0.61rem;
             font-weight: 700;
-            padding: 8px 6px;
+            padding: 8px 4px;
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition: all 0.15s;
@@ -258,6 +314,11 @@
             border-bottom-color: var(--dekton-copper);
             background: rgba(205, 164, 52, 0.06);
         }
+        .mode-tab.swap-tab.active {
+            color: var(--cyan-accent);
+            border-bottom-color: var(--cyan-accent);
+            background: rgba(0, 212, 255, 0.06);
+        }
         .mode-tab.pix-tab.active {
             color: var(--success-green);
             border-bottom-color: var(--success-green);
@@ -266,9 +327,9 @@
 
         .price-huge {
             font-family: 'Space Mono', monospace;
-            font-size: 1.75rem;
+            font-size: 1.65rem;
             font-weight: 700;
-            padding: 5px 10px 2px;
+            padding: 4px 10px 2px;
             text-align: center;
             letter-spacing: -1px;
         }
@@ -281,50 +342,56 @@
             background: rgba(0, 0, 0, 0.5);
         }
         .macro-cell {
-            padding: 4px 10px;
+            padding: 3px 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             border-right: 1px solid rgba(255, 255, 255, 0.04);
         }
         .macro-cell:last-child { border-right: none; }
-        .macro-label { font-size: 0.56rem; color: #666; letter-spacing: 1px; }
-        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.74rem; font-weight: 700; color: #ddd; }
+        .macro-label { font-size: 0.54rem; color: #666; letter-spacing: 1px; }
+        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; font-weight: 700; color: #ddd; }
 
         .tokens-strip {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             background: rgba(255, 255, 255, 0.02);
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            padding: 5px 6px;
-            gap: 4px;
+            padding: 4px 6px;
+            gap: 3px;
         }
         .tok-badge {
             background: #050505;
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 4px;
-            padding: 4px 5px;
+            padding: 3px 3px;
             display: flex;
             flex-direction: column;
             align-items: center;
+            cursor: pointer;
+            transition: border-color 0.15s;
         }
-        .tok-sym { font-size: 0.56rem; color: var(--dekton-copper); font-weight: 700; }
-        .tok-amt { font-family: 'Space Mono', monospace; font-size: 0.64rem; color: #ccc; }
+        .tok-badge:hover { border-color: var(--dekton-copper); }
+        .tok-sym { font-size: 0.53rem; color: var(--dekton-copper); font-weight: 700; }
+        .tok-amt { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: #ccc; }
+
+        .view-pane { display: none; flex-direction: column; }
+        .view-pane.active { display: flex; }
 
         /* SNIPER PRO */
         .strategy-box {
             background: rgba(205, 164, 52, 0.06);
-            padding: 7px 10px;
+            padding: 6px 10px;
             border-bottom: 1px solid var(--dekton-dim);
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
         .strat-row {
             display: flex;
             justify-content: space-between;
             font-family: 'Space Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.63rem;
             color: #aaa;
             align-items: center;
         }
@@ -334,10 +401,10 @@
             padding: 1px 5px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 0.56rem;
+            font-size: 0.54rem;
         }
         .regime-pill {
-            font-size: 0.55rem;
+            font-size: 0.53rem;
             padding: 1px 5px;
             border-radius: 3px;
             border: 1px solid rgba(255,255,255,0.15);
@@ -348,7 +415,7 @@
             border: 1px solid var(--success-green);
             color: var(--success-green);
             font-family: 'Space Mono', monospace;
-            font-size: 0.58rem;
+            font-size: 0.56rem;
             padding: 1px 6px;
             border-radius: 3px;
             cursor: pointer;
@@ -357,14 +424,14 @@
         .apply-sniper-btn:hover { background: var(--success-green); color: #000; }
 
         .scanner-box {
-            padding: 9px 10px;
+            padding: 8px 10px;
             background: rgba(0, 0, 0, 0.45);
             display: flex;
             flex-direction: column;
-            gap: 7px;
+            gap: 6px;
         }
         .section-tag {
-            font-size: 0.58rem;
+            font-size: 0.57rem;
             color: #888;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -374,17 +441,17 @@
         }
         .route-status {
             font-family: 'Space Mono', monospace;
-            font-size: 0.58rem;
+            font-size: 0.56rem;
             color: var(--dekton-copper);
         }
 
-        .input-row { display: flex; gap: 5px; }
+        .input-row { display: flex; gap: 5px; align-items: center; }
         input[type="text"], input[type="number"], select {
             background: #000;
             border: 1px solid rgba(255, 255, 255, 0.12);
             color: var(--dekton-copper);
             font-family: 'Space Mono', monospace;
-            font-size: 0.72rem;
+            font-size: 0.71rem;
             padding: 5px 7px;
             border-radius: 4px;
             outline: none;
@@ -397,110 +464,24 @@
             background: var(--dekton-copper);
             border: none;
             padding: 0 10px;
+            height: 27px;
             border-radius: 4px;
             color: #000;
             font-family: 'Rajdhani', sans-serif;
             font-weight: 700;
-            font-size: 0.76rem;
+            font-size: 0.75rem;
             cursor: pointer;
             white-space: nowrap;
             flex-shrink: 0;
         }
         .btn-gold:hover { filter: brightness(1.1); }
 
-        .btn-pix-exec {
-            background: var(--success-green);
-            border: none;
-            padding: 8px 10px;
-            border-radius: 4px;
-            color: #000;
-            font-family: 'Space Mono', monospace;
-            font-weight: 700;
-            font-size: 0.72rem;
-            cursor: pointer;
-            width: 100%;
-            text-align: center;
-            transition: filter 0.15s;
-        }
-        .btn-pix-exec:hover { filter: brightness(1.1); }
-
-        /* MÓDULO CALCULADORA PIX DIRETO */
-        .pix-box {
-            padding: 10px;
-            display: none;
-            flex-direction: column;
-            gap: 8px;
-            background: rgba(0, 255, 136, 0.02);
-        }
-        .pix-box.active { display: flex; }
-        .radar-box.hidden { display: none; }
-
-        .pix-quick-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 4px;
-        }
-        .pix-chip {
-            background: #090909;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            color: #aaa;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.58rem;
-            padding: 4px;
-            border-radius: 3px;
-            cursor: pointer;
-            text-align: center;
-        }
-        .pix-chip:hover { border-color: var(--success-green); color: var(--success-green); }
-
-        .pix-receipt {
-            background: #040404;
-            border: 1px solid rgba(0, 255, 136, 0.22);
-            border-radius: 5px;
-            padding: 8px 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.66rem;
-        }
-        .receipt-line {
-            display: flex;
-            justify-content: space-between;
-            color: #999;
-        }
-        .receipt-total {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-top: 1px dashed rgba(255, 255, 255, 0.12);
-            padding-top: 6px;
-            margin-top: 2px;
-            color: var(--success-green);
-            font-size: 0.88rem;
-            font-weight: 700;
-        }
-
-        .manual-box {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px dashed rgba(205, 164, 52, 0.28);
-            border-radius: 4px;
-            padding: 6px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .manual-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 0.8fr auto;
-            gap: 4px;
-        }
-
+        /* CARDS DE POSIÇÃO COM BOTÕES DE COLETA & WITHDRAW ON-CHAIN */
         .positions-list {
             display: flex;
             flex-direction: column;
-            gap: 5px;
-            max-height: 155px;
+            gap: 6px;
+            max-height: 185px;
             overflow-y: auto;
         }
         .positions-list::-webkit-scrollbar { width: 3px; }
@@ -508,10 +489,10 @@
 
         .pos-item {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            gap: 5px;
             font-family: 'Space Mono', monospace;
-            font-size: 0.64rem;
+            font-size: 0.62rem;
             padding: 6px 8px;
             background: rgba(255, 255, 255, 0.03);
             border-radius: 4px;
@@ -519,8 +500,46 @@
             cursor: pointer;
             transition: background 0.15s;
         }
-        .pos-item:hover, .pos-item.focused-pos { background: rgba(205, 164, 52, 0.12); }
+        .pos-item:hover, .pos-item.focused-pos { background: rgba(205, 164, 52, 0.11); }
+        .pos-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
         .pos-meta { display: flex; flex-direction: column; gap: 2px; }
+        .pos-actions-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            padding-top: 3px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .btn-nft-collect {
+            background: rgba(0, 255, 136, 0.12);
+            border: 1px solid var(--success-green);
+            color: var(--success-green);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.58rem;
+            font-weight: 700;
+            padding: 3px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn-nft-collect:hover { background: var(--success-green); color: #000; }
+        .btn-nft-withdraw {
+            background: rgba(255, 42, 64, 0.12);
+            border: 1px solid var(--danger-red);
+            color: var(--danger-red);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.58rem;
+            font-weight: 700;
+            padding: 3px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .btn-nft-withdraw:hover { background: var(--danger-red); color: #fff; }
         .pos-del {
             background: transparent;
             border: none;
@@ -532,13 +551,164 @@
         }
         .pos-del:hover { color: var(--danger-red); }
 
-        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 115px; }
+        /* MÓDULO SWAP DEX NATIVO */
+        .swap-box {
+            padding: 9px 10px;
+            gap: 6px;
+            background: rgba(0, 212, 255, 0.02);
+        }
+        .swap-leg {
+            background: #050505;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 5px;
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .swap-leg-top {
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.57rem;
+            color: #777;
+        }
+        .max-pill { color: var(--cyan-accent); cursor: pointer; text-decoration: underline; }
+        .flip-row { display: flex; justify-content: center; margin: -3px 0; z-index: 2; }
+        .flip-btn {
+            background: #111;
+            border: 1px solid var(--cyan-accent);
+            color: var(--cyan-accent);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.72rem;
+            width: 26px;
+            height: 21px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .flip-btn:hover { background: var(--cyan-accent); color: #000; }
+
+        .swap-telemetry {
+            background: #040404;
+            border: 1px solid rgba(0, 212, 255, 0.18);
+            border-radius: 4px;
+            padding: 5px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.61rem;
+            color: #999;
+        }
+        .swap-tel-row { display: flex; justify-content: space-between; }
+
+        .btn-swap-action {
+            background: var(--cyan-accent);
+            border: none;
+            padding: 8px 10px;
+            border-radius: 4px;
+            color: #000;
+            font-family: 'Space Mono', monospace;
+            font-weight: 700;
+            font-size: 0.7rem;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+        }
+        .btn-swap-action:hover { filter: brightness(1.1); }
+        .btn-swap-action.needs-approve { background: var(--warning-yellow); color: #000; }
+        .btn-swap-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* MÓDULO PIX INTELIGENTE & COMPARADOR DE SPREAD */
+        .pix-box {
+            padding: 9px 10px;
+            gap: 6px;
+            background: rgba(0, 255, 136, 0.02);
+        }
+        .pix-quick-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+        .pix-chip {
+            background: #090909;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #aaa;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.55rem;
+            padding: 4px 2px;
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .pix-chip:hover, .pix-chip.active-filter { border-color: var(--success-green); color: var(--success-green); background: rgba(0, 255, 136, 0.08); }
+
+        .pix-ranking-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 175px;
+            overflow-y: auto;
+        }
+        .pix-ranking-list::-webkit-scrollbar { width: 3px; }
+        .pix-ranking-list::-webkit-scrollbar-thumb { background: rgba(0, 255, 136, 0.25); border-radius: 3px; }
+
+        .rank-card {
+            background: #050505;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-left: 3px solid #444;
+            border-radius: 4px;
+            padding: 5px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Space Mono', monospace;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .rank-card:hover { border-color: var(--dekton-copper); }
+        .rank-card.best-route {
+            border-left-color: var(--success-green);
+            background: linear-gradient(90deg, rgba(0, 255, 136, 0.08) 0%, #050505 100%);
+        }
+        .rank-left { display: flex; flex-direction: column; gap: 2px; }
+        .rank-title { font-size: 0.64rem; font-weight: 700; color: #eee; display: flex; align-items: center; gap: 4px; }
+        .kyc-pill {
+            font-size: 0.5rem;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-weight: 700;
+        }
+        .kyc-free { background: rgba(0, 255, 136, 0.18); color: var(--success-green); border: 1px solid rgba(0, 255, 136, 0.4); }
+        .kyc-lite { background: rgba(0, 212, 255, 0.15); color: var(--cyan-accent); border: 1px solid rgba(0, 212, 255, 0.35); }
+        .kyc-full { background: rgba(255, 42, 64, 0.15); color: var(--danger-red); border: 1px solid rgba(255, 42, 64, 0.35); }
+        .rank-sub { font-size: 0.56rem; color: #777; }
+        .rank-right { text-align: right; display: flex; flex-direction: column; gap: 1px; }
+        .rank-net { font-size: 0.78rem; font-weight: 700; color: var(--success-green); }
+        .rank-loss { font-size: 0.55rem; color: var(--warning-yellow); }
+
+        .manual-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed rgba(205, 164, 52, 0.28);
+            border-radius: 4px;
+            padding: 5px 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .manual-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 0.8fr auto;
+            gap: 4px;
+        }
+
+        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 100px; }
         .tape-header {
             display: grid;
             grid-template-columns: 52px 46px 1fr 1fr;
-            padding: 5px 10px;
+            padding: 4px 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 0.56rem;
+            font-size: 0.55rem;
             text-transform: uppercase;
             color: #555;
             font-weight: 700;
@@ -550,9 +720,9 @@
         .tape-row {
             display: grid;
             grid-template-columns: 52px 46px 1fr 1fr;
-            padding: 5px 10px;
+            padding: 4px 10px;
             font-family: 'Space Mono', monospace;
-            font-size: 0.64rem;
+            font-size: 0.62rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.02);
             align-items: center;
         }
@@ -575,16 +745,16 @@
         body.warning-mode .panel#panel-radar { border-color: var(--warning-yellow); }
         body.danger-mode .panel#panel-radar { border-color: var(--danger-red); box-shadow: inset 0 0 40px rgba(255,42,64,0.25); }
 
-        @media (max-width: 980px) {
+        @media (max-width: 1024px) {
             body { overflow-y: auto; height: auto; }
             .terminal-grid { flex-direction: column; height: auto; }
             .resizer { display: none; }
             .variations-col { width: 100%; order: 3; }
             .var-grid { flex-direction: row; overflow-x: auto; padding: 6px; }
             .var-card { flex-direction: column; min-width: 74px; text-align: center; }
-            .tactical-col { width: 100%; order: 1; height: 360px; }
+            .tactical-col { width: 100%; order: 1; height: 420px; }
             .cmd-col { width: 100%; order: 2; }
-            .wallet-panel { grid-template-columns: 1fr 1fr; }
+            .wallet-panel, .pnl-strip { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -592,16 +762,23 @@
 
     <div class="topbar">
         <div class="brand-title">
-            <span>RDESK SENTINEL V13</span>
-            <span id="alert-status" style="font-size:0.68rem; color:var(--success-green); border:1px solid rgba(0,255,136,0.3); padding:1px 6px; border-radius:3px;">SEGURO</span>
+            <span>RDESK SENTINEL V15</span>
+            <span id="alert-status" style="font-size:0.66rem; color:var(--success-green); border:1px solid rgba(0,255,136,0.3); padding:1px 6px; border-radius:3px;">SEGURO</span>
         </div>
+
+        <!-- ORÁCULO MOEDA MÃE (BRZ / BRLA ON-CHAIN VS BRL COMERCIAL) -->
+        <div class="mother-currency-bar" title="Paridade real on-chain na Polygon vs Dólar Comercial">
+            <div class="mc-item">BRL REAL: <span id="top-usd-brl">R$ 5.650</span></div>
+            <div class="mc-item">1 USDT0 = <span id="top-usdt-brz">5.65 BRZ</span></div>
+            <div class="mc-item">1 USDT0 = <span id="top-usdt-brla">5.65 BRLA</span></div>
+        </div>
+
         <div class="top-controls">
-            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc" target="_blank" rel="noopener noreferrer">SWAP → BRZ</a>
-            <a class="top-btn" href="https://app.uniswap.org/swap?chain=polygon&inputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&outputCurrency=0xE6A537a407488807F0bbeb0038B79004f19DDDFb" target="_blank" rel="noopener noreferrer">SWAP → BRLA</a>
+            <button id="btn-connect-wallet" class="top-btn" title="Conectar Rabby Wallet / MetaMask na Polygon">CONECTAR RABBY</button>
             <button id="btn-audio" class="top-btn">SOM: OFF</button>
-            <button id="btn-copy-link" class="top-btn">COPIAR LINK</button>
-            <button id="btn-export-json" class="top-btn">BAIXAR JSON</button>
-            <button id="btn-import-json" class="top-btn">RESTAURAR JSON</button>
+            <button id="btn-copy-link" class="top-btn">LINK</button>
+            <button id="btn-export-json" class="top-btn">JSON ↓</button>
+            <button id="btn-import-json" class="top-btn">JSON ↑</button>
             <input type="file" id="file-import" accept=".json" style="display:none;">
         </div>
     </div>
@@ -626,21 +803,22 @@
                     <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
                     <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
                 </div>
-                <span id="focused-label" style="font-family:'Space Mono'; font-size:0.63rem; color:var(--dekton-copper);">FOCO: NENHUMA POSIÇÃO</span>
+                <span id="focused-label" style="font-family:'Space Mono'; font-size:0.62rem; color:var(--dekton-copper);">FOCO: NENHUMA POSIÇÃO</span>
             </div>
             
             <div class="chart-wrapper" id="tv-chart"></div>
 
+            <!-- PATRIMÔNIO & TARIFAS ANCORADOS NA MOEDA MÃE (BRZ/BRLA) -->
             <div class="wallet-panel">
                 <div class="wallet-card">
-                    <div class="wallet-title">Patrimônio Focado</div>
-                    <div class="wallet-value" id="wallet-total-usd">$ 0.00</div>
-                    <div style="font-family:'Space Mono'; font-size:0.7rem; color:#888;" id="wallet-total-brl">R$ 0,00</div>
+                    <div class="wallet-title">Patrimônio Focado (Moeda Mãe)</div>
+                    <div class="wallet-value" id="wallet-total-brz">0.00 BRZ</div>
+                    <div style="font-family:'Space Mono'; font-size:0.66rem; color:#888;" id="wallet-total-usd">$ 0.00 | R$ 0,00</div>
                 </div>
                 <div class="wallet-card" style="border-left: 1px solid rgba(255,255,255,0.05);">
-                    <div class="wallet-title">Tarifas Não Recolhidas (Live)</div>
-                    <div class="wallet-value fees-live-val" id="fees-total-brl">R$ 0,0000</div>
-                    <div style="font-family:'Space Mono'; font-size:0.68rem; color:#777;" id="fees-total-usd">$ 0.0000</div>
+                    <div class="wallet-title">Tarifas Acumuladas (Live)</div>
+                    <div class="wallet-value fees-live-val" id="fees-total-brz">0.0000 BRZ</div>
+                    <div style="font-family:'Space Mono'; font-size:0.66rem; color:#777;" id="fees-total-usd">$ 0.0000 | R$ 0,0000</div>
                 </div>
                 <div class="wallet-card" style="border-left: 1px solid rgba(255,255,255,0.05);">
                     <div class="wallet-title">Distribuição no Intervalo</div>
@@ -655,6 +833,30 @@
                     </div>
                 </div>
             </div>
+
+            <!-- PAINEL DE LUCRO LÍQUIDO REAL (PÓS-GÁS DE ABERTURA + FECHAMENTO EM BRZ/BRLA) -->
+            <div class="pnl-strip">
+                <div class="pnl-inputs">
+                    <div class="pnl-mini-row">
+                        <span style="min-width:86px;">Aporte (BRZ):</span>
+                        <input type="number" id="pnl-init-brz" placeholder="Ex: 500.00" step="0.01" title="Capital inicial aportado em BRZ/BRL">
+                    </div>
+                    <div class="pnl-mini-row">
+                        <span style="min-width:86px;">Gás Ab. (POL):</span>
+                        <input type="number" id="pnl-open-gas-pol" placeholder="Ex: 0.05" step="0.001" value="0.05" title="Taxa de gás paga na Polygon para abrir a pool">
+                    </div>
+                </div>
+                <div class="pnl-metric">
+                    <span class="pnl-metric-lbl">Tarifas Líquidas (Pós-Gás)</span>
+                    <span class="pnl-metric-val" id="pnl-net-fees-brz" style="color:var(--success-green);">+0.0000 BRZ</span>
+                    <span class="pnl-metric-sub" id="pnl-gas-cost-sub">Gás Total (Ab+Fech): -0.00 BRZ</span>
+                </div>
+                <div class="pnl-metric">
+                    <span class="pnl-metric-lbl">Lucro Líquido Real (Posição)</span>
+                    <span class="pnl-metric-val" id="pnl-real-total-brz">0.00 BRZ</span>
+                    <span class="pnl-metric-sub" id="pnl-real-total-brl">R$ 0,00 real líquido</span>
+                </div>
+            </div>
         </div>
 
         <div class="resizer" id="resizer-2" title="Arraste para redimensionar"></div>
@@ -662,45 +864,50 @@
         <div class="cmd-col" id="col-right">
             <div class="panel" id="panel-radar" style="flex-shrink:0;">
                 <div class="mode-tabs">
-                    <button class="mode-tab active" id="tab-radar">1. RADAR & POOLS</button>
-                    <button class="mode-tab pix-tab" id="tab-pix">2. SAQUE PIX DIRETO</button>
+                    <button class="mode-tab active" id="tab-radar">1. RADAR & NFT</button>
+                    <button class="mode-tab swap-tab" id="tab-swap">2. SWAP DEX</button>
+                    <button class="mode-tab pix-tab" id="tab-pix">3. PIX INTELIGENTE</button>
                 </div>
                 
                 <div id="price-global" class="price-huge">0.000000</div>
                 
                 <div class="macro-strip">
                     <div class="macro-cell">
-                        <span class="macro-label">USD / BRL</span>
-                        <span class="macro-val" id="macro-usd">R$ 0.00</span>
+                        <span class="macro-label">POL / BRZ (MOEDA MÃE)</span>
+                        <span class="macro-val" id="macro-pol-brz" style="color:var(--dekton-copper);">0.0000 BRZ</span>
                     </div>
                     <div class="macro-cell">
-                        <span class="macro-label">POL / BRL</span>
-                        <span class="macro-val" id="macro-pol-brl">R$ 0.00</span>
+                        <span class="macro-label">POL / BRL REAL</span>
+                        <span class="macro-val" id="macro-pol-brl">R$ 0.0000</span>
                     </div>
                 </div>
 
-                <!-- SALDOS LIVRES NA CARTEIRA POLYGON -->
+                <!-- SALDOS LIVRES NA CARTEIRA POLYGON (CLICÁVEIS PARA SWAP) -->
                 <div class="tokens-strip">
-                    <div class="tok-badge">
+                    <div class="tok-badge" data-tok="POL" title="Clique para usar POL no Swap">
+                        <span class="tok-sym">POL</span>
+                        <span class="tok-amt" id="bal-pol">0.00</span>
+                    </div>
+                    <div class="tok-badge" data-tok="WPOL" title="Clique para usar WPOL no Swap">
                         <span class="tok-sym">WPOL</span>
                         <span class="tok-amt" id="bal-wpol">0.00</span>
                     </div>
-                    <div class="tok-badge">
+                    <div class="tok-badge" data-tok="USDT0" title="Clique para usar USDT0 no Swap">
                         <span class="tok-sym">USDT0</span>
                         <span class="tok-amt" id="bal-usdt0">0.00</span>
                     </div>
-                    <div class="tok-badge">
+                    <div class="tok-badge" data-tok="BRZ" title="Clique para usar BRZ no Swap">
                         <span class="tok-sym">BRZ</span>
                         <span class="tok-amt" id="bal-brz">0.00</span>
                     </div>
-                    <div class="tok-badge">
+                    <div class="tok-badge" data-tok="BRLA" title="Clique para usar BRLA no Swap">
                         <span class="tok-sym">BRLA</span>
                         <span class="tok-amt" id="bal-brla">0.00</span>
                     </div>
                 </div>
 
-                <!-- ABA 1: RADAR, SNIPER E SCANNER WEB3 -->
-                <div id="view-radar" class="radar-box">
+                <!-- ABA 1: RADAR, SNIPER E GESTÃO ON-CHAIN DOS NFTS -->
+                <div id="view-radar" class="view-pane active">
                     <div class="strategy-box">
                         <div class="strat-row">
                             <span>Âncora (24h)</span>
@@ -708,23 +915,25 @@
                         </div>
                         <div class="strat-row">
                             <span><span class="sniper-badge">SNIPER PRO</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
-                            <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.6rem;">--</span>
+                            <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.59rem;">--</span>
                         </div>
                         <div class="strat-row">
-                            <strong style="color:var(--success-green); font-size:0.72rem;" id="strat-sniper">...</strong>
+                            <strong style="color:var(--success-green); font-size:0.71rem;" id="strat-sniper">...</strong>
                             <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
                         </div>
                     </div>
 
                     <div class="scanner-box">
                         <div class="section-tag">
-                            <span>Scanner Web3 + Tarifas Live</span>
+                            <span>Scanner Web3 + Ações Rabby</span>
                             <span class="route-status" id="route-status">PRONTO</span>
                         </div>
                         <div class="input-row">
                             <input type="text" id="wallet-address" placeholder="Carteira Polygon (0x...)">
                             <button id="btn-scan" class="btn-gold">SCAN</button>
                         </div>
+
+                        <div id="nft-tx-feedback" style="font-family:'Space Mono'; font-size:0.59rem; color:var(--cyan-accent); min-height:0px;"></div>
 
                         <div class="manual-box">
                             <div class="section-tag">
@@ -742,67 +951,106 @@
                     </div>
                 </div>
 
-                <!-- ABA 2: CALCULADORA LÍQUIDA & DISPARADOR PIX OFF-RAMP -->
-                <div id="view-pix" class="pix-box">
+                <!-- ABA 2: ROTEADOR DEX NATIVO (ODOS / PARASWAP) -->
+                <div id="view-swap" class="view-pane swap-box">
                     <div class="section-tag">
-                        <span style="color:var(--success-green);">Simulador PIX Líquido (Zero Custódia)</span>
-                        <span style="color:#666;">POLYGON</span>
+                        <span style="color:var(--cyan-accent);">Roteador DEX Direto (Moeda Mãe BRZ/BRLA)</span>
+                        <span id="swap-router-tag" style="color:#777;">ODOS SOR</span>
+                    </div>
+
+                    <div class="swap-leg">
+                        <div class="swap-leg-top">
+                            <span>VOCÊ ENVIA</span>
+                            <span>SALDO: <strong id="swap-in-bal" style="color:#ccc;">0.00</strong> <span class="max-pill" id="btn-swap-max">MAX</span></span>
+                        </div>
+                        <div class="input-row">
+                            <select id="swap-token-in" style="width: 38%;">
+                                <option value="WPOL">WPOL</option>
+                                <option value="POL">POL</option>
+                                <option value="USDT0">USDT0</option>
+                                <option value="BRZ">BRZ</option>
+                                <option value="BRLA">BRLA</option>
+                            </select>
+                            <input type="number" id="swap-amount-in" placeholder="0.00" step="0.01" value="100">
+                        </div>
+                    </div>
+
+                    <div class="flip-row">
+                        <button class="flip-btn" id="btn-flip-tokens" title="Inverter par">⇅</button>
+                    </div>
+
+                    <div class="swap-leg">
+                        <div class="swap-leg-top">
+                            <span>VOCÊ RECEBE (ESTIMADO)</span>
+                            <span>SALDO: <strong id="swap-out-bal" style="color:#ccc;">0.00</strong></span>
+                        </div>
+                        <div class="input-row">
+                            <select id="swap-token-out" style="width: 38%;">
+                                <option value="BRZ">BRZ</option>
+                                <option value="BRLA">BRLA</option>
+                                <option value="USDT0">USDT0</option>
+                                <option value="WPOL">WPOL</option>
+                                <option value="POL">POL</option>
+                            </select>
+                            <input type="text" id="swap-amount-out" readonly value="Cotando..." style="color:var(--success-green); font-weight:700;">
+                        </div>
+                    </div>
+
+                    <div class="swap-telemetry">
+                        <div class="swap-tel-row">
+                            <span>Equivalente Moeda Mãe:</span>
+                            <span id="swap-brl-eq" style="color:#fff;">0.00 BRZ | R$ 0,00</span>
+                        </div>
+                        <div class="swap-tel-row">
+                            <span>Impacto / Slippage Máx:</span>
+                            <span id="swap-impact">-- / 0.50%</span>
+                        </div>
+                        <div class="swap-tel-row">
+                            <span>Gás Estimado (Polygon):</span>
+                            <span id="swap-gas" style="color:var(--success-green);">~0.03 BRZ</span>
+                        </div>
+                    </div>
+
+                    <button class="btn-swap-action" id="btn-exec-swap">CONECTAR RABBY PARA TROCAR</button>
+                    <div id="swap-tx-status" style="font-family:'Space Mono'; font-size:0.59rem; color:#888; text-align:center; min-height:12px;"></div>
+                </div>
+
+                <!-- ABA 3: RANKER INTELIGENTE DE SAQUE PIX (SPREAD + TAXAS + FILTRO SEM KYC) -->
+                <div id="view-pix" class="view-pane pix-box">
+                    <div class="section-tag">
+                        <span style="color:var(--success-green);">Ranker PIX Líquido (Desconta Spread)</span>
+                        <button id="btn-filter-nokyc" class="pix-chip" style="padding:2px 6px;">FILTRO: TODAS</button>
                     </div>
 
                     <div class="input-row">
-                        <select id="pix-asset" style="width: 38%;">
+                        <select id="pix-asset" style="width: 36%;">
                             <option value="USDT0">USDT0</option>
                             <option value="POL">POL</option>
+                            <option value="WPOL">WPOL</option>
+                            <option value="BRZ">BRZ</option>
+                            <option value="BRLA">BRLA</option>
                         </select>
                         <input type="number" id="pix-amount" placeholder="Qtd (ex: 50)" step="0.01" value="50">
                     </div>
 
                     <div class="pix-quick-row">
-                        <button class="pix-chip" id="chip-use-usdt">USAR USDT0</button>
-                        <button class="pix-chip" id="chip-use-wpol">USAR WPOL</button>
-                        <button class="pix-chip" id="chip-use-fees">USAR TARIFAS</button>
+                        <button class="pix-chip" id="chip-use-usdt">USDT0</button>
+                        <button class="pix-chip" id="chip-use-wpol">WPOL</button>
+                        <button class="pix-chip" id="chip-use-brz">BRZ/BRLA</button>
+                        <button class="pix-chip" id="chip-use-fees">TARIFAS</button>
                     </div>
 
-                    <div class="section-tag">
-                        <span>Rota de Liquidação Bancária</span>
-                    </div>
-                    <select id="pix-route">
-                        <option value="pagfinance">PagFinance (Sem KYC | POL ou USDT0 | 2% mín R$1,20)</option>
-                        <option value="nakpix_coupon">NakPix c/ Cupom (Sem KYC | USDT0 Polygon | 2%)</option>
-                        <option value="nakpix_std">NakPix Padrão (Sem KYC | USDT0 Polygon | 4%)</option>
-                        <option value="depix">DePix / Liquid (Sem KYC | Afiliado | ~1,8%)</option>
-                        <option value="kyc_cex">Bipa / Binance (Conta Própria KYC | ~0,1% + PIX Grátis)</option>
-                    </select>
+                    <div id="pix-ranking-list" class="pix-ranking-list"></div>
 
-                    <div class="pix-receipt">
-                        <div class="receipt-line">
-                            <span>Bruto Convertido:</span>
-                            <span id="rec-gross">R$ 0,00 ($ 0.00)</span>
-                        </div>
-                        <div class="receipt-line">
-                            <span>Swap DEX + Gás Rede:</span>
-                            <span id="rec-network" style="color:var(--warning-yellow);">- R$ 0,00</span>
-                        </div>
-                        <div class="receipt-line">
-                            <span>Taxa Ponte Off-Ramp:</span>
-                            <span id="rec-fee" style="color:var(--danger-red);">- R$ 0,00</span>
-                        </div>
-                        <div class="receipt-total">
-                            <span>PIX LÍQUIDO REAL:</span>
-                            <span id="rec-net">R$ 0,00</span>
-                        </div>
-                    </div>
-
-                    <button class="btn-pix-exec" id="btn-launch-pix">COPIAR QTD & ABRIR PONTE PIX ↗</button>
-                    <div id="pix-hint" style="font-size:0.62rem; color:#777; line-height:1.3;">
-                        O painel nunca custodia seus fundos. Você assina direto na sua carteira e o provedor liquida o PIX.
+                    <div id="pix-hint" style="font-size:0.59rem; color:#777; line-height:1.3;">
+                        Clique na plataforma vencedora acima para copiar a quantidade exata e abrir a ponte.
                     </div>
                 </div>
             </div>
 
             <div class="panel tape-container">
                 <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Fluxo DEX (0.05%)</span></div>
-                <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRL</div><div>Qtd (POL)</div></div>
+                <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRZ/BRL</div><div>Qtd (POL)</div></div>
                 <div id="tape"></div>
             </div>
         </div>
@@ -812,11 +1060,22 @@
     <script>
         const SYMBOL = 'POLUSDT';
         const POOL_ADDRESS = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
-        const POL_ADDRESS = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
-        const USDT_ADDRESS = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
-        const BRZ_ADDRESS = '0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc';
-        const BRLA_ADDRESS = '0xe6a537a407488807f0bbeb0038b79004f19dddfb';
         const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
+
+        // Contratos oficiais auditados na Polygon (Whitelist de segurança)
+        const ODOS_ROUTER_POLYGON = '0x4e3288c9ca110bcc82bf38f09a7b425c095d92bf';
+        const PARASWAP_ROUTER_POLYGON = '0xdef171fe48cf0115f1d80b88dc8eab59176fee57';
+
+        const TOKENS = {
+            POL:   { symbol: 'POL',   address: '0x0000000000000000000000000000000000000000', pspAddress: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', decimals: 18, isNative: true },
+            WPOL:  { symbol: 'WPOL',  address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', pspAddress: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18, isNative: false },
+            USDT0: { symbol: 'USDT0', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', pspAddress: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6,  isNative: false },
+            BRZ:   { symbol: 'BRZ',   address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', pspAddress: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, isNative: false },
+            BRLA:  { symbol: 'BRLA',  address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', pspAddress: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, isNative: false }
+        };
+
+        const POL_ADDRESS = TOKENS.WPOL.address.toLowerCase();
+        const USDT_ADDRESS = TOKENS.USDT0.address.toLowerCase();
 
         const POLYGON_RPCS = [
             'https://polygon-bor-rpc.publicnode.com',
@@ -827,25 +1086,38 @@
 
         const Q128 = ethers.BigNumber.from(2).pow(128);
         const MAX_UINT256 = ethers.constants.MaxUint256;
+        const MAX_UINT128 = ethers.BigNumber.from('0xffffffffffffffffffffffffffffffff');
 
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
 
         let currentPriceGlobal = 0, lastPriceGlobal = 0;
-        let usdBrlRate = 5.65;
+        let usdBrlCommercial = 5.65;
+        let usdtToBrzRate = 5.65;
+        let usdtToBrlaRate = 5.65;
+        let binanceUsdtBrlBid = 5.64;
+
         let audioEnabled = false, audioCtx = null;
         let currentRiskState = 'SAFE';
+        let connectedSignerAddress = null;
+        let onlyNoKycFilter = false;
 
         let appState = {
             wallet: '',
             web3Positions: [],
             manualPositions: [],
-            focusedId: null
+            focusedId: null,
+            pnlOverrides: {} // { [posId]: { initBrz: number, openGasPol: number } }
         };
 
-        let walletBalances = { wpol: 0, usdt0: 0, brz: 0, brla: 0 };
+        let walletBalances = { pol: 0, wpol: 0, usdt0: 0, brz: 0, brla: 0 };
         let totalUnclaimedFeesUsd = 0;
+        let focusedPositionTotalUsd = 0;
+        let focusedPositionFeesUsd = 0;
+
+        let activeSwapQuote = null;
+        let swapDebounceTimer = null;
 
         let sniperTelemetry = {
             atr14: 0,
@@ -873,133 +1145,932 @@
         ];
 
         // =========================================================================
-        // ALTERNÂNCIA DE ABAS & CALCULADORA LÍQUIDA DE PIX
+        // ORÁCULO MOEDA MÃE (BRZ & BRLA ON-CHAIN VS BRL COMERCIAL & BINANCE)
         // =========================================================================
-        const tabRadar = document.getElementById('tab-radar');
-        const tabPix = document.getElementById('tab-pix');
-        const viewRadar = document.getElementById('view-radar');
-        const viewPix = document.getElementById('view-pix');
+        async function refreshMotherCurrencyOracle() {
+            // 1. Dólar Comercial (AwesomeAPI)
+            try {
+                const res = await withTimeout(fetch('https://economia.awesomeapi.com.br/last/USD-BRL'), 4000);
+                const json = await res.json();
+                if (json?.USDBRL?.bid) {
+                    usdBrlCommercial = parseFloat(json.USDBRL.bid);
+                }
+            } catch (e) {}
 
-        tabRadar.addEventListener('click', () => {
-            tabRadar.classList.add('active');
-            tabPix.classList.remove('active');
-            viewRadar.classList.remove('hidden');
-            viewPix.classList.remove('active');
-        });
+            // 2. Binance USDT/BRL BookTicker
+            try {
+                const bRes = await withTimeout(fetch('https://api.binance.com/api/v3/ticker/bookTicker?symbol=USDTBRL'), 4000);
+                const bJson = await bRes.json();
+                if (bJson?.bidPrice) {
+                    binanceUsdtBrlBid = parseFloat(bJson.bidPrice);
+                }
+            } catch (e) {}
 
-        tabPix.addEventListener('click', () => {
-            tabPix.classList.add('active');
-            tabRadar.classList.remove('active');
-            viewRadar.classList.add('hidden');
-            viewPix.classList.add('active');
-            recalculatePixReceipt();
-        });
+            // 3. Paridade On-Chain na Polygon (100 USDT0 -> BRZ e 100 USDT0 -> BRLA via Odos)
+            try {
+                const [qBrz, qBrla] = await Promise.all([
+                    fetch('https://api.odos.xyz/sor/quote/v2', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chainId: 137,
+                            inputTokens: [{ tokenAddress: TOKENS.USDT0.address, amount: '100000000' }],
+                            outputTokens: [{ tokenAddress: TOKENS.BRZ.address, proportion: 1 }],
+                            slippageLimitPercent: 0.5,
+                            disableRFQs: true,
+                            compact: true
+                        })
+                    }).then(r => r.json()).catch(() => null),
+                    fetch('https://api.odos.xyz/sor/quote/v2', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chainId: 137,
+                            inputTokens: [{ tokenAddress: TOKENS.USDT0.address, amount: '100000000' }],
+                            outputTokens: [{ tokenAddress: TOKENS.BRLA.address, proportion: 1 }],
+                            slippageLimitPercent: 0.5,
+                            disableRFQs: true,
+                            compact: true
+                        })
+                    }).then(r => r.json()).catch(() => null)
+                ]);
 
-        function recalculatePixReceipt() {
-            const asset = document.getElementById('pix-asset').value;
-            const amount = parseFloat(document.getElementById('pix-amount').value) || 0;
-            const route = document.getElementById('pix-route').value;
+                if (qBrz?.outAmounts?.[0]) {
+                    usdtToBrzRate = parseFloat(ethers.utils.formatUnits(qBrz.outAmounts[0], 18)) / 100;
+                } else {
+                    usdtToBrzRate = usdBrlCommercial;
+                }
 
-            const polPriceUsd = currentPriceGlobal > 0 ? currentPriceGlobal : 0.087;
-            const usdValue = asset === 'POL' ? (amount * polPriceUsd) : amount;
-            const grossBrl = usdValue * usdBrlRate;
-
-            let networkCostBrl = 0.03; // Gás Polygon base (~R$ 0,03)
-            let bridgeFeeBrl = 0;
-            let hint = '';
-
-            if (route === 'pagfinance') {
-                // PagFinance aceita POL e USDT0 direto na Polygon (2%, piso R$ 1,20)
-                bridgeFeeBrl = grossBrl > 0 ? Math.max(1.20, grossBrl * 0.02) : 0;
-                hint = asset === 'POL'
-                    ? 'PagFinance aceita POL direto na Polygon sem precisar trocar antes.'
-                    : 'PagFinance aceita USDT0 direto na Polygon e liquida o PIX em segundos.';
-            } else if (route === 'nakpix_coupon') {
-                // NakPix exige USDT0 na Polygon (se sair de POL, soma swap 0.05%)
-                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005 + 0.03;
-                bridgeFeeBrl = grossBrl * 0.02;
-                hint = asset === 'POL'
-                    ? 'Rota exige USDT0: primeiro troque POL → USDT0 (0,05%) e envie para o NakPix.'
-                    : 'Envie exatamente a quantidade de USDT0 na rede Polygon; estorno automático se falhar.';
-            } else if (route === 'nakpix_std') {
-                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005 + 0.03;
-                bridgeFeeBrl = grossBrl * 0.04;
-                hint = 'Taxa padrão NakPix (4%) sobre USDT0 na Polygon sem cadastro.';
-            } else if (route === 'depix') {
-                if (asset === 'POL') networkCostBrl += grossBrl * 0.0005;
-                networkCostBrl += 0.15; // Ponte Liquid
-                bridgeFeeBrl = grossBrl * 0.018;
-                hint = 'Liquidação via rede Liquid (DePix) com privacidade e programa de afiliados sem PJ.';
-            } else if (route === 'kyc_cex') {
-                if (asset === 'POL') networkCostBrl += grossBrl * 0.001; // Trade spot 0.1%
-                bridgeFeeBrl = 0; // PIX de saque gratuito na Binance/Bipa
-                hint = 'Menor taxa para saque em conta de mesma titularidade (CPF/CNPJ) via Polygon.';
+                if (qBrla?.outAmounts?.[0]) {
+                    usdtToBrlaRate = parseFloat(ethers.utils.formatUnits(qBrla.outAmounts[0], 18)) / 100;
+                } else {
+                    usdtToBrlaRate = usdBrlCommercial;
+                }
+            } catch (e) {
+                usdtToBrzRate = usdBrlCommercial;
+                usdtToBrlaRate = usdBrlCommercial;
             }
 
-            if (grossBrl <= 0) networkCostBrl = 0;
-            const netPixBrl = Math.max(0, grossBrl - networkCostBrl - bridgeFeeBrl);
+            document.getElementById('top-usd-brl').textContent = `R$ ${usdBrlCommercial.toFixed(3)}`;
+            document.getElementById('top-usdt-brz').textContent = `${usdtToBrzRate.toFixed(3)} BRZ`;
+            document.getElementById('top-usdt-brla').textContent = `${usdtToBrlaRate.toFixed(3)} BRLA`;
 
-            document.getElementById('rec-gross').textContent = `R$ ${grossBrl.toFixed(2)} ($ ${usdValue.toFixed(2)})`;
-            document.getElementById('rec-network').textContent = `- R$ ${networkCostBrl.toFixed(2)}`;
-            document.getElementById('rec-fee').textContent = `- R$ ${bridgeFeeBrl.toFixed(2)}`;
-            document.getElementById('rec-net').textContent = `R$ ${netPixBrl.toFixed(2)}`;
-            document.getElementById('pix-hint').textContent = hint;
+            updateFocusedMetrics();
+            recalculateRealPnL();
+            recalculatePixRanking();
         }
 
-        ['pix-asset', 'pix-amount', 'pix-route'].forEach(id => {
-            document.getElementById(id).addEventListener('input', recalculatePixReceipt);
-            document.getElementById(id).addEventListener('change', recalculatePixReceipt);
+        function getMotherRate() {
+            return usdtToBrzRate > 0 ? usdtToBrzRate : usdBrlCommercial;
+        }
+
+        // =========================================================================
+        // CONEXÃO DIRETA COM RABBY WALLET / EIP-1193
+        // =========================================================================
+        async function connectWeb3Wallet() {
+            const btn = document.getElementById('btn-connect-wallet');
+            if (!window.ethereum) {
+                alert('Nenhuma carteira Web3 detectada. Ative sua Rabby Wallet ou MetaMask.');
+                return;
+            }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (!accounts || accounts.length === 0) return;
+
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x89' }]
+                    });
+                } catch (switchErr) {
+                    if (switchErr.code === 4902) {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x89',
+                                chainName: 'Polygon Mainnet',
+                                nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+                                rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
+                                blockExplorerUrls: ['https://polygonscan.com/']
+                            }]
+                        });
+                    }
+                }
+
+                connectedSignerAddress = accounts[0].toLowerCase();
+                appState.wallet = connectedSignerAddress;
+                document.getElementById('wallet-address').value = connectedSignerAddress;
+
+                const walletLabel = window.ethereum.isRabby ? 'RABBY' : 'WEB3';
+                btn.textContent = `● ${walletLabel} ${connectedSignerAddress.slice(0, 5)}..${connectedSignerAddress.slice(-3)}`;
+                btn.classList.add('wallet-connected');
+
+                saveTripleBackup();
+                await runUnstoppableScan();
+                refreshSwapQuote();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        document.getElementById('btn-connect-wallet').addEventListener('click', connectWeb3Wallet);
+
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accs) => {
+                if (accs && accs.length > 0) {
+                    connectedSignerAddress = accs[0].toLowerCase();
+                    appState.wallet = connectedSignerAddress;
+                    document.getElementById('wallet-address').value = connectedSignerAddress;
+                    const btn = document.getElementById('btn-connect-wallet');
+                    const walletLabel = window.ethereum.isRabby ? 'RABBY' : 'WEB3';
+                    btn.textContent = `● ${walletLabel} ${connectedSignerAddress.slice(0, 5)}..${connectedSignerAddress.slice(-3)}`;
+                    btn.classList.add('wallet-connected');
+                    runUnstoppableScan();
+                    refreshSwapQuote();
+                }
+            });
+        }
+
+        // =========================================================================
+        // EXECUÇÃO ON-CHAIN UNISWAP V3: COLHER TARIFAS & WITHDRAW TOTAL (RABBY)
+        // =========================================================================
+        async function executeCollectFeesOnChain(tokenId, e) {
+            e.stopPropagation();
+            if (!connectedSignerAddress) {
+                await connectWeb3Wallet();
+                if (!connectedSignerAddress) return;
+            }
+
+            const feedbackEl = document.getElementById('nft-tx-feedback');
+            try {
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const signer = provider.getSigner();
+                const nfpm = new ethers.Contract(NFPM_ADDRESS, [
+                    "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256 amount0, uint256 amount1)"
+                ], signer);
+
+                feedbackEl.style.color = 'var(--cyan-accent)';
+                feedbackEl.textContent = `Simulando coleta NFT #${tokenId} na Rabby Wallet...`;
+
+                const tx = await nfpm.collect({
+                    tokenId: ethers.BigNumber.from(tokenId),
+                    recipient: connectedSignerAddress,
+                    amount0Max: MAX_UINT128,
+                    amount1Max: MAX_UINT128
+                });
+
+                feedbackEl.textContent = `Coleta enviada (${tx.hash.slice(0, 10)}...) Aguardando bloco...`;
+                await tx.wait();
+
+                feedbackEl.style.color = 'var(--success-green)';
+                feedbackEl.textContent = `Tarifas do NFT #${tokenId} recolhidas direto para sua carteira!`;
+                playBeep(1174, 0.25, 'sine');
+                await refreshLivePoolFeesAndBalances();
+            } catch (err) {
+                feedbackEl.style.color = 'var(--danger-red)';
+                feedbackEl.textContent = err.reason || err.message || 'Coleta cancelada.';
+            }
+        }
+
+        async function executeWithdrawPositionOnChain(tokenId, e) {
+            e.stopPropagation();
+            if (!connectedSignerAddress) {
+                await connectWeb3Wallet();
+                if (!connectedSignerAddress) return;
+            }
+
+            const ok = confirm(`Deseja fechar 100% da posição NFT #${tokenId} e sacar todo o capital + tarifas para sua Rabby Wallet?`);
+            if (!ok) return;
+
+            const feedbackEl = document.getElementById('nft-tx-feedback');
+            try {
+                const provider = new ethers.providers.Web3Provider(window.ethereum);
+                const signer = provider.getSigner();
+
+                const nfpmAbi = [
+                    "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
+                    "function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline) params) payable returns (uint256 amount0, uint256 amount1)",
+                    "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256 amount0, uint256 amount1)",
+                    "function multicall(bytes[] data) payable returns (bytes[] results)"
+                ];
+
+                const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmAbi, signer);
+                feedbackEl.style.color = 'var(--warning-yellow)';
+                feedbackEl.textContent = `Lendo liquidez exata do NFT #${tokenId}...`;
+
+                const posOnChain = await nfpm.positions(ethers.BigNumber.from(tokenId));
+                const currentLiquidity = posOnChain.liquidity;
+
+                if (currentLiquidity.isZero()) {
+                    feedbackEl.textContent = `Liquidez já zerada. Executando apenas coleta final...`;
+                    await executeCollectFeesOnChain(tokenId, e);
+                    return;
+                }
+
+                const deadline = Math.floor(Date.now() / 1000) + 1200; // 20 min
+                const decreaseData = nfpm.interface.encodeFunctionData('decreaseLiquidity', [{
+                    tokenId: ethers.BigNumber.from(tokenId),
+                    liquidity: currentLiquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline
+                }]);
+
+                const collectData = nfpm.interface.encodeFunctionData('collect', [{
+                    tokenId: ethers.BigNumber.from(tokenId),
+                    recipient: connectedSignerAddress,
+                    amount0Max: MAX_UINT128,
+                    amount1Max: MAX_UINT128
+                }]);
+
+                feedbackEl.textContent = `Confirme o Withdraw atômico (Multicall) na Rabby Wallet...`;
+                const tx = await nfpm.multicall([decreaseData, collectData]);
+
+                feedbackEl.textContent = `Withdraw enviado (${tx.hash.slice(0, 10)}...) Aguardando bloco...`;
+                await tx.wait();
+
+                feedbackEl.style.color = 'var(--success-green)';
+                feedbackEl.textContent = `Posição #${tokenId} encerrada! Capital + tarifas na carteira.`;
+                playBeep(1318, 0.3, 'sine');
+                await runUnstoppableScan();
+            } catch (err) {
+                feedbackEl.style.color = 'var(--danger-red)';
+                feedbackEl.textContent = err.reason || err.message || 'Withdraw cancelado.';
+            }
+        }
+
+        // =========================================================================
+        // MOTOR DE LUCRO LÍQUIDO REAL (PÓS-GÁS DE ABERTURA & FECHAMENTO EM BRZ/BRLA)
+        // =========================================================================
+        async function autoDetectPositionOpeningCost(pos, provider) {
+            if (!pos.tokenId || appState.pnlOverrides[pos.id]?.autoChecked) return;
+            try {
+                const latestBlock = await provider.getBlockNumber();
+                const fromBlock = Math.max(0, latestBlock - 45000);
+                const topic0 = ethers.utils.id("IncreaseLiquidity(uint256,uint128,uint256,uint256)");
+                const topic1 = ethers.utils.hexZeroPad(ethers.BigNumber.from(pos.tokenId).toHexString(), 32);
+
+                const logs = await withTimeout(provider.getLogs({
+                    address: NFPM_ADDRESS,
+                    topics: [topic0, topic1],
+                    fromBlock,
+                    toBlock: latestBlock
+                }), 4500);
+
+                appState.pnlOverrides[pos.id] = appState.pnlOverrides[pos.id] || {};
+                appState.pnlOverrides[pos.id].autoChecked = true;
+
+                if (logs && logs.length > 0) {
+                    const firstLog = logs[0];
+                    const receipt = await provider.getTransactionReceipt(firstLog.transactionHash);
+                    const gasPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
+
+                    const decoded = ethers.utils.defaultAbiCoder.decode(['uint128', 'uint256', 'uint256'], firstLog.data);
+                    const initPol = parseFloat(ethers.utils.formatUnits(decoded[1], 18));
+                    const initUsdt = parseFloat(ethers.utils.formatUnits(decoded[2], 6));
+                    const initUsd = (initPol * currentPriceGlobal) + initUsdt;
+                    const initBrz = initUsd * getMotherRate();
+
+                    if (gasPol > 0) appState.pnlOverrides[pos.id].openGasPol = Number(gasPol.toFixed(5));
+                    if (initBrz > 0 && !appState.pnlOverrides[pos.id].initBrz) {
+                        appState.pnlOverrides[pos.id].initBrz = Number(initBrz.toFixed(2));
+                    }
+                    saveTripleBackup();
+                    syncPnlInputsWithFocused();
+                    recalculateRealPnL();
+                }
+            } catch (e) {}
+        }
+
+        function syncPnlInputsWithFocused() {
+            const focusedId = appState.focusedId;
+            const initInput = document.getElementById('pnl-init-brz');
+            const gasInput = document.getElementById('pnl-open-gas-pol');
+
+            if (focusedId && appState.pnlOverrides[focusedId]) {
+                const ov = appState.pnlOverrides[focusedId];
+                initInput.value = ov.initBrz !== undefined ? ov.initBrz : '';
+                gasInput.value = ov.openGasPol !== undefined ? ov.openGasPol : '0.05';
+            } else {
+                initInput.value = '';
+                gasInput.value = '0.05';
+            }
+        }
+
+        function recalculateRealPnL() {
+            const motherRate = getMotherRate();
+            const polPriceBrz = currentPriceGlobal * motherRate;
+
+            const initBrzInput = parseFloat(document.getElementById('pnl-init-brz').value);
+            const openGasPol = parseFloat(document.getElementById('pnl-open-gas-pol').value) || 0;
+            const estCloseGasPol = 0.045; // Estimativa realista de gás multicall na Polygon
+
+            const totalGasPol = openGasPol + estCloseGasPol;
+            const totalGasBrz = totalGasPol * polPriceBrz;
+
+            const currentPosBrz = focusedPositionTotalUsd * motherRate;
+            const currentFeesBrz = focusedPositionFeesUsd * motherRate;
+
+            // Tarifas líquidas após pagar o gás total de abertura + fechamento
+            const netFeesAfterGasBrz = currentFeesBrz - totalGasBrz;
+            const netFeesEl = document.getElementById('pnl-net-fees-brz');
+            netFeesEl.textContent = `${netFeesAfterGasBrz >= 0 ? '+' : ''}${netFeesAfterGasBrz.toFixed(4)} BRZ`;
+            netFeesEl.style.color = netFeesAfterGasBrz >= 0 ? 'var(--success-green)' : 'var(--danger-red)';
+            document.getElementById('pnl-gas-cost-sub').textContent = `Gás Total (${totalGasPol.toFixed(3)} POL): -${totalGasBrz.toFixed(3)} BRZ`;
+
+            // Lucro Líquido Real da Operação (Capital Atual + Tarifas - Aporte Inicial - Gás Total)
+            const baseCapitalBrz = Number.isFinite(initBrzInput) && initBrzInput > 0 ? initBrzInput : currentPosBrz;
+            const realNetProfitBrz = (currentPosBrz + currentFeesBrz) - baseCapitalBrz - totalGasBrz;
+            const realNetProfitBrl = realNetProfitBrz * (usdBrlCommercial / motherRate);
+
+            const totalPnlEl = document.getElementById('pnl-real-total-brz');
+            totalPnlEl.textContent = `${realNetProfitBrz >= 0 ? '+' : ''}${realNetProfitBrz.toFixed(2)} BRZ`;
+            totalPnlEl.style.color = realNetProfitBrz >= 0 ? 'var(--success-green)' : 'var(--danger-red)';
+
+            const roiPct = baseCapitalBrz > 0 ? ((realNetProfitBrz / baseCapitalBrz) * 100).toFixed(2) : '0.00';
+            document.getElementById('pnl-real-total-brl').textContent = `R$ ${realNetProfitBrl.toFixed(2)} (${realNetProfitBrz >= 0 ? '+' : ''}${roiPct}%)`;
+        }
+
+        ['pnl-init-brz', 'pnl-open-gas-pol'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if (appState.focusedId) {
+                    appState.pnlOverrides[appState.focusedId] = appState.pnlOverrides[appState.focusedId] || {};
+                    const initVal = parseFloat(document.getElementById('pnl-init-brz').value);
+                    const gasVal = parseFloat(document.getElementById('pnl-open-gas-pol').value);
+                    if (Number.isFinite(initVal)) appState.pnlOverrides[appState.focusedId].initBrz = initVal;
+                    if (Number.isFinite(gasVal)) appState.pnlOverrides[appState.focusedId].openGasPol = gasVal;
+                    saveTripleBackup();
+                }
+                recalculateRealPnL();
+            });
+        });
+
+        // =========================================================================
+        // NAVEGAÇÃO ENTRE AS 3 ABAS (RADAR | SWAP DEX | PIX INTELIGENTE)
+        // =========================================================================
+        function switchRightTab(target) {
+            ['radar', 'swap', 'pix'].forEach(name => {
+                document.getElementById(`tab-${name}`).classList.toggle('active', name === target);
+                document.getElementById(`view-${name}`).classList.toggle('active', name === target);
+            });
+            if (target === 'swap') {
+                updateSwapBalanceLabels();
+                refreshSwapQuote();
+            } else if (target === 'pix') {
+                recalculatePixRanking();
+            }
+        }
+
+        document.getElementById('tab-radar').addEventListener('click', () => switchRightTab('radar'));
+        document.getElementById('tab-swap').addEventListener('click', () => switchRightTab('swap'));
+        document.getElementById('tab-pix').addEventListener('click', () => switchRightTab('pix'));
+
+        document.querySelectorAll('.tok-badge').forEach(badge => {
+            badge.addEventListener('click', () => {
+                const sym = badge.getAttribute('data-tok');
+                document.getElementById('swap-token-in').value = sym;
+                if (document.getElementById('swap-token-out').value === sym) {
+                    document.getElementById('swap-token-out').value = sym === 'BRZ' ? 'USDT0' : 'BRZ';
+                }
+                const bal = walletBalances[sym.toLowerCase()] || 0;
+                if (bal > 0) {
+                    document.getElementById('swap-amount-in').value = (sym === 'POL' ? Math.max(0, bal - 0.1) : bal).toFixed(4);
+                }
+                switchRightTab('swap');
+            });
+        });
+
+        // =========================================================================
+        // MOTOR DE COTAÇÃO & EXECUÇÃO DEX (ODOS SOR V2 + FALLBACK PARASWAP V5)
+        // =========================================================================
+        function updateSwapBalanceLabels() {
+            const symIn = document.getElementById('swap-token-in').value;
+            const symOut = document.getElementById('swap-token-out').value;
+            const balIn = walletBalances[symIn.toLowerCase()] || 0;
+            const balOut = walletBalances[symOut.toLowerCase()] || 0;
+            document.getElementById('swap-in-bal').textContent = balIn.toFixed(4);
+            document.getElementById('swap-out-bal').textContent = balOut.toFixed(4);
+        }
+
+        document.getElementById('btn-swap-max').addEventListener('click', () => {
+            const symIn = document.getElementById('swap-token-in').value;
+            const balIn = walletBalances[symIn.toLowerCase()] || 0;
+            const usable = symIn === 'POL' ? Math.max(0, balIn - 0.1) : balIn;
+            document.getElementById('swap-amount-in').value = usable.toFixed(4);
+            scheduleSwapQuote();
+        });
+
+        document.getElementById('btn-flip-tokens').addEventListener('click', () => {
+            const inSel = document.getElementById('swap-token-in');
+            const outSel = document.getElementById('swap-token-out');
+            const tmp = inSel.value;
+            inSel.value = outSel.value;
+            outSel.value = tmp;
+            updateSwapBalanceLabels();
+            scheduleSwapQuote();
+        });
+
+        function scheduleSwapQuote() {
+            clearTimeout(swapDebounceTimer);
+            swapDebounceTimer = setTimeout(refreshSwapQuote, 350);
+        }
+
+        ['swap-token-in', 'swap-token-out', 'swap-amount-in'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => { updateSwapBalanceLabels(); scheduleSwapQuote(); });
+            document.getElementById(id).addEventListener('change', () => { updateSwapBalanceLabels(); scheduleSwapQuote(); });
+        });
+
+        async function checkAllowanceIfNeeded(tokenObj, amountWei, routerAddr) {
+            if (tokenObj.isNative || !connectedSignerAddress) return true;
+            try {
+                const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+                const erc20 = new ethers.Contract(tokenObj.address, ["function allowance(address, address) view returns (uint256)"], provider);
+                const currentAllowance = await withTimeout(erc20.allowance(connectedSignerAddress, routerAddr), 4000);
+                return currentAllowance.gte(amountWei);
+            } catch (e) {
+                return true;
+            }
+        }
+
+        async function refreshSwapQuote() {
+            const symIn = document.getElementById('swap-token-in').value;
+            const symOut = document.getElementById('swap-token-out').value;
+            const amtFloat = parseFloat(document.getElementById('swap-amount-in').value);
+            const outInput = document.getElementById('swap-amount-out');
+            const actionBtn = document.getElementById('btn-exec-swap');
+
+            updateSwapBalanceLabels();
+
+            if (symIn === symOut) {
+                outInput.value = 'Mesmo token';
+                actionBtn.disabled = true;
+                activeSwapQuote = null;
+                return;
+            }
+            if (!Number.isFinite(amtFloat) || amtFloat <= 0) {
+                outInput.value = '0.00';
+                actionBtn.disabled = true;
+                activeSwapQuote = null;
+                return;
+            }
+
+            const tokIn = TOKENS[symIn];
+            const tokOut = TOKENS[symOut];
+            const amountWei = ethers.utils.parseUnits(amtFloat.toFixed(tokIn.decimals), tokIn.decimals);
+            const userAddr = connectedSignerAddress || appState.wallet || '0x000000000000000000000000000000000000dead';
+
+            outInput.value = 'Cotando...';
+
+            try {
+                const res = await withTimeout(fetch('https://api.odos.xyz/sor/quote/v2', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chainId: 137,
+                        inputTokens: [{ tokenAddress: tokIn.address, amount: amountWei.toString() }],
+                        outputTokens: [{ tokenAddress: tokOut.address, proportion: 1 }],
+                        slippageLimitPercent: 0.5,
+                        userAddr: userAddr,
+                        disableRFQs: true,
+                        compact: true
+                    })
+                }), 5500);
+
+                if (!res.ok) throw new Error('Odos HTTP ' + res.status);
+                const q = await res.json();
+                if (!q.outAmounts || !q.outAmounts[0]) throw new Error('Sem rota Odos');
+
+                const outFormatted = parseFloat(ethers.utils.formatUnits(q.outAmounts[0], tokOut.decimals));
+                outInput.value = outFormatted.toFixed(4);
+                document.getElementById('swap-router-tag').textContent = 'ODOS SOR V2';
+
+                const impactPct = q.priceImpact ? Number(q.priceImpact).toFixed(2) : '0.02';
+                document.getElementById('swap-impact').textContent = `${impactPct}% / 0.50%`;
+
+                let brzEq = 0;
+                if (symOut === 'BRZ' || symOut === 'BRLA') brzEq = outFormatted;
+                else if (symOut === 'USDT0') brzEq = outFormatted * getMotherRate();
+                else brzEq = outFormatted * currentPriceGlobal * getMotherRate();
+                document.getElementById('swap-brl-eq').textContent = `${brzEq.toFixed(2)} BRZ | R$ ${(brzEq * (usdBrlCommercial / getMotherRate())).toFixed(2)}`;
+
+                const hasAllowance = await checkAllowanceIfNeeded(tokIn, amountWei, ODOS_ROUTER_POLYGON);
+
+                activeSwapQuote = {
+                    engine: 'odos',
+                    pathId: q.pathId,
+                    tokIn,
+                    tokOut,
+                    amountWei,
+                    outFormatted,
+                    routerAddr: ODOS_ROUTER_POLYGON,
+                    hasAllowance
+                };
+
+                updateSwapButtonState();
+                return;
+            } catch (odosErr) {
+                try {
+                    const url = `https://apiv5.paraswap.io/prices?srcToken=${tokIn.pspAddress}&destToken=${tokOut.pspAddress}&amount=${amountWei.toString()}&srcDecimals=${tokIn.decimals}&destDecimals=${tokOut.decimals}&side=SELL&network=137`;
+                    const pRes = await withTimeout(fetch(url), 5500);
+                    const pJson = await pRes.json();
+                    if (!pJson.priceRoute) throw new Error('Sem rota ParaSwap');
+
+                    const outFormatted = parseFloat(ethers.utils.formatUnits(pJson.priceRoute.destAmount, tokOut.decimals));
+                    outInput.value = outFormatted.toFixed(4);
+                    document.getElementById('swap-router-tag').textContent = 'PARASWAP V5';
+                    document.getElementById('swap-impact').textContent = `~0.05% / 0.50%`;
+
+                    let brzEq = 0;
+                    if (symOut === 'BRZ' || symOut === 'BRLA') brzEq = outFormatted;
+                    else if (symOut === 'USDT0') brzEq = outFormatted * getMotherRate();
+                    else brzEq = outFormatted * currentPriceGlobal * getMotherRate();
+                    document.getElementById('swap-brl-eq').textContent = `${brzEq.toFixed(2)} BRZ`;
+
+                    const proxyAddr = (pJson.priceRoute.tokenTransferProxy || PARASWAP_ROUTER_POLYGON).toLowerCase();
+                    const hasAllowance = await checkAllowanceIfNeeded(tokIn, amountWei, proxyAddr);
+
+                    activeSwapQuote = {
+                        engine: 'paraswap',
+                        priceRoute: pJson.priceRoute,
+                        tokIn,
+                        tokOut,
+                        amountWei,
+                        outFormatted,
+                        routerAddr: proxyAddr,
+                        hasAllowance
+                    };
+                    updateSwapButtonState();
+                } catch (pspErr) {
+                    outInput.value = 'Sem liquidez';
+                    actionBtn.disabled = true;
+                    activeSwapQuote = null;
+                }
+            }
+        }
+
+        function updateSwapButtonState() {
+            const btn = document.getElementById('btn-exec-swap');
+            if (!connectedSignerAddress) {
+                btn.disabled = false;
+                btn.classList.remove('needs-approve');
+                btn.textContent = 'CONECTAR RABBY PARA TROCAR';
+                return;
+            }
+            if (!activeSwapQuote) {
+                btn.disabled = true;
+                return;
+            }
+            btn.disabled = false;
+            if (!activeSwapQuote.hasAllowance) {
+                btn.classList.add('needs-approve');
+                btn.textContent = `1. APROVAR ${activeSwapQuote.tokIn.symbol} NO ROTEADOR`;
+            } else {
+                btn.classList.remove('needs-approve');
+                btn.textContent = `2. EXECUTAR SWAP (${activeSwapQuote.tokIn.symbol} → ${activeSwapQuote.tokOut.symbol})`;
+            }
+        }
+
+        document.getElementById('btn-exec-swap').addEventListener('click', async () => {
+            if (!connectedSignerAddress) {
+                await connectWeb3Wallet();
+                return;
+            }
+            if (!activeSwapQuote) return;
+
+            const btn = document.getElementById('btn-exec-swap');
+            const statusEl = document.getElementById('swap-tx-status');
+            const provider = new ethers.providers.Web3Provider(window.ethereum);
+            const signer = provider.getSigner();
+
+            try {
+                btn.disabled = true;
+
+                if (!activeSwapQuote.hasAllowance) {
+                    statusEl.style.color = 'var(--warning-yellow)';
+                    statusEl.textContent = `Assine a aprovação de ${activeSwapQuote.tokIn.symbol} na Rabby Wallet...`;
+                    const erc20 = new ethers.Contract(
+                        activeSwapQuote.tokIn.address,
+                        ["function approve(address spender, uint256 amount) returns (bool)"],
+                        signer
+                    );
+                    const appTx = await erc20.approve(activeSwapQuote.routerAddr, activeSwapQuote.amountWei);
+                    statusEl.textContent = 'Aguardando confirmação na Polygon...';
+                    await appTx.wait();
+                    activeSwapQuote.hasAllowance = true;
+                    statusEl.style.color = 'var(--success-green)';
+                    statusEl.textContent = 'Token aprovado! Pronto para executar o swap.';
+                    updateSwapButtonState();
+                    return;
+                }
+
+                statusEl.style.color = 'var(--cyan-accent)';
+                statusEl.textContent = 'Montando rota segura...';
+
+                let txPayload = null;
+
+                if (activeSwapQuote.engine === 'odos') {
+                    const asmRes = await fetch('https://api.odos.xyz/sor/assemble', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userAddr: connectedSignerAddress,
+                            pathId: activeSwapQuote.pathId,
+                            simulate: false
+                        })
+                    });
+                    const asmJson = await asmRes.json();
+                    if (!asmJson.transaction) throw new Error('Falha ao montar transação Odos');
+
+                    if (asmJson.transaction.to.toLowerCase() !== ODOS_ROUTER_POLYGON) {
+                        throw new Error('Bloqueio de segurança: endereço de roteador não reconhecido.');
+                    }
+
+                    txPayload = {
+                        to: asmJson.transaction.to,
+                        data: asmJson.transaction.data,
+                        value: ethers.BigNumber.from(asmJson.transaction.value || '0')
+                    };
+                } else {
+                    const pspTxRes = await fetch('https://apiv5.paraswap.io/transactions/137?ignoreChecks=true', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            srcToken: activeSwapQuote.tokIn.pspAddress,
+                            destToken: activeSwapQuote.tokOut.pspAddress,
+                            srcAmount: activeSwapQuote.amountWei.toString(),
+                            priceRoute: activeSwapQuote.priceRoute,
+                            slippage: 50,
+                            userAddress: connectedSignerAddress
+                        })
+                    });
+                    const pspTx = await pspTxRes.json();
+                    if (!pspTx.to || pspTx.to.toLowerCase() !== PARASWAP_ROUTER_POLYGON) {
+                        throw new Error('Bloqueio de segurança: endereço ParaSwap não reconhecido.');
+                    }
+                    txPayload = {
+                        to: pspTx.to,
+                        data: pspTx.data,
+                        value: ethers.BigNumber.from(pspTx.value || '0')
+                    };
+                }
+
+                statusEl.textContent = 'Confirme a troca na sua Rabby Wallet...';
+                const sentTx = await signer.sendTransaction(txPayload);
+                statusEl.textContent = `Enviada (${sentTx.hash.slice(0, 10)}...) Aguardando bloco...`;
+                await sentTx.wait();
+
+                statusEl.style.color = 'var(--success-green)';
+                statusEl.textContent = `SUCESSO! Hash: ${sentTx.hash.slice(0, 14)}...`;
+                playBeep(1174, 0.25, 'sine');
+
+                await refreshLivePoolFeesAndBalances();
+                await refreshSwapQuote();
+            } catch (err) {
+                statusEl.style.color = 'var(--danger-red)';
+                statusEl.textContent = err.reason || err.message || 'Operação cancelada.';
+                btn.disabled = false;
+            }
+        });
+
+        // =========================================================================
+        // RANKER INTELIGENTE DE SAQUE PIX (INCLUI SPREAD IMPLÍCITO BIPA & TABELAS REAIS)
+        // =========================================================================
+        function getBipaRealTieredFeePct(brlAmount) {
+            if (brlAmount < 10) return 0.0300;
+            if (brlAmount < 100) return 0.0225;
+            if (brlAmount < 200) return 0.0200;
+            if (brlAmount < 1000) return 0.0175;
+            if (brlAmount < 2000) return 0.0150;
+            if (brlAmount < 3000) return 0.0125;
+            if (brlAmount < 5000) return 0.0100;
+            return 0.0075;
+        }
+
+        function recalculatePixRanking() {
+            const asset = document.getElementById('pix-asset').value;
+            const amount = parseFloat(document.getElementById('pix-amount').value) || 0;
+            const listEl = document.getElementById('pix-ranking-list');
+            listEl.replaceChildren();
+
+            const polPriceUsd = currentPriceGlobal > 0 ? currentPriceGlobal : 0.087;
+            const motherRate = getMotherRate();
+
+            // Converte ativo inicial para equivalente USD e BRL Comercial
+            let usdValue = 0;
+            if (asset === 'USDT0') usdValue = amount;
+            else if (asset === 'POL' || asset === 'WPOL') usdValue = amount * polPriceUsd;
+            else if (asset === 'BRZ' || asset === 'BRLA') usdValue = amount / motherRate;
+
+            const grossCommercialBrl = usdValue * usdBrlCommercial;
+            const gasBaseBrl = 0.03;
+            const dexSwapPct = (asset === 'USDT0') ? 0 : 0.0005;
+
+            const routes = [
+                {
+                    id: 'nakpix_coupon',
+                    name: 'NakPix (c/ Cupom)',
+                    kyc: 'SEM KYC',
+                    kycClass: 'kyc-free',
+                    isNoKyc: true,
+                    url: null,
+                    computeNet: () => {
+                        const swapCost = grossCommercialBrl * dexSwapPct;
+                        const bridgeFee = grossCommercialBrl * 0.02;
+                        const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - bridgeFee);
+                        return { net, detail: `Taxa 2.0% + Gás Polygon | USDT0 direto` };
+                    }
+                },
+                {
+                    id: 'pagfinance',
+                    name: 'PagFinance',
+                    kyc: 'CPF RÁPIDO',
+                    kycClass: 'kyc-lite',
+                    isNoKyc: false,
+                    url: 'https://pag.finance',
+                    computeNet: () => {
+                        // PagFinance aceita POL e USDT0 direto (se BRZ/BRLA, soma swap 0.05%)
+                        const needSwap = (asset === 'BRZ' || asset === 'BRLA') ? grossCommercialBrl * 0.0005 : 0;
+                        const bridgeFee = grossCommercialBrl > 0 ? Math.max(1.20, grossCommercialBrl * 0.02) : 0;
+                        const net = Math.max(0, grossCommercialBrl - gasBaseBrl - needSwap - bridgeFee);
+                        return { net, detail: `Taxa 2.0% (piso R$1,20) | Auto-custódia` };
+                    }
+                },
+                {
+                    id: 'depix',
+                    name: 'DePix / Liquid',
+                    kyc: 'SEM KYC',
+                    kycClass: 'kyc-free',
+                    isNoKyc: true,
+                    url: 'https://depixapp.com',
+                    computeNet: () => {
+                        const swapCost = grossCommercialBrl * dexSwapPct;
+                        const bridgeFee = grossCommercialBrl * 0.018;
+                        const net = Math.max(0, grossCommercialBrl - 0.18 - swapCost - bridgeFee);
+                        return { net, detail: `~1.8% off-ramp + ponte Liquid` };
+                    }
+                },
+                {
+                    id: 'nakpix_std',
+                    name: 'NakPix (Padrão)',
+                    kyc: 'SEM KYC',
+                    kycClass: 'kyc-free',
+                    isNoKyc: true,
+                    url: null,
+                    computeNet: () => {
+                        const swapCost = grossCommercialBrl * dexSwapPct;
+                        const bridgeFee = grossCommercialBrl * 0.04;
+                        const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - bridgeFee);
+                        return { net, detail: `Taxa 4.0% sem cupom | USDT0 Polygon` };
+                    }
+                },
+                {
+                    id: 'bipa',
+                    name: 'Bipa (Plano Free)',
+                    kyc: 'KYC TOTAL',
+                    kycClass: 'kyc-full',
+                    isNoKyc: false,
+                    url: 'https://bipa.app',
+                    computeNet: () => {
+                        const swapCost = grossCommercialBrl * dexSwapPct;
+                        const tierPct = getBipaRealTieredFeePct(grossCommercialBrl);
+                        const implicitFxSpreadPct = 0.0115; // Spread real de conversão USDT->BRL da Bipa (~1.15%)
+                        const totalBipaCost = grossCommercialBrl * (tierPct + implicitFxSpreadPct);
+                        const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - totalBipaCost);
+                        return {
+                            net,
+                            detail: `Taxa ${(tierPct*100).toFixed(2)}% + Spread FX ~1.15%`
+                        };
+                    }
+                },
+                {
+                    id: 'binance',
+                    name: 'Binance Spot',
+                    kyc: 'KYC TOTAL',
+                    kycClass: 'kyc-full',
+                    isNoKyc: false,
+                    url: 'https://www.binance.com/pt-BR/trade/USDT_BRL',
+                    computeNet: () => {
+                        const swapCost = grossCommercialBrl * dexSwapPct;
+                        const effectiveRate = binanceUsdtBrlBid > 0 ? binanceUsdtBrlBid : (usdBrlCommercial * 0.996);
+                        const brlOnBook = usdValue * effectiveRate;
+                        const tradeFee = brlOnBook * 0.001;
+                        const pixWithdrawFee = grossCommercialBrl > 0 ? 3.50 : 0;
+                        const net = Math.max(0, brlOnBook - gasBaseBrl - swapCost - tradeFee - pixWithdrawFee);
+                        return {
+                            net,
+                            detail: `Book R$${effectiveRate.toFixed(3)} + 0.1% + R$3,50 saque`
+                        };
+                    }
+                }
+            ];
+
+            const evaluated = routes
+                .filter(r => !onlyNoKycFilter || r.isNoKyc)
+                .map(r => {
+                    const res = r.computeNet();
+                    const totalLossPct = grossCommercialBrl > 0
+                        ? (((grossCommercialBrl - res.net) / grossCommercialBrl) * 100)
+                        : 0;
+                    return { ...r, netBrl: res.net, detail: res.detail, lossPct: totalLossPct };
+                })
+                .sort((a, b) => b.netBrl - a.netBrl);
+
+            evaluated.forEach((item, idx) => {
+                const isWinner = idx === 0 && grossCommercialBrl > 0;
+                const card = document.createElement('div');
+                card.className = 'rank-card' + (isWinner ? ' best-route' : '');
+
+                const left = document.createElement('div');
+                left.className = 'rank-left';
+
+                const titleRow = document.createElement('div');
+                titleRow.className = 'rank-title';
+                const trophy = isWinner ? '★ ' : `#${idx + 1} `;
+                titleRow.appendChild(document.createTextNode(`${trophy}${item.name} `));
+
+                const pill = document.createElement('span');
+                pill.className = `kyc-pill ${item.kycClass}`;
+                pill.textContent = item.kyc;
+                titleRow.appendChild(pill);
+
+                const sub = document.createElement('div');
+                sub.className = 'rank-sub';
+                sub.textContent = item.detail;
+
+                left.append(titleRow, sub);
+
+                const right = document.createElement('div');
+                right.className = 'rank-right';
+
+                const netEl = document.createElement('div');
+                netEl.className = 'rank-net';
+                netEl.textContent = `R$ ${item.netBrl.toFixed(2)}`;
+
+                const lossEl = document.createElement('div');
+                lossEl.className = 'rank-loss';
+                lossEl.textContent = `-${item.lossPct.toFixed(2)}% real`;
+
+                right.append(netEl, lossEl);
+                card.append(left, right);
+
+                card.addEventListener('click', () => {
+                    navigator.clipboard.writeText(String(amount)).catch(() => {});
+                    document.getElementById('pix-hint').textContent = `Copiado (${amount} ${asset})! Rota selecionada: ${item.name} → Líquido R$ ${item.netBrl.toFixed(2)}.`;
+                    if (item.url) {
+                        window.open(item.url, '_blank', 'noopener,noreferrer');
+                    }
+                });
+
+                listEl.appendChild(card);
+            });
+        }
+
+        document.getElementById('btn-filter-nokyc').addEventListener('click', (e) => {
+            onlyNoKycFilter = !onlyNoKycFilter;
+            e.target.textContent = onlyNoKycFilter ? 'FILTRO: 100% SEM KYC' : 'FILTRO: TODAS';
+            e.target.classList.toggle('active-filter', onlyNoKycFilter);
+            recalculatePixRanking();
+        });
+
+        ['pix-asset', 'pix-amount'].forEach(id => {
+            document.getElementById(id).addEventListener('input', recalculatePixRanking);
+            document.getElementById(id).addEventListener('change', recalculatePixRanking);
         });
 
         document.getElementById('chip-use-usdt').addEventListener('click', () => {
             document.getElementById('pix-asset').value = 'USDT0';
             document.getElementById('pix-amount').value = walletBalances.usdt0 > 0 ? walletBalances.usdt0.toFixed(4) : '50';
-            recalculatePixReceipt();
+            recalculatePixRanking();
         });
 
         document.getElementById('chip-use-wpol').addEventListener('click', () => {
-            document.getElementById('pix-asset').value = 'POL';
+            document.getElementById('pix-asset').value = 'WPOL';
             document.getElementById('pix-amount').value = walletBalances.wpol > 0 ? walletBalances.wpol.toFixed(4) : '500';
-            recalculatePixReceipt();
+            recalculatePixRanking();
+        });
+
+        document.getElementById('chip-use-brz').addEventListener('click', () => {
+            if (walletBalances.brla > walletBalances.brz) {
+                document.getElementById('pix-asset').value = 'BRLA';
+                document.getElementById('pix-amount').value = walletBalances.brla.toFixed(2);
+            } else {
+                document.getElementById('pix-asset').value = 'BRZ';
+                document.getElementById('pix-amount').value = walletBalances.brz > 0 ? walletBalances.brz.toFixed(2) : '250';
+            }
+            recalculatePixRanking();
         });
 
         document.getElementById('chip-use-fees').addEventListener('click', () => {
             document.getElementById('pix-asset').value = 'USDT0';
             document.getElementById('pix-amount').value = totalUnclaimedFeesUsd > 0 ? totalUnclaimedFeesUsd.toFixed(4) : '1.00';
-            recalculatePixReceipt();
-        });
-
-        document.getElementById('btn-launch-pix').addEventListener('click', () => {
-            const amount = document.getElementById('pix-amount').value || '0';
-            const asset = document.getElementById('pix-asset').value;
-            const route = document.getElementById('pix-route').value;
-
-            navigator.clipboard.writeText(String(amount)).catch(() => {});
-
-            const urls = {
-                pagfinance: 'https://pag.finance',
-                nakpix_coupon: 'https://app.uniswap.org/swap?chain=polygon&inputCurrency=0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270&outputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
-                nakpix_std: 'https://app.uniswap.org/swap?chain=polygon&inputCurrency=0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270&outputCurrency=0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
-                depix: 'https://depixapp.com',
-                kyc_cex: 'https://bipa.app'
-            };
-
-            const btn = document.getElementById('btn-launch-pix');
-            btn.textContent = `COPIADO (${amount} ${asset})! ABRINDO...`;
-            setTimeout(() => { btn.textContent = 'COPIAR QTD & ABRIR PONTE PIX ↗'; }, 2500);
-
-            if ((route === 'nakpix_coupon' || route === 'nakpix_std') && asset === 'USDT0') {
-                alert(`Quantidade ${amount} USDT0 copiada! Cole na ponte NakPix na rede Polygon para receber seu PIX.`);
-                return;
-            }
-            window.open(urls[route] || 'https://pag.finance', '_blank', 'noopener,noreferrer');
+            recalculatePixRanking();
         });
 
         // =========================================================================
         // SANITIZAÇÃO E VALIDAÇÃO DE SEGURANÇA
         // =========================================================================
         function sanitizeLabel(str) {
-            return String(str || '').replace(/[<>"'&]/g, '').trim().slice(0, 28) || 'Faixa';
+            return String(str || '').replace(/[<>"'&]/g, '').trim().slice(0, 26) || 'Faixa';
         }
 
         function sanitizePosition(p) {
@@ -1039,6 +2110,9 @@
             if (raw.focusedId) {
                 appState.focusedId = String(raw.focusedId).replace(/[^a-zA-Z0-9_-]/g, '');
             }
+            if (raw.pnlOverrides && typeof raw.pnlOverrides === 'object') {
+                appState.pnlOverrides = raw.pnlOverrides;
+            }
         }
 
         // =========================================================================
@@ -1046,7 +2120,7 @@
         // =========================================================================
         function saveTripleBackup() {
             const payload = JSON.stringify(appState);
-            try { localStorage.setItem('rdesk_v13_backup', payload); } catch (e) {}
+            try { localStorage.setItem('rdesk_v15_backup', payload); } catch (e) {}
             try {
                 const req = indexedDB.open('RDESK_VAULT', 1);
                 req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
@@ -1072,7 +2146,7 @@
                 }
             } catch (e) {}
             try {
-                const ls = localStorage.getItem('rdesk_v13_backup') || localStorage.getItem('rdesk_v12_backup');
+                const ls = localStorage.getItem('rdesk_v15_backup') || localStorage.getItem('rdesk_v14_backup');
                 if (ls) {
                     applyValidatedState(JSON.parse(ls));
                     return;
@@ -1120,6 +2194,7 @@
                     applyValidatedState(JSON.parse(ev.target.result));
                     if (appState.wallet) document.getElementById('wallet-address').value = appState.wallet;
                     saveTripleBackup();
+                    syncPnlInputsWithFocused();
                     renderAllPositions();
                 } catch (err) { alert('Arquivo JSON inválido.'); }
             };
@@ -1130,8 +2205,8 @@
             saveTripleBackup();
             navigator.clipboard.writeText(window.location.href).then(() => {
                 const btn = document.getElementById('btn-copy-link');
-                btn.textContent = 'LINK COPIADO!';
-                setTimeout(() => btn.textContent = 'COPIAR LINK', 2000);
+                btn.textContent = 'COPIADO!';
+                setTimeout(() => btn.textContent = 'LINK', 2000);
             });
         });
 
@@ -1198,12 +2273,13 @@
                     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
                     const pool = new ethers.Contract(POOL_ADDRESS, poolABI, provider);
 
-                    const wpolC = new ethers.Contract(POL_ADDRESS, erc20ABI, provider);
-                    const usdtC = new ethers.Contract(USDT_ADDRESS, erc20ABI, provider);
-                    const brzC = new ethers.Contract(BRZ_ADDRESS, erc20ABI, provider);
-                    const brlaC = new ethers.Contract(BRLA_ADDRESS, erc20ABI, provider);
+                    const wpolC = new ethers.Contract(TOKENS.WPOL.address, erc20ABI, provider);
+                    const usdtC = new ethers.Contract(TOKENS.USDT0.address, erc20ABI, provider);
+                    const brzC = new ethers.Contract(TOKENS.BRZ.address, erc20ABI, provider);
+                    const brlaC = new ethers.Contract(TOKENS.BRLA.address, erc20ABI, provider);
 
-                    const [bWpol, bUsdt, bBrz, bBrla] = await withTimeout(Promise.all([
+                    const [bPolNative, bWpol, bUsdt, bBrz, bBrla] = await withTimeout(Promise.all([
+                        provider.getBalance(appState.wallet),
                         wpolC.balanceOf(appState.wallet),
                         usdtC.balanceOf(appState.wallet),
                         brzC.balanceOf(appState.wallet),
@@ -1211,16 +2287,19 @@
                     ]), 4500);
 
                     walletBalances = {
+                        pol: parseFloat(ethers.utils.formatUnits(bPolNative, 18)),
                         wpol: parseFloat(ethers.utils.formatUnits(bWpol, 18)),
                         usdt0: parseFloat(ethers.utils.formatUnits(bUsdt, 6)),
                         brz: parseFloat(ethers.utils.formatUnits(bBrz, 18)),
                         brla: parseFloat(ethers.utils.formatUnits(bBrla, 18))
                     };
 
+                    document.getElementById('bal-pol').textContent = walletBalances.pol.toFixed(2);
                     document.getElementById('bal-wpol').textContent = walletBalances.wpol.toFixed(2);
                     document.getElementById('bal-usdt0').textContent = walletBalances.usdt0.toFixed(2);
                     document.getElementById('bal-brz').textContent = walletBalances.brz.toFixed(2);
                     document.getElementById('bal-brla').textContent = walletBalances.brla.toFixed(2);
+                    updateSwapBalanceLabels();
 
                     if (appState.web3Positions.length > 0) {
                         const [slot0, fg0, fg1] = await withTimeout(Promise.all([
@@ -1233,6 +2312,7 @@
                         appState.web3Positions.forEach(p => {
                             if (p.tickLower !== undefined) uniqueTicks.add(p.tickLower);
                             if (p.tickUpper !== undefined) uniqueTicks.add(p.tickUpper);
+                            autoDetectPositionOpeningCost(p, provider);
                         });
 
                         const ticksMap = {};
@@ -1259,8 +2339,9 @@
                         });
 
                         totalUnclaimedFeesUsd = totalFeesUsd;
-                        document.getElementById('fees-total-usd').textContent = `$ ${totalFeesUsd.toFixed(4)}`;
-                        document.getElementById('fees-total-brl').textContent = `R$ ${(totalFeesUsd * usdBrlRate).toFixed(4)}`;
+                        const motherRate = getMotherRate();
+                        document.getElementById('fees-total-brz').textContent = `${(totalFeesUsd * motherRate).toFixed(4)} BRZ`;
+                        document.getElementById('fees-total-usd').textContent = `$ ${totalFeesUsd.toFixed(4)} | R$ ${(totalFeesUsd * usdBrlCommercial).toFixed(4)}`;
                         renderAllPositions();
                     }
                     return;
@@ -1381,7 +2462,7 @@
             for (let i = 0; i < POLYGON_RPCS.length; i++) {
                 const rpcUrl = POLYGON_RPCS[i];
                 try {
-                    routeStatusEl.textContent = `ROTA 1.${i+1} (RPC)...`;
+                    routeStatusEl.textContent = `ROTA 1.${i+1}...`;
                     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
                     const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, provider);
 
@@ -1425,7 +2506,7 @@
         }
 
         async function fetchViaRawJsonRpc(address) {
-            routeStatusEl.textContent = 'ROTA 2 (HEX RAW)...';
+            routeStatusEl.textContent = 'ROTA 2 (RAW)...';
             const cleanAddr = address.replace('0x', '').padStart(64, '0');
             const res = await withTimeout(fetch('https://polygon-bor-rpc.publicnode.com', {
                 method: 'POST',
@@ -1484,12 +2565,12 @@
                     });
                 }
             }
-            routeStatusEl.textContent = 'OK (ROTA 2 RAW)';
+            routeStatusEl.textContent = 'OK (ROTA 2)';
             return found;
         }
 
         async function fetchViaSubgraph(address) {
-            routeStatusEl.textContent = 'ROTA 3 (SUBGRAPH)...';
+            routeStatusEl.textContent = 'ROTA 3 (GRAPH)...';
             const query = `{
                 positions(where: { owner: "${address}", pool: "${POOL_ADDRESS}", liquidity_gt: "0" }) {
                     id
@@ -1547,7 +2628,7 @@
                     try {
                         scannedPositions = await fetchViaSubgraph(address);
                     } catch (e3) {
-                        routeStatusEl.textContent = 'OFFLINE (USANDO BACKUP)';
+                        routeStatusEl.textContent = 'OFFLINE (BACKUP)';
                         routeStatusEl.style.color = 'var(--warning-yellow)';
                     }
                 }
@@ -1561,6 +2642,7 @@
                 saveTripleBackup();
             }
 
+            syncPnlInputsWithFocused();
             renderAllPositions();
             await refreshLivePoolFeesAndBalances();
             btnScan.textContent = 'SCAN';
@@ -1583,6 +2665,7 @@
             appState.manualPositions.push({ id, min, max, label, source: 'manual' });
             appState.focusedId = id;
             saveTripleBackup();
+            syncPnlInputsWithFocused();
             renderAllPositions();
         }
 
@@ -1611,11 +2694,12 @@
                 appState.focusedId = remaining.length > 0 ? remaining[0].id : null;
             }
             saveTripleBackup();
+            syncPnlInputsWithFocused();
             renderAllPositions();
         }
 
         // =========================================================================
-        // RENDERIZAÇÃO SEGURA (DOM API)
+        // RENDERIZAÇÃO SEGURA DOS CARDS DE POSIÇÃO (COM COLHER & WITHDRAW)
         // =========================================================================
         function getAllPositions() {
             return [...appState.web3Positions, ...appState.manualPositions];
@@ -1635,7 +2719,7 @@
 
             if (all.length === 0) {
                 const emptyDiv = document.createElement('div');
-                emptyDiv.style.cssText = 'color:#555; font-size:0.66rem; text-align:center; padding:6px;';
+                emptyDiv.style.cssText = 'color:#555; font-size:0.65rem; text-align:center; padding:6px;';
                 emptyDiv.textContent = 'Nenhuma faixa ativa. Escaneie ou adicione manual.';
                 listEl.appendChild(emptyDiv);
                 document.getElementById('focused-label').textContent = 'FOCO: NENHUMA POSIÇÃO';
@@ -1647,6 +2731,7 @@
             }
 
             const palette = ['#00ff88', '#00d4ff', '#cda434', '#ff7b00', '#b565ff'];
+            const motherRate = getMotherRate();
 
             all.forEach((pos, idx) => {
                 const color = palette[idx % palette.length];
@@ -1658,13 +2743,16 @@
                 item.className = 'pos-item' + (isFocused ? ' focused-pos' : '');
                 item.style.borderLeftColor = color;
 
+                const topRow = document.createElement('div');
+                topRow.className = 'pos-top-row';
+
                 const meta = document.createElement('div');
                 meta.className = 'pos-meta';
 
                 const titleLine = document.createElement('span');
                 titleLine.style.color = color;
                 titleLine.style.fontWeight = '700';
-                const feeTag = pos.source === 'web3' ? ` | +R$${(pos.liveFeesUsd * usdBrlRate).toFixed(3)}` : '';
+                const feeTag = pos.source === 'web3' ? ` | +${(pos.liveFeesUsd * motherRate).toFixed(3)} BRZ` : '';
                 titleLine.textContent = `[${badge}] ${pos.label} (${widthPct}%)${feeTag}`;
 
                 const rangeLine = document.createElement('span');
@@ -1676,16 +2764,38 @@
 
                 const delBtn = document.createElement('button');
                 delBtn.className = 'pos-del';
-                delBtn.title = 'Remover faixa';
+                delBtn.title = 'Ocultar faixa';
                 delBtn.textContent = '✕';
                 delBtn.addEventListener('click', (ev) => removePosition(pos.id, ev));
 
-                item.appendChild(meta);
-                item.appendChild(delBtn);
+                topRow.append(meta, delBtn);
+                item.appendChild(topRow);
+
+                // Botões On-Chain para posições Web3 (Colher Tarifas + Withdraw Total)
+                if (pos.source === 'web3' && pos.tokenId) {
+                    const actionsRow = document.createElement('div');
+                    actionsRow.className = 'pos-actions-row';
+
+                    const collectBtn = document.createElement('button');
+                    collectBtn.className = 'btn-nft-collect';
+                    collectBtn.textContent = 'COLHER TARIFAS';
+                    collectBtn.title = 'Assina collect() na Rabby Wallet e envia tarifas para sua carteira';
+                    collectBtn.addEventListener('click', (ev) => executeCollectFeesOnChain(pos.tokenId, ev));
+
+                    const withdrawBtn = document.createElement('button');
+                    withdrawBtn.className = 'btn-nft-withdraw';
+                    withdrawBtn.textContent = 'WITHDRAW 100%';
+                    withdrawBtn.title = 'Fecha a posição (decreaseLiquidity + collect) e devolve tudo na Rabby Wallet';
+                    withdrawBtn.addEventListener('click', (ev) => executeWithdrawPositionOnChain(pos.tokenId, ev));
+
+                    actionsRow.append(collectBtn, withdrawBtn);
+                    item.appendChild(actionsRow);
+                }
 
                 item.addEventListener('click', () => {
                     appState.focusedId = pos.id;
                     saveTripleBackup();
+                    syncPnlInputsWithFocused();
                     renderAllPositions();
                 });
 
@@ -1724,6 +2834,7 @@
             const min = focused.min;
             const max = focused.max;
             const price = currentPriceGlobal;
+            const motherRate = getMotherRate();
 
             const sqrtP = Math.sqrt(price);
             const sqrtA = Math.sqrt(min);
@@ -1764,13 +2875,19 @@
                 const humanUsdt = raw1 / 1e6;
                 const totalUsd = (humanPol * price) + humanUsdt;
 
-                document.getElementById('wallet-total-usd').textContent = `$ ${totalUsd.toFixed(2)}`;
-                document.getElementById('wallet-total-brl').textContent = `R$ ${(totalUsd * usdBrlRate).toFixed(2)}`;
+                focusedPositionTotalUsd = totalUsd;
+                focusedPositionFeesUsd = focused.liveFeesUsd || 0;
+
+                document.getElementById('wallet-total-brz').textContent = `${(totalUsd * motherRate).toFixed(2)} BRZ`;
+                document.getElementById('wallet-total-usd').textContent = `$ ${totalUsd.toFixed(2)} | R$ ${(totalUsd * usdBrlCommercial).toFixed(2)}`;
             } else {
-                document.getElementById('wallet-total-usd').textContent = `FAIXA MANUAL`;
-                document.getElementById('wallet-total-brl').textContent = `${min.toFixed(5)} <> ${max.toFixed(5)}`;
+                focusedPositionTotalUsd = 0;
+                focusedPositionFeesUsd = 0;
+                document.getElementById('wallet-total-brz').textContent = `FAIXA MANUAL`;
+                document.getElementById('wallet-total-usd').textContent = `${min.toFixed(5)} <> ${max.toFixed(5)}`;
             }
 
+            recalculateRealPnL();
             evaluateRiskAlert(price, min, max);
         }
 
@@ -1931,13 +3048,14 @@
                 lastPriceGlobal = newPrice;
                 currentPriceGlobal = newPrice;
                 priceGlobalEl.textContent = currentPriceGlobal.toFixed(6);
-                if (usdBrlRate > 0) {
-                    document.getElementById('macro-pol-brl').textContent = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
-                }
+
+                document.getElementById('macro-pol-brz').textContent = `${(currentPriceGlobal * getMotherRate()).toFixed(4)} BRZ`;
+                document.getElementById('macro-pol-brl').textContent = `R$ ${(currentPriceGlobal * usdBrlCommercial).toFixed(4)}`;
+
                 updateLiveCandle(currentPriceGlobal);
                 recalculateLiveSniperBounds();
                 updateFocusedMetrics();
-                recalculatePixReceipt();
+                recalculatePixRanking();
             };
             ws.onclose = () => setTimeout(initGlobalTracker, 3000);
         }
@@ -1962,7 +3080,7 @@
                         const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
                         const isBuy = amount0 < 0;
                         const polVal = Math.abs(amount0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-                        const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+                        const brzVal = (Math.abs(amount1) * getMotherRate()).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
                         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
 
                         const row = document.createElement('div');
@@ -1970,7 +3088,7 @@
 
                         const c1 = document.createElement('div'); c1.textContent = time;
                         const c2 = document.createElement('div'); c2.className = isBuy ? 'type-buy' : 'type-sell'; c2.textContent = isBuy ? 'COMPRA' : 'VENDA';
-                        const c3 = document.createElement('div'); c3.textContent = brlVal;
+                        const c3 = document.createElement('div'); c3.textContent = `${brzVal} BRZ`;
                         const c4 = document.createElement('div'); c4.textContent = `${polVal} P`;
 
                         row.append(c1, c2, c3, c4);
@@ -1980,15 +3098,6 @@
                 }
             };
             wsPool.onclose = () => setTimeout(initPolygonScanner, 3500);
-        }
-
-        async function fetchMacroData() {
-            try {
-                const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
-                usdBrlRate = parseFloat((await res.json()).USDBRL.ask);
-                document.getElementById('macro-usd').textContent = `R$ ${usdBrlRate.toFixed(4)}`;
-                recalculatePixReceipt();
-            } catch (e) {}
         }
 
         document.getElementById('btn-audio').addEventListener('click', async () => {
@@ -2036,7 +3145,7 @@
                 if (activeResizer === 1) {
                     leftCol.style.width = Math.max(110, Math.min(340, e.clientX - 8)) + 'px';
                 } else if (activeResizer === 2) {
-                    rightCol.style.width = Math.max(260, Math.min(540, window.innerWidth - e.clientX - 8)) + 'px';
+                    rightCol.style.width = Math.max(280, Math.min(560, window.innerWidth - e.clientX - 8)) + 'px';
                 }
             });
 
@@ -2057,17 +3166,24 @@
                 document.getElementById('wallet-address').value = appState.wallet;
             }
 
+            syncPnlInputsWithFocused();
             initTradingViewChart();
             renderAllPositions();
+            refreshMotherCurrencyOracle();
+            setInterval(refreshMotherCurrencyOracle, 25000);
             refreshSniperModel15m();
             setInterval(refreshSniperModel15m, 15000);
             buildVariationsPanel();
             setInterval(buildVariationsPanel, 60000);
             initGlobalTracker();
             initPolygonScanner();
-            fetchMacroData();
-            setInterval(fetchMacroData, 30000);
-            recalculatePixReceipt();
+            recalculatePixRanking();
+            refreshSwapQuote();
+            setInterval(() => {
+                if (document.getElementById('view-swap').classList.contains('active')) {
+                    refreshSwapQuote();
+                }
+            }, 8000);
 
             if (appState.wallet) {
                 await runUnstoppableScan();
