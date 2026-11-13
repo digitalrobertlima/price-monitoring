@@ -10,6 +10,8 @@
 
 O **RDESK SENTINEL** é um terminal tático em tempo real para acompanhar cotações cripto, gerenciar posições de liquidez concentrada (**POL/USDT0 — 0.05%**) na **Uniswap V3 (Rede Polygon)** e calcular lucros líquidos reais em moeda brasileira (**BRZ, BRLA e BRL**) — rodando 100% no seu navegador, sem servidores intermediários e sem necessidade de instalar programas.
 
+>> https://digitalrobertlima.github.io/price-monitoring/
+
 ---
 
 ## 🧭 Sumário
