@@ -1,20 +1,20 @@
 const SYMBOL = 'POLUSDT';
 const POOL_ADDRESS = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
-const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
 const POOL_FEE_TIER = 500;      // 0.05%
 const POOL_TICK_SPACING = 10;   // Tick spacing oficial para fee 500
 const GAS_RESERVE_POL = 1.5;    // Reserva obrigatória de gás na carteira
 
-// Contratos oficiais auditados na Polygon (Whitelist de segurança)
-const ODOS_ROUTER_POLYGON = '0x4e3288c9ca110bcc82bf38f09a7b425c095d92bf';
-const PARASWAP_ROUTER_POLYGON = '0xdef171fe48cf0115f1d80b88dc8eab59176fee57';
+// Contratos Oficiais Uniswap V3 na Polygon Mainnet (Chain ID 137)
+const UNISWAP_SWAP_ROUTER_02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45';
+const UNISWAP_QUOTER_V2      = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e';
+const NFPM_ADDRESS           = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
 
 const TOKENS = {
-    POL:   { symbol: 'POL',   address: '0x0000000000000000000000000000000000000000', pspAddress: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', decimals: 18, isNative: true },
-    WPOL:  { symbol: 'WPOL',  address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', pspAddress: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18, isNative: false },
-    USDT0: { symbol: 'USDT0', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', pspAddress: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6,  isNative: false },
-    BRZ:   { symbol: 'BRZ',   address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', pspAddress: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, isNative: false },
-    BRLA:  { symbol: 'BRLA',  address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', pspAddress: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, isNative: false }
+    POL:   { symbol: 'POL',   address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
+    WPOL:  { symbol: 'WPOL',  address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18, isNative: false },
+    USDT0: { symbol: 'USDT0', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6,  isNative: false },
+    BRZ:   { symbol: 'BRZ',   address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, isNative: false },
+    BRLA:  { symbol: 'BRLA',  address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, isNative: false }
 };
 
 const POL_ADDRESS = TOKENS.WPOL.address.toLowerCase();
@@ -26,6 +26,8 @@ const POLYGON_RPCS = [
     'https://polygon.drpc.org',
     'https://polygon-rpc.com'
 ];
+
+const UNISWAP_FEES = [500, 3000, 10000, 100];
 
 const Q128 = ethers.BigNumber.from(2).pow(128);
 const MAX_UINT256 = ethers.constants.MaxUint256;
@@ -91,11 +93,23 @@ const VAR_INTERVALS = [
 ];
 
 // =========================================================================
-// MATEMÁTICA UNISWAP V3 (TICKS & PREÇOS EXATOS PARA POOL WPOL/USDT0)
+// UTILITÁRIOS RPC & MATEMÁTICA UNISWAP V3
 // =========================================================================
+function withTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout RPC')), ms))
+    ]);
+}
+
+function getReadProvider() {
+    if (window.ethereum && connectedSignerAddress) {
+        return new ethers.providers.Web3Provider(window.ethereum);
+    }
+    return new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+}
+
 function humanPriceToAlignedTick(humanPrice, isToken0Pol, roundUp) {
-    // Na pool Polygon: token0 = WPOL (18 dec), token1 = USDT0 (6 dec)
-    // rawPrice = (token1 / token0) = humanPrice * 10^(6 - 18) = humanPrice * 1e-12
     const rawPrice = isToken0Pol ? (humanPrice * 1e-12) : ((1 / humanPrice) * 1e12);
     const exactTick = Math.log(rawPrice) / Math.log(1.0001);
     const aligned = roundUp
@@ -122,15 +136,190 @@ function getMotherRate() {
     return usdtToBrzRate > 0 ? usdtToBrzRate : usdBrlCommercial;
 }
 
-function withTimeout(promise, ms) {
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout RPC')), ms))
-    ]);
+// =========================================================================
+// COTAÇÃO ON-CHAIN DIRETA NO QUOTERV2 DA UNISWAP V3 (SEM API EXTERNA)
+// =========================================================================
+async function quoteUniswapV3OnChain(symIn, symOut, amountWei) {
+    const provider = getReadProvider();
+
+    // Caso 1: Wrap ou Unwrap nativo 1:1 (POL <-> WPOL)
+    if ((symIn === 'POL' && symOut === 'WPOL') || (symIn === 'WPOL' && symOut === 'POL')) {
+        return {
+            mode: 'WRAP_UNWRAP',
+            amountOutWei: amountWei,
+            feeTier: 0,
+            viaUsdt: false
+        };
+    }
+
+    const tokenInAddr = symIn === 'POL' ? TOKENS.WPOL.address : TOKENS[symIn].address;
+    const tokenOutAddr = symOut === 'POL' ? TOKENS.WPOL.address : TOKENS[symOut].address;
+
+    const quoterAbi = [
+        "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) params) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+        "function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)"
+    ];
+    const quoter = new ethers.Contract(UNISWAP_QUOTER_V2, quoterAbi, provider);
+
+    // Tenta rota direta nas pools Uniswap V3 (priorizando 0.05%)
+    let bestDirect = null;
+    for (const fee of UNISWAP_FEES) {
+        try {
+            const res = await withTimeout(quoter.callStatic.quoteExactInputSingle({
+                tokenIn: tokenInAddr,
+                tokenOut: tokenOutAddr,
+                amountIn: amountWei,
+                fee: fee,
+                sqrtPriceLimitX96: 0
+            }), 4000);
+            if (res && res.amountOut && res.amountOut.gt(0)) {
+                if (!bestDirect || res.amountOut.gt(bestDirect.amountOutWei)) {
+                    bestDirect = {
+                        mode: 'SINGLE',
+                        amountOutWei: res.amountOut,
+                        feeTier: fee,
+                        viaUsdt: false
+                    };
+                }
+            }
+        } catch (e) {}
+    }
+
+    if (bestDirect) return bestDirect;
+
+    // Caso 2: Rota Multi-Hop via USDT0 (ex.: BRZ -> USDT0 -> WPOL)
+    if (tokenInAddr.toLowerCase() !== USDT_ADDRESS && tokenOutAddr.toLowerCase() !== USDT_ADDRESS) {
+        const candidatePairs = [
+            [3000, 500],
+            [500, 500],
+            [10000, 500],
+            [3000, 3000]
+        ];
+        for (const [fee1, fee2] of candidatePairs) {
+            try {
+                const encodedPath = ethers.utils.solidityPack(
+                    ['address', 'uint24', 'address', 'uint24', 'address'],
+                    [tokenInAddr, fee1, TOKENS.USDT0.address, fee2, tokenOutAddr]
+                );
+                const res = await withTimeout(quoter.callStatic.quoteExactInput(encodedPath, amountWei), 4500);
+                if (res && res.amountOut && res.amountOut.gt(0)) {
+                    return {
+                        mode: 'MULTIHOP',
+                        amountOutWei: res.amountOut,
+                        pathBytes: encodedPath,
+                        feeTier: `${fee1}/${fee2}`,
+                        viaUsdt: true
+                    };
+                }
+            } catch (e) {}
+        }
+    }
+
+    throw new Error('Sem pool Uniswap V3 ativa para este par.');
 }
 
 // =========================================================================
-// ORÁCULO MOEDA MÃE (BRZ & BRLA ON-CHAIN VS BRL COMERCIAL & BINANCE)
+// EXECUÇÃO ON-CHAIN NO SWAPROUTER02 OFICIAL DA UNISWAP V3
+// =========================================================================
+async function executeUniswapV3Swap(symIn, symOut, amountWei, quoteObj, signer, onStatus) {
+    // 1. Wrap / Unwrap nativo (1:1 sem taxa de DEX)
+    if (quoteObj.mode === 'WRAP_UNWRAP') {
+        const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
+            "function deposit() payable",
+            "function withdraw(uint256 wad)"
+        ], signer);
+
+        if (symIn === 'POL') {
+            if (onStatus) onStatus('Assine na Rabby: converter POL → WPOL (1:1)...');
+            const tx = await wpolC.deposit({ value: amountWei });
+            await tx.wait();
+            return tx;
+        } else {
+            if (onStatus) onStatus('Assine na Rabby: converter WPOL → POL (1:1)...');
+            const tx = await wpolC.withdraw(amountWei);
+            await tx.wait();
+            return tx;
+        }
+    }
+
+    const tokIn = TOKENS[symIn];
+    const tokenInAddr = tokIn.isNative ? TOKENS.WPOL.address : tokIn.address;
+    const tokenOutAddr = symOut === 'POL' ? TOKENS.WPOL.address : TOKENS[symOut].address;
+
+    // 2. Aprovação ERC-20 para o SwapRouter02 Oficial da Uniswap V3
+    if (!tokIn.isNative) {
+        const erc20 = new ethers.Contract(tokIn.address, [
+            "function allowance(address, address) view returns (uint256)",
+            "function approve(address spender, uint256 amount) returns (bool)"
+        ], signer);
+        const allow = await erc20.allowance(connectedSignerAddress, UNISWAP_SWAP_ROUTER_02);
+        if (allow.lt(amountWei)) {
+            if (onStatus) onStatus(`Assine na Rabby: aprovar ${symIn} na Uniswap V3...`);
+            const appTx = await erc20.approve(UNISWAP_SWAP_ROUTER_02, MAX_UINT256);
+            await appTx.wait();
+        }
+    }
+
+    // 3. Executa Swap no SwapRouter02 (com 1% de proteção contra slippage)
+    const minOut = quoteObj.amountOutWei.mul(990).div(1000);
+    const routerAbi = [
+        "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)",
+        "function exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum) params) payable returns (uint256 amountOut)",
+        "function unwrapWETH9(uint256 amountMinimum, address recipient) payable",
+        "function multicall(bytes[] data) payable returns (bytes[] results)"
+    ];
+    const router = new ethers.Contract(UNISWAP_SWAP_ROUTER_02, routerAbi, signer);
+    const txOverrides = tokIn.isNative ? { value: amountWei } : {};
+    const recipient = symOut === 'POL' ? UNISWAP_SWAP_ROUTER_02 : connectedSignerAddress;
+
+    if (onStatus) onStatus(`Confirme a troca ${symIn} → ${symOut} na Rabby Wallet...`);
+
+    if (quoteObj.mode === 'SINGLE') {
+        const swapParams = {
+            tokenIn: tokenInAddr,
+            tokenOut: tokenOutAddr,
+            fee: quoteObj.feeTier,
+            recipient: recipient,
+            amountIn: amountWei,
+            amountOutMinimum: minOut,
+            sqrtPriceLimitX96: 0
+        };
+
+        if (symOut === 'POL') {
+            const d1 = router.interface.encodeFunctionData('exactInputSingle', [swapParams]);
+            const d2 = router.interface.encodeFunctionData('unwrapWETH9', [minOut, connectedSignerAddress]);
+            const tx = await router.multicall([d1, d2], txOverrides);
+            await tx.wait();
+            return tx;
+        } else {
+            const tx = await router.exactInputSingle(swapParams, txOverrides);
+            await tx.wait();
+            return tx;
+        }
+    } else {
+        const multiParams = {
+            path: quoteObj.pathBytes,
+            recipient: recipient,
+            amountIn: amountWei,
+            amountOutMinimum: minOut
+        };
+
+        if (symOut === 'POL') {
+            const d1 = router.interface.encodeFunctionData('exactInput', [multiParams]);
+            const d2 = router.interface.encodeFunctionData('unwrapWETH9', [minOut, connectedSignerAddress]);
+            const tx = await router.multicall([d1, d2], txOverrides);
+            await tx.wait();
+            return tx;
+        } else {
+            const tx = await router.exactInput(multiParams, txOverrides);
+            await tx.wait();
+            return tx;
+        }
+    }
+}
+
+// =========================================================================
+// ORÁCULO MOEDA MÃE (BRZ & BRLA ON-CHAIN VIA UNISWAP QUOTER + BRL REAL)
 // =========================================================================
 async function refreshMotherCurrencyOracle() {
     try {
@@ -150,39 +339,18 @@ async function refreshMotherCurrencyOracle() {
     } catch (e) {}
 
     try {
+        const oneHundredUsdt = ethers.utils.parseUnits('100', 6);
         const [qBrz, qBrla] = await Promise.all([
-            fetch('https://api.odos.xyz/sor/quote/v2', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chainId: 137,
-                    inputTokens: [{ tokenAddress: TOKENS.USDT0.address, amount: '100000000' }],
-                    outputTokens: [{ tokenAddress: TOKENS.BRZ.address, proportion: 1 }],
-                    slippageLimitPercent: 0.5,
-                    disableRFQs: true,
-                    compact: true
-                })
-            }).then(r => r.json()).catch(() => null),
-            fetch('https://api.odos.xyz/sor/quote/v2', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chainId: 137,
-                    inputTokens: [{ tokenAddress: TOKENS.USDT0.address, amount: '100000000' }],
-                    outputTokens: [{ tokenAddress: TOKENS.BRLA.address, proportion: 1 }],
-                    slippageLimitPercent: 0.5,
-                    disableRFQs: true,
-                    compact: true
-                })
-            }).then(r => r.json()).catch(() => null)
+            quoteUniswapV3OnChain('USDT0', 'BRZ', oneHundredUsdt).catch(() => null),
+            quoteUniswapV3OnChain('USDT0', 'BRLA', oneHundredUsdt).catch(() => null)
         ]);
 
-        usdtToBrzRate = qBrz?.outAmounts?.[0]
-            ? parseFloat(ethers.utils.formatUnits(qBrz.outAmounts[0], 18)) / 100
+        usdtToBrzRate = qBrz?.amountOutWei
+            ? parseFloat(ethers.utils.formatUnits(qBrz.amountOutWei, 18)) / 100
             : usdBrlCommercial;
 
-        usdtToBrlaRate = qBrla?.outAmounts?.[0]
-            ? parseFloat(ethers.utils.formatUnits(qBrla.outAmounts[0], 18)) / 100
+        usdtToBrlaRate = qBrla?.amountOutWei
+            ? parseFloat(ethers.utils.formatUnits(qBrla.amountOutWei, 18)) / 100
             : usdBrlCommercial;
     } catch (e) {
         usdtToBrzRate = usdBrlCommercial;
@@ -269,7 +437,7 @@ if (window.ethereum) {
 }
 
 // =========================================================================
-// MOTOR DO PILOTO AUTOMÁTICO (ANÁLISE + BALANCEAMENTO + MINT UNISWAP V3)
+// PILOTO AUTOMÁTICO 100% UNISWAP V3 (AUDITORIA + BALANCEAMENTO + MINT)
 // =========================================================================
 function recomputeAutoPilotPlan() {
     const capEl = document.getElementById('ap-available-capital');
@@ -280,7 +448,7 @@ function recomputeAutoPilotPlan() {
 
     if (!connectedSignerAddress && !appState.wallet) {
         capEl.textContent = 'Capital Livre: 0.00 BRZ';
-        summaryEl.textContent = 'Conecte sua Rabby Wallet para calcular o plano de liquidez ideal com reserva de gás (1.5 POL).';
+        summaryEl.textContent = 'Conecte sua Rabby Wallet para calcular o plano de liquidez 100% Uniswap V3 com reserva de gás (1.5 POL).';
         if (!isAutoPilotRunning) btnEl.textContent = 'CONECTAR RABBY & COMEÇAR A GANHAR';
         autoPilotPlan = null;
         return;
@@ -289,7 +457,6 @@ function recomputeAutoPilotPlan() {
     const price = currentPriceGlobal > 0 ? currentPriceGlobal : 0.087;
     const motherRate = getMotherRate();
 
-    // Capital livre descontando reserva obrigatória de 1.5 POL para gás
     const usablePol = Math.max(0, walletBalances.pol - GAS_RESERVE_POL);
     const valPolUsd = usablePol * price;
     const valWpolUsd = walletBalances.wpol * price;
@@ -303,12 +470,11 @@ function recomputeAutoPilotPlan() {
     capEl.textContent = `Capital Livre: ${totalDeployableBrz.toFixed(2)} BRZ ($${totalDeployableUsd.toFixed(2)})`;
 
     if (totalDeployableUsd < 1.0) {
-        summaryEl.textContent = `Saldo livre insuficiente ($${totalDeployableUsd.toFixed(2)}). Mantenha pelo menos 1.5 POL para gás + capital em USDT0, WPOL, BRZ ou BRLA.`;
+        summaryEl.textContent = `Saldo livre insuficiente ($${totalDeployableUsd.toFixed(2)}). Mantenha pelo menos 1.5 POL para gás + capital em USDT0, WPOL, POL, BRZ ou BRLA.`;
         autoPilotPlan = null;
         return;
     }
 
-    // Define faixa Sniper Pro alinhada ao tickSpacing = 10
     const rawMin = sniperTelemetry.min > 0 ? sniperTelemetry.min : price * 0.96;
     const rawMax = sniperTelemetry.max > 0 ? sniperTelemetry.max : price * 1.04;
 
@@ -320,7 +486,6 @@ function recomputeAutoPilotPlan() {
     const pMin = alignedPrices.min;
     const pMax = alignedPrices.max;
 
-    // Proporção ideal de USDT0 vs WPOL para a faixa escolhida
     const sqrtP = Math.sqrt(price);
     const sqrtA = Math.sqrt(pMin);
     const sqrtB = Math.sqrt(pMax);
@@ -340,32 +505,28 @@ function recomputeAutoPilotPlan() {
     const targetUsdtUsd = totalDeployableUsd * targetUsdtShare;
     const targetWpolUsd = totalDeployableUsd * targetWpolShare;
 
-    // Identifica necessidade de conversão / balanceamento
+    // Planeja o ajuste via Uniswap V3 Router Oficial
     let swapAction = null;
     if (valBrzUsd > 0.5) {
-        swapAction = { type: 'ODOS_SWAP', fromSym: 'BRZ', toSym: targetUsdtShare >= 0.5 ? 'USDT0' : 'WPOL', amountFloat: walletBalances.brz };
+        swapAction = { fromSym: 'BRZ', toSym: targetUsdtShare >= 0.5 ? 'USDT0' : 'WPOL', amountFloat: walletBalances.brz };
     } else if (valBrlaUsd > 0.5) {
-        swapAction = { type: 'ODOS_SWAP', fromSym: 'BRLA', toSym: targetUsdtShare >= 0.5 ? 'USDT0' : 'WPOL', amountFloat: walletBalances.brla };
+        swapAction = { fromSym: 'BRLA', toSym: targetUsdtShare >= 0.5 ? 'USDT0' : 'WPOL', amountFloat: walletBalances.brla };
     } else if (valPolUsd > 1.0 && (valWpolUsd + valPolUsd) > targetWpolUsd + 0.5) {
-        // Converte excesso de POL nativo direto para USDT0
         const excessPolUsd = (valPolUsd + valWpolUsd) - targetWpolUsd;
         const polToSell = Math.min(usablePol, excessPolUsd / price);
         if (polToSell > 1) {
-            swapAction = { type: 'ODOS_SWAP', fromSym: 'POL', toSym: 'USDT0', amountFloat: polToSell };
+            swapAction = { fromSym: 'POL', toSym: 'USDT0', amountFloat: polToSell };
         }
     } else if (valUsdtUsd > targetUsdtUsd + 0.6) {
-        // Excesso de USDT0 -> compra WPOL
         const usdtToSell = Math.min(walletBalances.usdt0, valUsdtUsd - targetUsdtUsd);
-        swapAction = { type: 'ODOS_SWAP', fromSym: 'USDT0', toSym: 'WPOL', amountFloat: usdtToSell };
+        swapAction = { fromSym: 'USDT0', toSym: 'WPOL', amountFloat: usdtToSell };
     } else if (valWpolUsd > targetWpolUsd + 0.6) {
-        // Excesso de WPOL -> compra USDT0
         const wpolToSell = Math.min(walletBalances.wpol, (valWpolUsd - targetWpolUsd) / price);
-        swapAction = { type: 'ODOS_SWAP', fromSym: 'WPOL', toSym: 'USDT0', amountFloat: wpolToSell };
+        swapAction = { fromSym: 'WPOL', toSym: 'USDT0', amountFloat: wpolToSell };
     } else if (valPolUsd > 1.0 && valWpolUsd < targetWpolUsd * 0.7) {
-        // Faz wrap de POL -> WPOL para completar a perna WPOL
         const polToWrap = Math.min(usablePol, (targetWpolUsd - valWpolUsd) / price);
         if (polToWrap > 0.5) {
-            swapAction = { type: 'WRAP_POL', fromSym: 'POL', toSym: 'WPOL', amountFloat: polToWrap };
+            swapAction = { fromSym: 'POL', toSym: 'WPOL', amountFloat: polToWrap };
         }
     }
 
@@ -382,12 +543,12 @@ function recomputeAutoPilotPlan() {
     };
 
     const actionDesc = swapAction
-        ? `Ajuste: ${swapAction.amountFloat.toFixed(2)} ${swapAction.fromSym} → ${swapAction.toSym}`
+        ? `Uniswap Swap: ${swapAction.amountFloat.toFixed(2)} ${swapAction.fromSym} → ${swapAction.toSym}`
         : `Carteira já balanceada (${Math.round(targetWpolShare*100)}% WPOL / ${Math.round(targetUsdtShare*100)}% USDT0)`;
 
     summaryEl.textContent = `Faixa Sniper: ${pMin.toFixed(5)} ↔ ${pMax.toFixed(5)} | ${actionDesc}`;
     if (!isAutoPilotRunning) {
-        btnEl.textContent = 'COMEÇAR A GANHAR (AUTO-SETUP)';
+        btnEl.textContent = 'COMEÇAR A GANHAR (UNISWAP V3)';
     }
 }
 
@@ -405,64 +566,6 @@ function setAutoPilotStepUI(activeStep, logMessage, isError) {
 
     logEl.style.color = isError ? 'var(--danger-red)' : (activeStep === 4 ? 'var(--success-green)' : 'var(--cyan-accent)');
     logEl.textContent = logMessage;
-}
-
-async function executeOdosAutoSwap(fromSym, toSym, amountFloat, signer) {
-    const tokIn = TOKENS[fromSym];
-    const tokOut = TOKENS[toSym];
-    const amountWei = ethers.utils.parseUnits(amountFloat.toFixed(tokIn.decimals), tokIn.decimals);
-
-    // Aprova token ERC-20 para o roteador Odos se necessário
-    if (!tokIn.isNative) {
-        const erc20 = new ethers.Contract(tokIn.address, [
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
-        const allow = await erc20.allowance(connectedSignerAddress, ODOS_ROUTER_POLYGON);
-        if (allow.lt(amountWei)) {
-            setAutoPilotStepUI(1, `Assine na Rabby: aprovar ${fromSym} para balanceamento...`, false);
-            const appTx = await erc20.approve(ODOS_ROUTER_POLYGON, amountWei);
-            await appTx.wait();
-        }
-    }
-
-    setAutoPilotStepUI(2, `Assine na Rabby: balancear ${amountFloat.toFixed(2)} ${fromSym} → ${toSym}...`, false);
-    const qRes = await fetch('https://api.odos.xyz/sor/quote/v2', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chainId: 137,
-            inputTokens: [{ tokenAddress: tokIn.address, amount: amountWei.toString() }],
-            outputTokens: [{ tokenAddress: tokOut.address, proportion: 1 }],
-            slippageLimitPercent: 0.6,
-            userAddr: connectedSignerAddress,
-            disableRFQs: true,
-            compact: true
-        })
-    });
-    const qJson = await qRes.json();
-    if (!qJson.pathId) throw new Error('Não foi possível cotar rota de balanceamento.');
-
-    const asmRes = await fetch('https://api.odos.xyz/sor/assemble', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            userAddr: connectedSignerAddress,
-            pathId: qJson.pathId,
-            simulate: false
-        })
-    });
-    const asmJson = await asmRes.json();
-    if (!asmJson.transaction || asmJson.transaction.to.toLowerCase() !== ODOS_ROUTER_POLYGON) {
-        throw new Error('Bloqueio de segurança no roteador Odos.');
-    }
-
-    const tx = await signer.sendTransaction({
-        to: asmJson.transaction.to,
-        data: asmJson.transaction.data,
-        value: ethers.BigNumber.from(asmJson.transaction.value || '0')
-    });
-    await tx.wait();
 }
 
 async function runAutoPilotWorkflow() {
@@ -484,29 +587,31 @@ async function runAutoPilotWorkflow() {
     const btn = document.getElementById('btn-start-earning');
     isAutoPilotRunning = true;
     btn.disabled = true;
-    btn.textContent = 'PILOTO AUTOMÁTICO EM EXECUÇÃO...';
+    btn.textContent = 'EXECUTANDO NA UNISWAP V3...';
 
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
 
     try {
-        // ETAPA 1 & 2: Balanceamento automático da carteira
+        // ETAPA 1 & 2: Balanceamento 100% on-chain via Uniswap V3 SwapRouter02
         if (autoPilotPlan.swapAction) {
             const act = autoPilotPlan.swapAction;
-            if (act.type === 'WRAP_POL') {
-                setAutoPilotStepUI(2, `Assine na Rabby: converter ${act.amountFloat.toFixed(2)} POL → WPOL...`, false);
-                const wpolContract = new ethers.Contract(TOKENS.WPOL.address, ["function deposit() payable"], signer);
-                const wrapTx = await wpolContract.deposit({ value: ethers.utils.parseEther(act.amountFloat.toFixed(6)) });
-                await wrapTx.wait();
-            } else {
-                await executeOdosAutoSwap(act.fromSym, act.toSym, act.amountFloat, signer);
-            }
+            const tokIn = TOKENS[act.fromSym];
+            const amountWei = ethers.utils.parseUnits(act.amountFloat.toFixed(tokIn.decimals), tokIn.decimals);
+
+            setAutoPilotStepUI(1, `Cotando rota na Uniswap V3 (${act.fromSym} → ${act.toSym})...`, false);
+            const quoteObj = await quoteUniswapV3OnChain(act.fromSym, act.toSym, amountWei);
+
+            await executeUniswapV3Swap(act.fromSym, act.toSym, amountWei, quoteObj, signer, (msg) => {
+                setAutoPilotStepUI(2, msg, false);
+            });
+
             await refreshLivePoolFeesAndBalances();
         } else {
-            setAutoPilotStepUI(1, 'Carteira já balanceada! Verificando permissões...', false);
+            setAutoPilotStepUI(1, 'Carteira já balanceada! Verificando permissões Uniswap V3...', false);
         }
 
-        // Lê saldos exatos pós-balanceamento para montar o mint()
+        // Lê saldos reais pós-balanceamento
         const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
             "function balanceOf(address) view returns (uint256)",
             "function allowance(address, address) view returns (uint256)",
@@ -524,11 +629,11 @@ async function runAutoPilotWorkflow() {
         ]);
 
         if (balWpolBN.isZero() && balUsdtBN.isZero()) {
-            throw new Error('Nenhum saldo de WPOL ou USDT0 disponível após balanceamento.');
+            throw new Error('Nenhum saldo de WPOL ou USDT0 disponível para abrir a pool.');
         }
 
-        // ETAPA 2B: Aprovações para o NonfungiblePositionManager da Uniswap V3
-        setAutoPilotStepUI(2, 'Verificando aprovações Uniswap V3...', false);
+        // Aprovações para o NonfungiblePositionManager Oficial da Uniswap V3
+        setAutoPilotStepUI(2, 'Verificando aprovações do NFT Manager Uniswap V3...', false);
         if (balWpolBN.gt(0)) {
             const allow0 = await wpolC.allowance(connectedSignerAddress, NFPM_ADDRESS);
             if (allow0.lt(balWpolBN)) {
@@ -546,7 +651,7 @@ async function runAutoPilotWorkflow() {
             }
         }
 
-        // ETAPA 3: Emissão da Posição Concentrada (mint)
+        // ETAPA 3: Abertura da Posição Concentrada (mint) na Uniswap V3
         setAutoPilotStepUI(3, 'Assine na Rabby: abrir pool WPOL/USDT0 (0.05%)...', false);
         const nfpmMint = new ethers.Contract(NFPM_ADDRESS, [
             "function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline) params) payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)"
@@ -567,7 +672,7 @@ async function runAutoPilotWorkflow() {
             deadline
         });
 
-        setAutoPilotStepUI(3, `Transação enviada (${mintTx.hash.slice(0, 10)}...) Confirmando na Polygon...`, false);
+        setAutoPilotStepUI(3, `Enviada (${mintTx.hash.slice(0, 10)}...) Confirmando na Polygon...`, false);
         const receipt = await mintTx.wait();
         const gasPaidPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
 
@@ -586,11 +691,11 @@ async function runAutoPilotWorkflow() {
             recalculateRealPnL();
         }
     } catch (err) {
-        setAutoPilotStepUI(1, err.reason || err.message || 'Fluxo interrompido pelo usuário.', true);
+        setAutoPilotStepUI(1, err.reason || err.message || 'Operação cancelada na carteira.', true);
     } finally {
         isAutoPilotRunning = false;
         btn.disabled = false;
-        btn.textContent = 'COMEÇAR A GANHAR (AUTO-SETUP)';
+        btn.textContent = 'COMEÇAR A GANHAR (UNISWAP V3)';
     }
 }
 
@@ -809,7 +914,7 @@ function recalculateRealPnL() {
 });
 
 // =========================================================================
-// NAVEGAÇÃO ENTRE AS 3 ABAS (PILOTO & NFT | SWAP DEX | PIX INTELIGENTE)
+// NAVEGAÇÃO ENTRE AS 3 ABAS & SWAP NATIVO 100% UNISWAP V3
 // =========================================================================
 function switchRightTab(target) {
     ['radar', 'swap', 'pix'].forEach(name => {
@@ -833,7 +938,7 @@ document.querySelectorAll('.tok-badge').forEach(badge => {
         const sym = badge.getAttribute('data-tok');
         document.getElementById('swap-token-in').value = sym;
         if (document.getElementById('swap-token-out').value === sym) {
-            document.getElementById('swap-token-out').value = sym === 'BRZ' ? 'USDT0' : 'BRZ';
+            document.getElementById('swap-token-out').value = sym === 'USDT0' ? 'WPOL' : 'USDT0';
         }
         const bal = walletBalances[sym.toLowerCase()] || 0;
         if (bal > 0) {
@@ -843,9 +948,6 @@ document.querySelectorAll('.tok-badge').forEach(badge => {
     });
 });
 
-// =========================================================================
-// MOTOR DE COTAÇÃO & EXECUÇÃO DEX (ODOS SOR V2 + FALLBACK PARASWAP V5)
-// =========================================================================
 function updateSwapBalanceLabels() {
     const symIn = document.getElementById('swap-token-in').value;
     const symOut = document.getElementById('swap-token-out').value;
@@ -883,12 +985,12 @@ function scheduleSwapQuote() {
     document.getElementById(id).addEventListener('change', () => { updateSwapBalanceLabels(); scheduleSwapQuote(); });
 });
 
-async function checkAllowanceIfNeeded(tokenObj, amountWei, routerAddr) {
+async function checkUniswapAllowanceIfNeeded(tokenObj, amountWei) {
     if (tokenObj.isNative || !connectedSignerAddress) return true;
     try {
-        const provider = new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+        const provider = getReadProvider();
         const erc20 = new ethers.Contract(tokenObj.address, ["function allowance(address, address) view returns (uint256)"], provider);
-        const currentAllowance = await withTimeout(erc20.allowance(connectedSignerAddress, routerAddr), 4000);
+        const currentAllowance = await withTimeout(erc20.allowance(connectedSignerAddress, UNISWAP_SWAP_ROUTER_02), 4000);
         return currentAllowance.gte(amountWei);
     } catch (e) {
         return true;
@@ -920,35 +1022,19 @@ async function refreshSwapQuote() {
     const tokIn = TOKENS[symIn];
     const tokOut = TOKENS[symOut];
     const amountWei = ethers.utils.parseUnits(amtFloat.toFixed(tokIn.decimals), tokIn.decimals);
-    const userAddr = connectedSignerAddress || appState.wallet || '0x000000000000000000000000000000000000dead';
 
-    outInput.value = 'Cotando...';
+    outInput.value = 'Simulando V3...';
 
     try {
-        const res = await withTimeout(fetch('https://api.odos.xyz/sor/quote/v2', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chainId: 137,
-                inputTokens: [{ tokenAddress: tokIn.address, amount: amountWei.toString() }],
-                outputTokens: [{ tokenAddress: tokOut.address, proportion: 1 }],
-                slippageLimitPercent: 0.5,
-                userAddr: userAddr,
-                disableRFQs: true,
-                compact: true
-            })
-        }), 5500);
-
-        if (!res.ok) throw new Error('Odos HTTP ' + res.status);
-        const q = await res.json();
-        if (!q.outAmounts || !q.outAmounts[0]) throw new Error('Sem rota Odos');
-
-        const outFormatted = parseFloat(ethers.utils.formatUnits(q.outAmounts[0], tokOut.decimals));
+        const quoteObj = await quoteUniswapV3OnChain(symIn, symOut, amountWei);
+        const outFormatted = parseFloat(ethers.utils.formatUnits(quoteObj.amountOutWei, tokOut.decimals));
         outInput.value = outFormatted.toFixed(4);
-        document.getElementById('swap-router-tag').textContent = 'ODOS SOR V2';
 
-        const impactPct = q.priceImpact ? Number(q.priceImpact).toFixed(2) : '0.02';
-        document.getElementById('swap-impact').textContent = `${impactPct}% / 0.50%`;
+        const poolLabel = quoteObj.mode === 'WRAP_UNWRAP'
+            ? 'CONTRATO WPOL 1:1'
+            : (quoteObj.viaUsdt ? `UNISWAP V3 (${quoteObj.feeTier})` : `UNISWAP V3 (${(quoteObj.feeTier/10000).toFixed(2)}%)`);
+        document.getElementById('swap-router-tag').textContent = poolLabel;
+        document.getElementById('swap-impact').textContent = quoteObj.mode === 'WRAP_UNWRAP' ? '0.00% (1:1)' : 'Pool Direta / 1.0%';
 
         let brzEq = 0;
         if (symOut === 'BRZ' || symOut === 'BRLA') brzEq = outFormatted;
@@ -956,58 +1042,26 @@ async function refreshSwapQuote() {
         else brzEq = outFormatted * currentPriceGlobal * getMotherRate();
         document.getElementById('swap-brl-eq').textContent = `${brzEq.toFixed(2)} BRZ | R$ ${(brzEq * (usdBrlCommercial / getMotherRate())).toFixed(2)}`;
 
-        const hasAllowance = await checkAllowanceIfNeeded(tokIn, amountWei, ODOS_ROUTER_POLYGON);
+        const hasAllowance = quoteObj.mode === 'WRAP_UNWRAP'
+            ? true
+            : await checkUniswapAllowanceIfNeeded(tokIn, amountWei);
 
         activeSwapQuote = {
-            engine: 'odos',
-            pathId: q.pathId,
+            symIn,
+            symOut,
             tokIn,
             tokOut,
             amountWei,
             outFormatted,
-            routerAddr: ODOS_ROUTER_POLYGON,
+            quoteObj,
             hasAllowance
         };
 
         updateSwapButtonState();
-        return;
-    } catch (odosErr) {
-        try {
-            const url = `https://apiv5.paraswap.io/prices?srcToken=${tokIn.pspAddress}&destToken=${tokOut.pspAddress}&amount=${amountWei.toString()}&srcDecimals=${tokIn.decimals}&destDecimals=${tokOut.decimals}&side=SELL&network=137`;
-            const pRes = await withTimeout(fetch(url), 5500);
-            const pJson = await pRes.json();
-            if (!pJson.priceRoute) throw new Error('Sem rota ParaSwap');
-
-            const outFormatted = parseFloat(ethers.utils.formatUnits(pJson.priceRoute.destAmount, tokOut.decimals));
-            outInput.value = outFormatted.toFixed(4);
-            document.getElementById('swap-router-tag').textContent = 'PARASWAP V5';
-            document.getElementById('swap-impact').textContent = `~0.05% / 0.50%`;
-
-            let brzEq = 0;
-            if (symOut === 'BRZ' || symOut === 'BRLA') brzEq = outFormatted;
-            else if (symOut === 'USDT0') brzEq = outFormatted * getMotherRate();
-            else brzEq = outFormatted * currentPriceGlobal * getMotherRate();
-            document.getElementById('swap-brl-eq').textContent = `${brzEq.toFixed(2)} BRZ`;
-
-            const proxyAddr = (pJson.priceRoute.tokenTransferProxy || PARASWAP_ROUTER_POLYGON).toLowerCase();
-            const hasAllowance = await checkAllowanceIfNeeded(tokIn, amountWei, proxyAddr);
-
-            activeSwapQuote = {
-                engine: 'paraswap',
-                priceRoute: pJson.priceRoute,
-                tokIn,
-                tokOut,
-                amountWei,
-                outFormatted,
-                routerAddr: proxyAddr,
-                hasAllowance
-            };
-            updateSwapButtonState();
-        } catch (pspErr) {
-            outInput.value = 'Sem liquidez';
-            actionBtn.disabled = true;
-            activeSwapQuote = null;
-        }
+    } catch (err) {
+        outInput.value = 'Sem pool V3';
+        actionBtn.disabled = true;
+        activeSwapQuote = null;
     }
 }
 
@@ -1026,10 +1080,10 @@ function updateSwapButtonState() {
     btn.disabled = false;
     if (!activeSwapQuote.hasAllowance) {
         btn.classList.add('needs-approve');
-        btn.textContent = `1. APROVAR ${activeSwapQuote.tokIn.symbol} NO ROTEADOR`;
+        btn.textContent = `1. APROVAR ${activeSwapQuote.symIn} NA UNISWAP V3`;
     } else {
         btn.classList.remove('needs-approve');
-        btn.textContent = `2. EXECUTAR SWAP (${activeSwapQuote.tokIn.symbol} → ${activeSwapQuote.tokOut.symbol})`;
+        btn.textContent = `2. TROCAR NA UNISWAP V3 (${activeSwapQuote.symIn} → ${activeSwapQuote.symOut})`;
     }
 }
 
@@ -1050,87 +1104,43 @@ document.getElementById('btn-exec-swap').addEventListener('click', async () => {
 
         if (!activeSwapQuote.hasAllowance) {
             statusEl.style.color = 'var(--warning-yellow)';
-            statusEl.textContent = `Assine a aprovação de ${activeSwapQuote.tokIn.symbol} na Rabby Wallet...`;
+            statusEl.textContent = `Assine a aprovação de ${activeSwapQuote.symIn} para a Uniswap V3...`;
             const erc20 = new ethers.Contract(
                 activeSwapQuote.tokIn.address,
                 ["function approve(address spender, uint256 amount) returns (bool)"],
                 signer
             );
-            const appTx = await erc20.approve(activeSwapQuote.routerAddr, activeSwapQuote.amountWei);
+            const appTx = await erc20.approve(UNISWAP_SWAP_ROUTER_02, MAX_UINT256);
             statusEl.textContent = 'Aguardando confirmação na Polygon...';
             await appTx.wait();
             activeSwapQuote.hasAllowance = true;
             statusEl.style.color = 'var(--success-green)';
-            statusEl.textContent = 'Token aprovado! Pronto para executar o swap.';
+            statusEl.textContent = 'Aprovado! Clique novamente para trocar na Uniswap V3.';
             updateSwapButtonState();
             return;
         }
 
-        statusEl.style.color = 'var(--cyan-accent)';
-        statusEl.textContent = 'Montando rota segura...';
-
-        let txPayload = null;
-
-        if (activeSwapQuote.engine === 'odos') {
-            const asmRes = await fetch('https://api.odos.xyz/sor/assemble', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userAddr: connectedSignerAddress,
-                    pathId: activeSwapQuote.pathId,
-                    simulate: false
-                })
-            });
-            const asmJson = await asmRes.json();
-            if (!asmJson.transaction) throw new Error('Falha ao montar transação Odos');
-
-            if (asmJson.transaction.to.toLowerCase() !== ODOS_ROUTER_POLYGON) {
-                throw new Error('Bloqueio de segurança: endereço de roteador não reconhecido.');
+        const tx = await executeUniswapV3Swap(
+            activeSwapQuote.symIn,
+            activeSwapQuote.symOut,
+            activeSwapQuote.amountWei,
+            activeSwapQuote.quoteObj,
+            signer,
+            (msg) => {
+                statusEl.style.color = 'var(--cyan-accent)';
+                statusEl.textContent = msg;
             }
-
-            txPayload = {
-                to: asmJson.transaction.to,
-                data: asmJson.transaction.data,
-                value: ethers.BigNumber.from(asmJson.transaction.value || '0')
-            };
-        } else {
-            const pspTxRes = await fetch('https://apiv5.paraswap.io/transactions/137?ignoreChecks=true', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    srcToken: activeSwapQuote.tokIn.pspAddress,
-                    destToken: activeSwapQuote.tokOut.pspAddress,
-                    srcAmount: activeSwapQuote.amountWei.toString(),
-                    priceRoute: activeSwapQuote.priceRoute,
-                    slippage: 50,
-                    userAddress: connectedSignerAddress
-                })
-            });
-            const pspTx = await pspTxRes.json();
-            if (!pspTx.to || pspTx.to.toLowerCase() !== PARASWAP_ROUTER_POLYGON) {
-                throw new Error('Bloqueio de segurança: endereço ParaSwap não reconhecido.');
-            }
-            txPayload = {
-                to: pspTx.to,
-                data: pspTx.data,
-                value: ethers.BigNumber.from(pspTx.value || '0')
-            };
-        }
-
-        statusEl.textContent = 'Confirme a troca na sua Rabby Wallet...';
-        const sentTx = await signer.sendTransaction(txPayload);
-        statusEl.textContent = `Enviada (${sentTx.hash.slice(0, 10)}...) Aguardando bloco...`;
-        await sentTx.wait();
+        );
 
         statusEl.style.color = 'var(--success-green)';
-        statusEl.textContent = `SUCESSO! Hash: ${sentTx.hash.slice(0, 14)}...`;
+        statusEl.textContent = `SUCESSO UNISWAP V3! Hash: ${tx.hash.slice(0, 14)}...`;
         playBeep(1174, 0.25, 'sine');
 
         await refreshLivePoolFeesAndBalances();
         await refreshSwapQuote();
     } catch (err) {
         statusEl.style.color = 'var(--danger-red)';
-        statusEl.textContent = err.reason || err.message || 'Operação cancelada.';
+        statusEl.textContent = err.reason || err.message || 'Troca cancelada na carteira.';
         btn.disabled = false;
     }
 });
@@ -1421,7 +1431,7 @@ function applyValidatedState(raw) {
 // =========================================================================
 function saveTripleBackup() {
     const payload = JSON.stringify(appState);
-    try { localStorage.setItem('rdesk_v16_backup', payload); } catch (e) {}
+    try { localStorage.setItem('rdesk_v17_backup', payload); } catch (e) {}
     try {
         const req = indexedDB.open('RDESK_VAULT', 1);
         req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
@@ -1447,7 +1457,7 @@ async function loadFromTripleBackup() {
         }
     } catch (e) {}
     try {
-        const ls = localStorage.getItem('rdesk_v16_backup') || localStorage.getItem('rdesk_v15_backup');
+        const ls = localStorage.getItem('rdesk_v17_backup') || localStorage.getItem('rdesk_v16_backup');
         if (ls) {
             applyValidatedState(JSON.parse(ls));
             return;
