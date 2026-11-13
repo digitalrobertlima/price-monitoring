@@ -3,154 +3,618 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V9.1</title>
+    <title>RDESK Command | Liquidity Sentinel V10</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap');
 
         :root {
-            --bg-base: #020202; --dekton-copper: #cda434; --dekton-dim: rgba(205, 164, 52, 0.15);
-            --danger-red: #ff2a40; --warning-yellow: #ffb703; --success-green: #00ff88;
-            --glass-bg: rgba(10, 10, 10, 0.95); --panel-border: rgba(255, 255, 255, 0.05);
-            --pos1-color: #00ff88; /* Cor da Posição 1 (Apertada) */
-            --pos2-color: #00d4ff; /* Cor da Posição 2 (Ampla) */
+            --bg-base: #020202;
+            --dekton-copper: #cda434;
+            --dekton-dim: rgba(205, 164, 52, 0.16);
+            --danger-red: #ff2a40;
+            --warning-yellow: #ffb703;
+            --success-green: #00ff88;
+            --cyan-accent: #00d4ff;
+            --glass-bg: rgba(10, 10, 10, 0.96);
+            --panel-border: rgba(255, 255, 255, 0.06);
+            --pol-color: #8247e5;
+            --usdt-color: #26a17b;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background-color: var(--bg-base); color: #fff; font-family: 'Rajdhani', sans-serif; height: 100vh; padding: 10px; display: flex; flex-direction: column; overflow: hidden; }
-
-        .terminal-grid { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; height: calc(100vh - 60px); }
-
-        .panel { background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 6px; display: flex; flex-direction: column; box-shadow: inset 0 0 40px rgba(0,0,0,1); overflow: hidden; }
-        .panel-header { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; color: #666; border-bottom: 1px solid rgba(255,255,255,0.03); padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; background: #000; flex-shrink: 0; }
         
-        /* VARIAÇÕES */
-        .variations-col { flex: 0 0 220px; display: flex; flex-direction: column; }
-        .var-grid { display: flex; flex-direction: column; gap: 4px; padding: 10px; overflow-y: auto; flex-grow: 1; }
-        .var-grid::-webkit-scrollbar { width: 3px; } .var-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-        .var-card { background: rgba(0, 0, 0, 0.8); border-left: 2px solid rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .var-label { font-size: 0.65rem; color: #777; letter-spacing: 1px; font-weight: 600; }
-        .var-value { font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; }
-        .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.05) 0%, transparent 100%); }
-        .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.05) 0%, transparent 100%); }
+        body {
+            background-color: var(--bg-base);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            height: 100vh;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
 
-        /* GRÁFICO TÁTICO */
-        .tactical-col { flex: 1 1 400px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-        .chart-header { display: flex; gap: 4px; padding: 6px 10px; background: rgba(0,0,0,0.8); border-bottom: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; flex-wrap: wrap; }
-        .tf-btn { background: #000; color: #666; border: 1px solid rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 4px; font-family: 'Space Mono', monospace; font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-        .tf-btn.active { background: var(--dekton-copper); color: #000; border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.4); }
-        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 0; position: relative; }
+        /* BARRA SUPERIOR COMPACTA */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #070707;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
 
-        /* COMANDOS E ESTRATÉGIA */
-        .cmd-col { flex: 0 0 320px; display: flex; flex-direction: column; gap: 10px; }
-        .price-huge { font-family: 'Space Mono', monospace; font-size: 2rem; font-weight: 700; margin: 5px 15px; text-align: center; }
-        
-        .macro-row { display: flex; justify-content: space-between; padding: 8px 15px; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; }
-        .macro-label { font-size: 0.75rem; color: #777; font-weight: 600; letter-spacing: 1px; }
-        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.85rem; font-weight: 700; display: flex; gap: 8px; align-items: center;}
-        
-        /* CAIXA DE INTELIGÊNCIA SNIPER */
-        .strategy-box { background: rgba(205, 164, 52, 0.05); padding: 12px 15px; border-top: 1px solid var(--dekton-dim); }
-        .strat-title { font-size: 0.65rem; color: var(--dekton-copper); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; font-weight: 700;}
-        .strat-row { display: flex; justify-content: space-between; font-family: 'Space Mono'; font-size: 0.75rem; color: #aaa; margin-bottom: 4px; align-items: center;}
-        .sniper-badge { background: var(--success-green); color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 0.65rem; }
+        .brand-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--dekton-copper);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-        /* SCANNER MULTI-POSIÇÕES DIRETO (Ethers.js) */
-        .wallet-scanner-box { background: rgba(0,0,0,0.5); padding: 12px 15px; border-top: 1px solid rgba(255,255,255,0.05); flex-shrink:0; }
-        .wallet-input-group { display: flex; gap: 8px; margin-top: 5px; }
-        input[type="text"] { background: #000; border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 0.8rem; padding: 8px; border-radius: 4px; outline: none; width: 100%; }
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .top-btn {
+            background: #111;
+            border: 1px solid var(--panel-border);
+            color: #bbb;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.68rem;
+            padding: 4px 9px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .top-btn:hover { border-color: var(--dekton-copper); color: #fff; }
+        .top-btn.active-audio { border-color: var(--success-green); color: var(--success-green); }
+
+        /* WORKSPACE REDIMENSIONÁVEL */
+        .terminal-grid {
+            display: flex;
+            width: 100%;
+            flex-grow: 1;
+            min-height: 0;
+            gap: 0;
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.95);
+            overflow: hidden;
+            min-width: 0;
+            min-height: 0;
+        }
+
+        .panel-header {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1.8px;
+            color: #777;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 7px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #000;
+            flex-shrink: 0;
+        }
+
+        /* ALÇAS DE REDIMENSIONAMENTO COM O MOUSE */
+        .resizer {
+            width: 8px;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .resizer::after {
+            content: "";
+            width: 2px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 2px;
+            transition: background 0.2s, height 0.2s;
+        }
+        .resizer:hover::after, .resizer.dragging::after {
+            background: var(--dekton-copper);
+            height: 64px;
+        }
+
+        /* COLUNA 1: OHLC */
+        .variations-col {
+            width: 190px;
+            flex-shrink: 0;
+        }
+        .var-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 8px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .var-grid::-webkit-scrollbar { width: 3px; }
+        .var-grid::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+        .var-card {
+            background: rgba(0, 0, 0, 0.85);
+            border-left: 2px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 8px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .var-label { font-size: 0.65rem; color: #777; font-weight: 600; }
+        .var-value { font-family: 'Space Mono', monospace; font-size: 0.78rem; font-weight: 700; }
+        .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.06) 0%, transparent 100%); }
+        .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.06) 0%, transparent 100%); }
+
+        /* COLUNA 2: GRÁFICO + PATRIMÔNIO */
+        .tactical-col {
+            flex: 1 1 360px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.85);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+        .tf-group { display: flex; gap: 4px; }
+        .tf-btn {
+            background: #000;
+            color: #666;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 3px 9px;
+            border-radius: 4px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.68rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .tf-btn.active {
+            background: var(--dekton-copper);
+            color: #000;
+            border-color: var(--dekton-copper);
+        }
+        .chart-wrapper {
+            flex-grow: 1;
+            width: 100%;
+            min-height: 180px;
+            position: relative;
+        }
+
+        /* BARRA INFERIOR DO GRÁFICO: PATRIMÔNIO E DISTRIBUIÇÃO */
+        .wallet-panel {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.05);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            flex-shrink: 0;
+        }
+        .wallet-card { background: #070707; padding: 10px 12px; }
+        .wallet-title { font-size: 0.6rem; color: #666; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px; }
+        .wallet-value { font-family: 'Space Mono', monospace; font-size: 1.2rem; font-weight: 700; color: #fff; }
+        .distribution-bar {
+            width: 100%;
+            height: 18px;
+            background: #111;
+            border-radius: 4px;
+            display: flex;
+            overflow: hidden;
+            margin-top: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            position: relative;
+        }
+        .dist-pol { height: 100%; background: repeating-linear-gradient(90deg, var(--pol-color), var(--pol-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s; }
+        .dist-usdt { height: 100%; background: repeating-linear-gradient(90deg, var(--usdt-color), var(--usdt-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s; }
+        .dist-marker { position: absolute; top: -4px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid #fff; transition: left 0.3s; z-index: 10; transform: translateX(-50%); }
+        .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.65rem; margin-top: 4px; }
+
+        /* COLUNA 3: COMANDO + MULTI-SCANNER + 4ª TÁTICA MANUAL + TAPE */
+        .cmd-col {
+            width: 340px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+        .cmd-col::-webkit-scrollbar { width: 3px; }
+        .cmd-col::-webkit-scrollbar-thumb { background: rgba(205, 164, 52, 0.25); border-radius: 3px; }
+
+        .price-huge {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.85rem;
+            font-weight: 700;
+            padding: 6px 10px 2px;
+            text-align: center;
+            letter-spacing: -1px;
+        }
+
+        .macro-strip {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            background: rgba(0, 0, 0, 0.5);
+        }
+        .macro-cell {
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .macro-cell:last-child { border-right: none; }
+        .macro-label { font-size: 0.6rem; color: #666; letter-spacing: 1px; }
+        .macro-val { font-family: 'Space Mono', monospace; font-size: 0.8rem; font-weight: 700; color: #ddd; }
+
+        /* INTELIGÊNCIA SNIPER 15M */
+        .strategy-box {
+            background: rgba(205, 164, 52, 0.05);
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--dekton-dim);
+        }
+        .strat-row {
+            display: flex;
+            justify-content: space-between;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            color: #aaa;
+            margin-bottom: 4px;
+            align-items: center;
+        }
+        .strat-row:last-child { margin-bottom: 0; }
+        .sniper-badge {
+            background: var(--success-green);
+            color: #000;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: 700;
+            font-size: 0.62rem;
+        }
+        .apply-sniper-btn {
+            background: transparent;
+            border: 1px solid var(--success-green);
+            color: var(--success-green);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 4px;
+        }
+        .apply-sniper-btn:hover { background: var(--success-green); color: #000; }
+
+        /* SCANNER WEB3 + 4ª TÁTICA MANUAL */
+        .scanner-box {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .section-tag {
+            font-size: 0.62rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .route-status {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.6rem;
+            color: var(--dekton-copper);
+        }
+
+        .input-row { display: flex; gap: 5px; }
+        input[type="text"], input[type="number"] {
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--dekton-copper);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.74rem;
+            padding: 6px 8px;
+            border-radius: 4px;
+            outline: none;
+            width: 100%;
+            min-width: 0;
+        }
         input:focus { border-color: var(--dekton-copper); }
-        .btn-scan { background: var(--dekton-copper); border: none; padding: 0 12px; border-radius: 4px; color: #000; font-family: 'Rajdhani'; font-weight: 700; cursor: pointer; transition: 0.1s; }
-        
-        .positions-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
-        .pos-item { display: flex; justify-content: space-between; font-family: 'Space Mono'; font-size: 0.7rem; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 4px; border-left: 3px solid; }
+
+        .btn-gold {
+            background: var(--dekton-copper);
+            border: none;
+            padding: 0 10px;
+            border-radius: 4px;
+            color: #000;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 0.78rem;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-gold:hover { filter: brightness(1.1); }
+
+        /* 4ª TÁTICA: INSERÇÃO MANUAL PERMANENTE */
+        .manual-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px dashed rgba(205, 164, 52, 0.28);
+            border-radius: 4px;
+            padding: 7px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .manual-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 0.8fr auto;
+            gap: 4px;
+        }
+
+        /* LISTA DE POSIÇÕES ATIVAS (WEB3 + MANUAIS) */
+        .positions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 155px;
+            overflow-y: auto;
+        }
+        .positions-list::-webkit-scrollbar { width: 3px; }
+        .positions-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+
+        .pos-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.67rem;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
+            border-left: 3px solid;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .pos-item:hover, .pos-item.focused-pos { background: rgba(205, 164, 52, 0.12); }
+        .pos-meta { display: flex; flex-direction: column; gap: 2px; }
+        .pos-del {
+            background: transparent;
+            border: none;
+            color: #666;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            cursor: pointer;
+            padding: 2px 5px;
+        }
+        .pos-del:hover { color: var(--danger-red); }
 
         /* TAPE READING */
-        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 150px; }
-        .tape-header { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 8px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.6rem; text-transform: uppercase; color: #555; font-weight: 700; background: #000; }
-        #tape { flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 10px; }
-        #tape::-webkit-scrollbar { width: 3px; } #tape::-webkit-scrollbar-thumb { background: rgba(205,164,52,0.3); border-radius: 3px; }
-        .tape-row { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 6px 15px; font-family: 'Space Mono', monospace; font-size: 0.7rem; border-bottom: 1px solid rgba(255,255,255,0.02); align-items: center; }
-        .type-buy { color: var(--success-green); } .type-sell { color: var(--danger-red); }
-
-        .btn-start { width: 100%; padding: 12px; background: var(--dekton-copper); border: none; border-radius: 4px; color: #000; font-family: 'Rajdhani', sans-serif; font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; margin-bottom: 10px; flex-shrink: 0; }
-        .pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 10px var(--success-green); animation: ws-pulse 1.5s infinite alternate; margin-right: 5px; }
-        @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
-        .tick-up { color: var(--success-green) !important; text-shadow: 0 0 20px var(--success-green); }
-        .tick-down { color: var(--danger-red) !important; text-shadow: 0 0 20px var(--danger-red); }
-
-        @media (max-width: 1100px) {
-            .variations-col { flex: 0 0 160px; } 
-            .cmd-col { flex: 0 0 280px; } 
+        .tape-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 140px; }
+        .tape-header {
+            display: grid;
+            grid-template-columns: 52px 46px 1fr 1fr;
+            padding: 6px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.58rem;
+            text-transform: uppercase;
+            color: #555;
+            font-weight: 700;
+            background: #000;
         }
-        @media (max-width: 850px) {
-            .variations-col { flex: 1 1 100%; order: 3; flex-direction: row; height: 100px; }
-            .var-grid { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
-            .var-card { flex-direction: column; justify-content: center; min-width: 80px; }
-            .tactical-col { order: 1; flex: 1 1 300px; height: 50vh; }
-            .cmd-col { order: 2; flex: 1 1 300px; height: 50vh; }
+        #tape { flex-grow: 1; overflow-y: auto; overflow-x: hidden; }
+        #tape::-webkit-scrollbar { width: 3px; }
+        #tape::-webkit-scrollbar-thumb { background: rgba(205, 164, 52, 0.3); border-radius: 3px; }
+        .tape-row {
+            display: grid;
+            grid-template-columns: 52px 46px 1fr 1fr;
+            padding: 5px 10px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.67rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            align-items: center;
+        }
+        .type-buy { color: var(--success-green); }
+        .type-sell { color: var(--danger-red); }
+
+        .pulse-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--success-green);
+            animation: ws-pulse 1.5s infinite alternate;
+            margin-right: 4px;
+        }
+        @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
+        .tick-up { color: var(--success-green) !important; text-shadow: 0 0 18px rgba(0,255,136,0.5); }
+        .tick-down { color: var(--danger-red) !important; text-shadow: 0 0 18px rgba(255,42,64,0.5); }
+
+        body.warning-mode .panel#panel-radar { border-color: var(--warning-yellow); }
+        body.danger-mode .panel#panel-radar { border-color: var(--danger-red); box-shadow: inset 0 0 40px rgba(255,42,64,0.25); }
+
+        /* RESPONSIVIDADE PARA TELA DIVIDIDA (SPLIT-SCREEN) */
+        @media (max-width: 980px) {
+            body { overflow-y: auto; height: auto; }
+            .terminal-grid { flex-direction: column; height: auto; }
+            .resizer { display: none; }
+            .variations-col { width: 100%; order: 3; }
+            .var-grid { flex-direction: row; overflow-x: auto; padding: 6px; }
+            .var-card { flex-direction: column; min-width: 74px; text-align: center; }
+            .tactical-col { width: 100%; order: 1; height: 360px; }
+            .cmd-col { width: 100%; order: 2; }
         }
     </style>
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V9.1 (WEB3 NATIVE)</button>
+    <!-- BARRA DE COMANDO E 3 BACKUPS -->
+    <div class="topbar">
+        <div class="brand-title">
+            <span>RDESK SENTINEL V10</span>
+            <span id="alert-status" style="font-size:0.7rem; color:var(--success-green); border:1px solid rgba(0,255,136,0.3); padding:1px 6px; border-radius:3px;">SEGURO</span>
+        </div>
+        <div class="top-controls">
+            <button id="btn-audio" class="top-btn" title="Ativar/Desativar Alertas Sonoros">SOM: OFF</button>
+            <button id="btn-copy-link" class="top-btn" title="Backup 2: Copiar URL com todos os ranges salvos">COPIAR LINK BACKUP</button>
+            <button id="btn-export-json" class="top-btn" title="Backup 3: Baixar arquivo JSON">BAIXAR JSON</button>
+            <button id="btn-import-json" class="top-btn" title="Restaurar arquivo JSON">RESTAURAR JSON</button>
+            <input type="file" id="file-import" accept=".json" style="display:none;">
+        </div>
+    </div>
 
-    <div class="terminal-grid">
+    <div class="terminal-grid" id="workspace">
         
-        <div class="panel variations-col">
+        <!-- PAINEL 1: VARIAÇÕES OHLC -->
+        <div class="panel variations-col" id="col-left">
             <div class="panel-header"><span><span class="pulse-dot" style="background:#fff"></span> OHLC</span></div>
             <div class="var-grid" id="variations-grid">
-                <div style="font-size:0.7rem; color:#444; text-align:center; padding:20px;">Aguardando...</div>
+                <div style="font-size:0.7rem; color:#444; text-align:center; padding:15px;">Carregando...</div>
             </div>
         </div>
 
-        <div class="panel tactical-col">
-            <div class="chart-header" id="tf-buttons">
-                <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
-                <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
-                <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
-                <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
-                <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
+        <div class="resizer" id="resizer-1" title="Arraste para redimensionar"></div>
+
+        <!-- PAINEL 2: GRÁFICO E DISTRIBUIÇÃO -->
+        <div class="panel tactical-col" id="col-center">
+            <div class="chart-header">
+                <div class="tf-group" id="tf-buttons">
+                    <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
+                    <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
+                    <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
+                    <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
+                    <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
+                </div>
+                <span id="focused-label" style="font-family:'Space Mono'; font-size:0.65rem; color:var(--dekton-copper);">FOCO: NENHUMA POSIÇÃO</span>
             </div>
             
             <div class="chart-wrapper" id="tv-chart"></div>
-        </div>
 
-        <div class="cmd-col">
-            <div class="panel" id="panel-radar">
-                <div class="panel-header"><span><span class="pulse-dot" id="global-dot" style="background:var(--success-green)"></span> Radar CEX</span></div>
-                
-                <div id="price-global" class="price-huge">0.000000</div>
-                
-                <div class="macro-row"><span class="macro-label">USD / BRL</span><span class="macro-val" id="macro-usd">R$ 0.00</span></div>
-                <div class="macro-row"><span class="macro-label">POL / BRL</span><span class="macro-val" id="macro-pol-brl">R$ 0.00</span></div>
-                
-                <div class="strategy-box">
-                    <div class="strat-title">Motor Tático: Alta Rotação</div>
-                    <div class="strat-row"><span>Macro (24h)</span><span style="color:#fff;" id="strat-macro">...</span></div>
-                    <div class="strat-row"><span class="sniper-badge">SNIPER (Micro)</span><span style="color:var(--success-green); font-weight:700;" id="strat-sniper">...</span></div>
+            <div class="wallet-panel">
+                <div class="wallet-card">
+                    <div class="wallet-title">Patrimônio Focado</div>
+                    <div class="wallet-value" id="wallet-total-usd">$ 0.00</div>
+                    <div style="font-family:'Space Mono'; font-size:0.72rem; color:#888;" id="wallet-total-brl">R$ 0,00</div>
                 </div>
-
-                <!-- SCANNER AGORA USA CONTRATO INTELIGENTE DIRETO VIA RPC -->
-                <div class="wallet-scanner-box">
-                    <div style="font-size:0.65rem; color:#888; text-transform:uppercase;">Scanner Multi-Posições (Web3)</div>
-                    <div class="wallet-input-group">
-                        <input type="text" id="wallet-address" placeholder="Sua Carteira (0x...)">
-                        <button id="btn-scan" class="btn-scan">SCAN</button>
+                <div class="wallet-card" style="border-left: 1px solid rgba(255,255,255,0.05);">
+                    <div class="wallet-title">Distribuição no Intervalo</div>
+                    <div class="distribution-bar">
+                        <div class="dist-marker" id="dist-marker" style="left: 50%;"></div>
+                        <div class="dist-pol" id="bar-pol" style="width: 50%;"></div>
+                        <div class="dist-usdt" id="bar-usdt" style="width: 50%;"></div>
                     </div>
-                    
-                    <div id="positions-list" class="positions-list">
-                        <!-- Posições injetadas aqui -->
+                    <div class="dist-labels">
+                        <span id="lbl-pol" style="color: var(--pol-color);">50% POL</span>
+                        <span id="lbl-usdt" style="color: var(--usdt-color);">50% USDT</span>
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="resizer" id="resizer-2" title="Arraste para redimensionar"></div>
+
+        <!-- PAINEL 3: RADAR + 3 ROTAS WEB3 + 4ª TÁTICA MANUAL + TAPE -->
+        <div class="cmd-col" id="col-right">
+            <div class="panel" id="panel-radar" style="flex-shrink:0;">
+                <div class="panel-header">
+                    <span><span class="pulse-dot" style="background:var(--success-green)"></span> POL / USDT</span>
+                    <span id="storage-badge" style="color:#666; font-size:0.58rem;">3x BACKUP OK</span>
+                </div>
+                
+                <div id="price-global" class="price-huge">0.000000</div>
+                
+                <div class="macro-strip">
+                    <div class="macro-cell">
+                        <span class="macro-label">USD / BRL</span>
+                        <span class="macro-val" id="macro-usd">R$ 0.00</span>
+                    </div>
+                    <div class="macro-cell">
+                        <span class="macro-label">POL / BRL</span>
+                        <span class="macro-val" id="macro-pol-brl">R$ 0.00</span>
+                    </div>
+                </div>
+
+                <!-- INTELIGÊNCIA SNIPER 15M -->
+                <div class="strategy-box">
+                    <div class="strat-row">
+                        <span>Macro (24h)</span>
+                        <span style="color:#fff;" id="strat-macro">...</span>
+                    </div>
+                    <div class="strat-row">
+                        <span><span class="sniper-badge">SNIPER 15M</span></span>
+                        <span>
+                            <strong style="color:var(--success-green);" id="strat-sniper">...</strong>
+                            <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- SCANNER WEB3 (3 ROTAS) + 4ª TÁTICA MANUAL -->
+                <div class="scanner-box">
+                    <div class="section-tag">
+                        <span>1-3. Scanner Web3 (Multi-Rota)</span>
+                        <span class="route-status" id="route-status">PRONTO</span>
+                    </div>
+                    <div class="input-row">
+                        <input type="text" id="wallet-address" placeholder="Carteira Polygon (0x...)">
+                        <button id="btn-scan" class="btn-gold">SCAN</button>
+                    </div>
+
+                    <!-- 4ª TÁTICA: INSERÇÃO MANUAL PERMANENTE -->
+                    <div class="manual-box">
+                        <div class="section-tag">
+                            <span style="color:var(--dekton-copper);">4ª Tática: Range Manual (Offline)</span>
+                        </div>
+                        <div class="manual-grid">
+                            <input type="number" id="manual-min" placeholder="Mín" step="0.00001">
+                            <input type="number" id="manual-max" placeholder="Máx" step="0.00001">
+                            <input type="text" id="manual-tag" placeholder="Nome">
+                            <button id="btn-add-manual" class="btn-gold">+ADD</button>
+                        </div>
+                    </div>
+
+                    <!-- LISTA UNIFICADA DE POSIÇÕES -->
+                    <div id="positions-list" class="positions-list"></div>
+                </div>
+            </div>
+
+            <!-- SCANNER DEX POLYGON -->
             <div class="panel tape-container">
-                <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Scanner DEX</span></div>
+                <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Fluxo DEX (0.05%)</span></div>
                 <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRL</div><div>Qtd (POL)</div></div>
                 <div id="tape"></div>
             </div>
@@ -160,236 +624,738 @@
 
     <script>
         const SYMBOL = 'POLUSDT';
-        const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7'.toLowerCase();
-        
-        // Contratos Oficiais Polygon
+        const POOL_ADDRESS = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
         const POL_ADDRESS = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
         const USDT_ADDRESS = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
-        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'; 
-        
+        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
+
+        // POOL DE RPCs POLYGON PARA FAILOVER EM CASCATA
+        const POLYGON_RPCS = [
+            'https://polygon-bor-rpc.publicnode.com',
+            'https://1rpc.io/matic',
+            'https://polygon.drpc.org',
+            'https://polygon-rpc.com'
+        ];
+
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
-        
-        let currentPriceGlobal = 0, lastPriceGlobal = 0; 
-        let usdBrlRate = 5.80;
-        let activePositions = []; 
-        
-        let chart, candleSeries;
-        let positionLines = []; 
+
+        let currentPriceGlobal = 0, lastPriceGlobal = 0;
+        let usdBrlRate = 5.65;
+        let audioEnabled = false, audioCtx = null, alarmInterval = null;
+        let currentRiskState = 'SAFE';
+
+        // ESTADO UNIFICADO (PERSISTIDO EM 3 BACKUPS)
+        let appState = {
+            wallet: '',
+            web3Positions: [],   // [{ id, min, max, tickLower, tickUpper, liquidity, label, source: 'web3' }]
+            manualPositions: [], // [{ id, min, max, label, source: 'manual' }]
+            focusedId: null
+        };
+
+        let lastSniperRange = { min: 0, max: 0 };
+        let chart = null, candleSeries = null;
+        let positionLines = [];
         let currentInterval = '15m', currentIntervalSeconds = 900;
         let syntheticCandle = null;
 
         const priceGlobalEl = document.getElementById('price-global');
         const tapeEl = document.getElementById('tape');
-        const btnInit = document.getElementById('btn-init');
+        const routeStatusEl = document.getElementById('route-status');
 
         const VAR_INTERVALS = [
-            { label: '1 MIN', key: '1m' }, { label: '5 MIN', key: '5m' }, { label: '15 MIN', key: '15m' }, { label: '30 MIN', key: '30m' }, 
-            { label: '1 HORA', key: '1h' }, { label: '4 HORAS', key: '4h' }, { label: '8 HORAS', key: '8h' }, { label: '12 HORAS', key: '12h' }, 
-            { label: '1 DIA', key: '1d' }, { label: '1 SEM', key: '1w' }, { label: '1 MÊS', key: '1M' }
+            { label: '1 MIN', key: '1m' }, { label: '5 MIN', key: '5m' }, { label: '15 MIN', key: '15m' },
+            { label: '30 MIN', key: '30m' }, { label: '1 HORA', key: '1h' }, { label: '4 HORAS', key: '4h' },
+            { label: '8 HORAS', key: '8h' }, { label: '12 HORAS', key: '12h' }, { label: '1 DIA', key: '1d' },
+            { label: '1 SEM', key: '1w' }, { label: '1 MÊS', key: '1M' }
         ];
 
-        btnInit.addEventListener('click', async () => {
-            btnInit.style.display = 'none'; tapeEl.innerHTML = '';
-            setTimeout(() => { try { initTradingViewChart(); } catch(e){} }, 0);
-            setTimeout(() => { try { buildVariationsPanel(); setInterval(buildVariationsPanel, 60000); } catch(e){} }, 50);
-            setTimeout(() => { try { initGlobalTracker(); } catch(e){} }, 100);
-            setTimeout(() => { try { initPolygonScanner(); } catch(e){} }, 150);
-            setTimeout(() => { try { fetchMacroData(); setInterval(fetchMacroData, 30000); } catch(e){} }, 200);
+        // =========================================================================
+        // SISTEMA DE 3 BACKUPS INDEPENDENTES (LocalStorage + IndexedDB + URL Hash)
+        // =========================================================================
+        function saveTripleBackup() {
+            const payload = JSON.stringify(appState);
+
+            // BACKUP 1A: LocalStorage
+            try { localStorage.setItem('rdesk_v10_backup', payload); } catch (e) {}
+
+            // BACKUP 1B: IndexedDB (Cofre Secundário)
+            try {
+                const req = indexedDB.open('RDESK_VAULT', 1);
+                req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
+                req.onsuccess = (e) => {
+                    const db = e.target.result;
+                    const tx = db.transaction('state', 'readwrite');
+                    tx.objectStore('state').put(payload, 'latest');
+                };
+            } catch (e) {}
+
+            // BACKUP 2: URL Hash Autossuficiente (#rdesk=...)
+            try {
+                const encoded = btoa(unescape(encodeURIComponent(payload)));
+                history.replaceState(null, '', '#rdesk=' + encoded);
+            } catch (e) {}
+
+            const badge = document.getElementById('storage-badge');
+            badge.innerText = 'SALVO (3X)';
+            badge.style.color = 'var(--success-green)';
+            setTimeout(() => { badge.style.color = '#666'; badge.innerText = '3x BACKUP OK'; }, 1500);
+        }
+
+        async function loadFromTripleBackup() {
+            // Prioridade 1: URL Hash (se abriu link salvo/compartilhado)
+            try {
+                if (window.location.hash.startsWith('#rdesk=')) {
+                    const b64 = window.location.hash.replace('#rdesk=', '');
+                    const decoded = decodeURIComponent(escape(atob(b64)));
+                    const parsed = JSON.parse(decoded);
+                    if (parsed) { appState = { ...appState, ...parsed }; return; }
+                }
+            } catch (e) {}
+
+            // Prioridade 2: LocalStorage
+            try {
+                const ls = localStorage.getItem('rdesk_v10_backup');
+                if (ls) {
+                    const parsed = JSON.parse(ls);
+                    if (parsed) { appState = { ...appState, ...parsed }; return; }
+                }
+            } catch (e) {}
+
+            // Prioridade 3: IndexedDB
+            try {
+                await new Promise((resolve) => {
+                    const req = indexedDB.open('RDESK_VAULT', 1);
+                    req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
+                    req.onsuccess = (e) => {
+                        const db = e.target.result;
+                        const tx = db.transaction('state', 'readonly');
+                        const getReq = tx.objectStore('state').get('latest');
+                        getReq.onsuccess = () => {
+                            if (getReq.result) {
+                                const parsed = JSON.parse(getReq.result);
+                                if (parsed) appState = { ...appState, ...parsed };
+                            }
+                            resolve();
+                        };
+                        getReq.onerror = () => resolve();
+                    };
+                    req.onerror = () => resolve();
+                });
+            } catch (e) {}
+        }
+
+        // BACKUP 3: Exportar / Importar Arquivo JSON
+        document.getElementById('btn-export-json').addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rdesk-backup-${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
         });
 
-        // 1. MOTOR GRÁFICO
+        document.getElementById('btn-import-json').addEventListener('click', () => {
+            document.getElementById('file-import').click();
+        });
+
+        document.getElementById('file-import').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const imported = JSON.parse(ev.target.result);
+                    appState = { ...appState, ...imported };
+                    if (appState.wallet) document.getElementById('wallet-address').value = appState.wallet;
+                    saveTripleBackup();
+                    renderAllPositions();
+                } catch (err) {
+                    alert('Arquivo JSON inválido.');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById('btn-copy-link').addEventListener('click', () => {
+            saveTripleBackup();
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                const btn = document.getElementById('btn-copy-link');
+                btn.innerText = 'LINK COPIADO!';
+                setTimeout(() => btn.innerText = 'COPIAR LINK BACKUP', 2000);
+            });
+        });
+
+        // =========================================================================
+        // 3 CAMADAS DE LEITURA WEB3 (FAILOVER EM CASCATA)
+        // =========================================================================
+        function ticksToHumanPrice(tickLower, tickUpper, isToken0Pol) {
+            // Fórmula oficial Uniswap V3 para WPOL (18 dec) / USDT (6 dec): diferença = 10^12
+            if (isToken0Pol) {
+                return {
+                    min: Math.pow(1.0001, Number(tickLower)) * 1e12,
+                    max: Math.pow(1.0001, Number(tickUpper)) * 1e12
+                };
+            } else {
+                return {
+                    min: 1 / (Math.pow(1.0001, Number(tickUpper)) * 1e12),
+                    max: 1 / (Math.pow(1.0001, Number(tickLower)) * 1e12)
+                };
+            }
+        }
+
+        function withTimeout(promise, ms) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout RPC')), ms))
+            ]);
+        }
+
+        // CAMADA 1: Ethers.js percorrendo múltiplos RPCs Polygon
+        async function fetchViaMultiRpcEthers(address) {
+            const nfpmABI = [
+                "function balanceOf(address) view returns (uint256)",
+                "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
+                "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)"
+            ];
+
+            for (let i = 0; i < POLYGON_RPCS.length; i++) {
+                const rpcUrl = POLYGON_RPCS[i];
+                try {
+                    routeStatusEl.innerText = `ROTA 1.${i+1} (RPC)...`;
+                    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+                    const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, provider);
+
+                    const balanceBN = await withTimeout(nfpm.balanceOf(address), 4500);
+                    const balance = balanceBN.toNumber();
+                    const found = [];
+
+                    for (let idx = 0; idx < balance; idx++) {
+                        const tokenIdBN = await withTimeout(nfpm.tokenOfOwnerByIndex(address, idx), 4500);
+                        const pos = await withTimeout(nfpm.positions(tokenIdBN), 4500);
+                        const t0 = pos.token0.toLowerCase();
+                        const t1 = pos.token1.toLowerCase();
+
+                        if ((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) {
+                            if (pos.liquidity.gt(0)) {
+                                const prices = ticksToHumanPrice(pos.tickLower, pos.tickUpper, t0 === POL_ADDRESS);
+                                found.push({
+                                    id: `web3-${tokenIdBN.toString()}`,
+                                    tokenId: tokenIdBN.toString(),
+                                    min: prices.min,
+                                    max: prices.max,
+                                    tickLower: Number(pos.tickLower),
+                                    tickUpper: Number(pos.tickUpper),
+                                    liquidity: pos.liquidity.toString(),
+                                    label: `NFT #${tokenIdBN.toString()}`,
+                                    source: 'web3'
+                                });
+                            }
+                        }
+                    }
+                    routeStatusEl.innerText = `OK (RPC #${i+1})`;
+                    return found;
+                } catch (err) {
+                    console.warn(`RPC ${rpcUrl} falhou:`, err.message);
+                }
+            }
+            throw new Error('Todos os RPCs Ethers falharam');
+        }
+
+        // CAMADA 2: Chamada JSON-RPC Bruta (eth_call direto via fetch)
+        async function fetchViaRawJsonRpc(address) {
+            routeStatusEl.innerText = 'ROTA 2 (HEX RAW)...';
+            const cleanAddr = address.replace('0x', '').padStart(64, '0');
+            // balanceOf(address) selector = 0x70a08231
+            const res = await withTimeout(fetch('https://polygon-bor-rpc.publicnode.com', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0', id: 1, method: 'eth_call',
+                    params: [{ to: NFPM_ADDRESS, data: '0x70a08231' + cleanAddr }, 'latest']
+                })
+            }), 5000);
+            const json = await res.json();
+            if (!json.result) throw new Error('Falha Raw eth_call');
+            const count = parseInt(json.result, 16);
+            if (count === 0) return [];
+
+            const nfpmIface = new ethers.utils.Interface([
+                "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
+                "function positions(uint256) view returns (uint96, address, address, address, uint24, int24, int24, uint128, uint256, uint256, uint128, uint128)"
+            ]);
+
+            const found = [];
+            for (let i = 0; i < count; i++) {
+                const callDataIdx = nfpmIface.encodeFunctionData('tokenOfOwnerByIndex', [address, i]);
+                const r1 = await fetch('https://polygon-bor-rpc.publicnode.com', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_call', params: [{ to: NFPM_ADDRESS, data: callDataIdx }, 'latest'] })
+                }).then(r => r.json());
+                const [tokenId] = nfpmIface.decodeFunctionResult('tokenOfOwnerByIndex', r1.result);
+
+                const callDataPos = nfpmIface.encodeFunctionData('positions', [tokenId]);
+                const r2 = await fetch('https://polygon-bor-rpc.publicnode.com', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'eth_call', params: [{ to: NFPM_ADDRESS, data: callDataPos }, 'latest'] })
+                }).then(r => r.json());
+                const pos = nfpmIface.decodeFunctionResult('positions', r2.result);
+
+                const t0 = pos[2].toLowerCase();
+                const t1 = pos[3].toLowerCase();
+                const liq = pos[7];
+                if (((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) && liq.gt(0)) {
+                    const prices = ticksToHumanPrice(pos[5], pos[6], t0 === POL_ADDRESS);
+                    found.push({
+                        id: `web3-${tokenId.toString()}`,
+                        tokenId: tokenId.toString(),
+                        min: prices.min,
+                        max: prices.max,
+                        tickLower: Number(pos[5]),
+                        tickUpper: Number(pos[6]),
+                        liquidity: liq.toString(),
+                        label: `NFT #${tokenId.toString()}`,
+                        source: 'web3'
+                    });
+                }
+            }
+            routeStatusEl.innerText = 'OK (ROTA 2 RAW)';
+            return found;
+        }
+
+        // CAMADA 3: Subgraph Indexado (Fallback)
+        async function fetchViaSubgraph(address) {
+            routeStatusEl.innerText = 'ROTA 3 (SUBGRAPH)...';
+            const query = `{
+                positions(where: { owner: "${address}", pool: "${POOL_ADDRESS}", liquidity_gt: "0" }) {
+                    id
+                    liquidity
+                    tickLower { tickIdx }
+                    tickUpper { tickIdx }
+                }
+            }`;
+            const res = await withTimeout(fetch('https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-polygon', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            }), 4500);
+            const json = await res.json();
+            const list = json?.data?.positions || [];
+            const found = list.map(p => {
+                const prices = ticksToHumanPrice(p.tickLower.tickIdx, p.tickUpper.tickIdx, true);
+                return {
+                    id: `web3-${p.id}`,
+                    tokenId: p.id,
+                    min: prices.min,
+                    max: prices.max,
+                    tickLower: Number(p.tickLower.tickIdx),
+                    tickUpper: Number(p.tickUpper.tickIdx),
+                    liquidity: p.liquidity,
+                    label: `NFT #${p.id}`,
+                    source: 'web3'
+                };
+            });
+            routeStatusEl.innerText = 'OK (ROTA 3)';
+            return found;
+        }
+
+        // ORQUESTRADOR DO SCANNER (TENTA ROTA 1 -> ROTA 2 -> ROTA 3 -> CACHE)
+        async function runUnstoppableScan() {
+            const rawAddr = document.getElementById('wallet-address').value.trim();
+            if (!ethers.utils.isAddress(rawAddr)) {
+                routeStatusEl.innerText = 'ENDEREÇO INVÁLIDO';
+                routeStatusEl.style.color = 'var(--danger-red)';
+                return;
+            }
+            const address = rawAddr.toLowerCase();
+            appState.wallet = address;
+            const btnScan = document.getElementById('btn-scan');
+            btnScan.innerText = '...';
+            routeStatusEl.style.color = 'var(--dekton-copper)';
+
+            let scannedPositions = null;
+
+            try {
+                scannedPositions = await fetchViaMultiRpcEthers(address);
+            } catch (e1) {
+                try {
+                    scannedPositions = await fetchViaRawJsonRpc(address);
+                } catch (e2) {
+                    try {
+                        scannedPositions = await fetchViaSubgraph(address);
+                    } catch (e3) {
+                        routeStatusEl.innerText = 'OFFLINE (USANDO BACKUP)';
+                        routeStatusEl.style.color = 'var(--warning-yellow)';
+                    }
+                }
+            }
+
+            if (Array.isArray(scannedPositions)) {
+                appState.web3Positions = scannedPositions;
+                if (!appState.focusedId && scannedPositions.length > 0) {
+                    appState.focusedId = scannedPositions[0].id;
+                }
+                saveTripleBackup();
+            }
+
+            renderAllPositions();
+            btnScan.innerText = 'SCAN';
+        }
+
+        document.getElementById('btn-scan').addEventListener('click', runUnstoppableScan);
+
+        // =========================================================================
+        // 4ª TÁTICA: INSERÇÃO MANUAL MULTI-FAIXA (SEMPRE DISPONÍVEL)
+        // =========================================================================
+        function addManualPosition(minVal, maxVal, tagVal) {
+            const min = parseFloat(minVal);
+            const max = parseFloat(maxVal);
+            if (isNaN(min) || isNaN(max) || min <= 0 || min >= max) {
+                alert('Informe valores válidos (Mínima menor que Máxima).');
+                return;
+            }
+            const id = 'man-' + Date.now();
+            const label = (tagVal && tagVal.trim()) ? tagVal.trim() : `Manual #${appState.manualPositions.length + 1}`;
+            appState.manualPositions.push({
+                id,
+                min,
+                max,
+                label,
+                source: 'manual'
+            });
+            appState.focusedId = id;
+            saveTripleBackup();
+            renderAllPositions();
+        }
+
+        document.getElementById('btn-add-manual').addEventListener('click', () => {
+            const minEl = document.getElementById('manual-min');
+            const maxEl = document.getElementById('manual-max');
+            const tagEl = document.getElementById('manual-tag');
+            addManualPosition(minEl.value, maxEl.value, tagEl.value);
+            minEl.value = '';
+            maxEl.value = '';
+            tagEl.value = '';
+        });
+
+        document.getElementById('btn-use-sniper').addEventListener('click', () => {
+            if (lastSniperRange.min > 0 && lastSniperRange.max > 0) {
+                addManualPosition(lastSniperRange.min.toFixed(6), lastSniperRange.max.toFixed(6), 'Sniper 15m');
+            }
+        });
+
+        function removePosition(id, e) {
+            e.stopPropagation();
+            appState.manualPositions = appState.manualPositions.filter(p => p.id !== id);
+            appState.web3Positions = appState.web3Positions.filter(p => p.id !== id);
+            if (appState.focusedId === id) {
+                const remaining = [...appState.web3Positions, ...appState.manualPositions];
+                appState.focusedId = remaining.length > 0 ? remaining[0].id : null;
+            }
+            saveTripleBackup();
+            renderAllPositions();
+        }
+
+        // =========================================================================
+        // RENDERIZAÇÃO DAS POSIÇÕES, LINHAS NO GRÁFICO E CÁLCULO DE LIQUIDEZ V3
+        // =========================================================================
+        function getAllPositions() {
+            return [...appState.web3Positions, ...appState.manualPositions];
+        }
+
+        function renderAllPositions() {
+            const listEl = document.getElementById('positions-list');
+            const all = getAllPositions();
+            listEl.innerHTML = '';
+
+            // Limpa linhas antigas do gráfico com segurança
+            if (candleSeries && positionLines.length > 0) {
+                positionLines.forEach(line => {
+                    try { candleSeries.removePriceLine(line); } catch (e) {}
+                });
+                positionLines = [];
+            }
+
+            if (all.length === 0) {
+                listEl.innerHTML = '<div style="color:#555; font-size:0.68rem; text-align:center; padding:6px;">Nenhuma faixa ativa. Escaneie ou adicione manual.</div>';
+                document.getElementById('focused-label').innerText = 'FOCO: NENHUMA POSIÇÃO';
+                return;
+            }
+
+            if (!all.some(p => p.id === appState.focusedId)) {
+                appState.focusedId = all[0].id;
+            }
+
+            const palette = ['#00ff88', '#00d4ff', '#cda434', '#ff7b00', '#b565ff'];
+
+            all.forEach((pos, idx) => {
+                const color = palette[idx % palette.length];
+                const isFocused = pos.id === appState.focusedId;
+                const widthPct = (((pos.max - pos.min) / pos.min) * 100).toFixed(2);
+                const badge = pos.source === 'manual' ? 'MAN' : 'V3';
+
+                const item = document.createElement('div');
+                item.className = 'pos-item' + (isFocused ? ' focused-pos' : '');
+                item.style.borderLeftColor = color;
+                item.innerHTML = `
+                    <div class="pos-meta">
+                        <span style="color:${color}; font-weight:700;">[${badge}] ${pos.label} (${widthPct}%)</span>
+                        <span style="color:#ccc;">${pos.min.toFixed(5)} → ${pos.max.toFixed(5)}</span>
+                    </div>
+                    <button class="pos-del" title="Remover faixa">✕</button>
+                `;
+                item.addEventListener('click', () => {
+                    appState.focusedId = pos.id;
+                    saveTripleBackup();
+                    renderAllPositions();
+                });
+                item.querySelector('.pos-del').addEventListener('click', (ev) => removePosition(pos.id, ev));
+                listEl.appendChild(item);
+
+                // Desenha Mínima e Máxima no Gráfico
+                if (candleSeries) {
+                    positionLines.push(candleSeries.createPriceLine({
+                        price: pos.min,
+                        color: color,
+                        lineWidth: isFocused ? 2 : 1,
+                        lineStyle: 2,
+                        axisLabelVisible: true,
+                        title: `MIN ${pos.label}`
+                    }));
+                    positionLines.push(candleSeries.createPriceLine({
+                        price: pos.max,
+                        color: color,
+                        lineWidth: isFocused ? 2 : 1,
+                        lineStyle: 2,
+                        axisLabelVisible: true,
+                        title: `MAX ${pos.label}`
+                    }));
+                }
+            });
+
+            updateFocusedMetrics();
+        }
+
+        function updateFocusedMetrics() {
+            const all = getAllPositions();
+            const focused = all.find(p => p.id === appState.focusedId);
+            if (!focused || currentPriceGlobal <= 0) return;
+
+            document.getElementById('focused-label').innerText = `FOCO: ${focused.label.toUpperCase()}`;
+
+            const min = focused.min;
+            const max = focused.max;
+            const price = currentPriceGlobal;
+
+            // Proporção matemática Uniswap V3 (sqrtPrice)
+            const sqrtP = Math.sqrt(price);
+            const sqrtA = Math.sqrt(min);
+            const sqrtB = Math.sqrt(max);
+
+            let usdtPct = 50;
+            if (price <= min) {
+                usdtPct = 0;
+            } else if (price >= max) {
+                usdtPct = 100;
+            } else {
+                // Razão de valor em USD dentro da faixa concentrada V3
+                const amt0 = (1 / sqrtP) - (1 / sqrtB);
+                const amt1 = sqrtP - sqrtA;
+                const val0Usd = amt0 * price;
+                const val1Usd = amt1;
+                usdtPct = (val1Usd / (val0Usd + val1Usd)) * 100;
+            }
+
+            const polPct = 100 - usdtPct;
+            document.getElementById('bar-usdt').style.width = `${usdtPct.toFixed(1)}%`;
+            document.getElementById('bar-pol').style.width = `${polPct.toFixed(1)}%`;
+            document.getElementById('dist-marker').style.left = `${usdtPct.toFixed(1)}%`;
+            document.getElementById('lbl-pol').innerText = `${polPct.toFixed(1)}% POL`;
+            document.getElementById('lbl-usdt').innerText = `${usdtPct.toFixed(1)}% USDT`;
+
+            // Se a posição veio da Web3 com liquidez real, calcula valor exato em USD e BRL
+            if (focused.liquidity && focused.tickLower !== undefined) {
+                const L = parseFloat(focused.liquidity);
+                const sP = Math.sqrt(price * 1e-12);
+                const sA = Math.pow(1.0001, focused.tickLower / 2);
+                const sB = Math.pow(1.0001, focused.tickUpper / 2);
+
+                let raw0 = 0, raw1 = 0;
+                if (sP <= sA) {
+                    raw0 = L * ((1 / sA) - (1 / sB));
+                } else if (sP >= sB) {
+                    raw1 = L * (sB - sA);
+                } else {
+                    raw0 = L * ((1 / sP) - (1 / sB));
+                    raw1 = L * (sP - sA);
+                }
+                const humanPol = raw0 / 1e18;
+                const humanUsdt = raw1 / 1e6;
+                const totalUsd = (humanPol * price) + humanUsdt;
+
+                document.getElementById('wallet-total-usd').innerText = `$ ${totalUsd.toFixed(2)}`;
+                document.getElementById('wallet-total-brl').innerText = `R$ ${(totalUsd * usdBrlRate).toFixed(2)}`;
+            } else {
+                document.getElementById('wallet-total-usd').innerText = `FAIXA MANUAL`;
+                document.getElementById('wallet-total-brl').innerText = `${min.toFixed(5)} <> ${max.toFixed(5)}`;
+            }
+
+            evaluateRiskAlert(price, min, max);
+        }
+
+        function evaluateRiskAlert(price, min, max) {
+            const statusEl = document.getElementById('alert-status');
+            const span = max - min;
+            const buffer = span * 0.08;
+
+            if (price < min || price > max) {
+                if (currentRiskState !== 'DANGER') {
+                    currentRiskState = 'DANGER';
+                    document.body.classList.remove('warning-mode');
+                    document.body.classList.add('danger-mode');
+                    statusEl.innerText = 'FORA DO RANGE';
+                    statusEl.style.color = 'var(--danger-red)';
+                    statusEl.style.borderColor = 'var(--danger-red)';
+                    playBeep(320, 0.35, 'sawtooth');
+                }
+            } else if (price <= min + buffer || price >= max - buffer) {
+                if (currentRiskState !== 'WARNING') {
+                    currentRiskState = 'WARNING';
+                    document.body.classList.remove('danger-mode');
+                    document.body.classList.add('warning-mode');
+                    statusEl.innerText = 'BORDA DO RANGE';
+                    statusEl.style.color = 'var(--warning-yellow)';
+                    statusEl.style.borderColor = 'var(--warning-yellow)';
+                    playBeep(880, 0.2, 'sine');
+                }
+            } else {
+                if (currentRiskState !== 'SAFE') {
+                    currentRiskState = 'SAFE';
+                    document.body.classList.remove('danger-mode', 'warning-mode');
+                    statusEl.innerText = 'SEGURO';
+                    statusEl.style.color = 'var(--success-green)';
+                    statusEl.style.borderColor = 'rgba(0,255,136,0.3)';
+                }
+            }
+        }
+
+        // =========================================================================
+        // GRÁFICO TRADINGVIEW & INTELIGÊNCIA SNIPER 15M
+        // =========================================================================
         function initTradingViewChart() {
             const container = document.getElementById('tv-chart');
             chart = LightweightCharts.createChart(container, {
                 width: container.clientWidth,
                 height: container.clientHeight,
-                layout: { background: { type: 'solid', color: '#020202' }, textColor: '#666' },
-                grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
+                layout: { background: { type: 'solid', color: '#030303' }, textColor: '#666' },
+                grid: { vertLines: { color: 'rgba(255,255,255,0.025)' }, horzLines: { color: 'rgba(255,255,255,0.025)' } },
                 crosshair: { vertLine: { color: '#cda434', style: 3 }, horzLine: { color: '#cda434', style: 3 } },
                 timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.05)' },
                 rightPriceScale: { borderColor: 'rgba(255,255,255,0.05)' }
             });
-            
-            candleSeries = chart.addCandlestickSeries({ 
-                upColor: '#00ff88', downColor: '#ff2a40', borderVisible: false, 
-                wickUpColor: '#00ff88', wickDownColor: '#ff2a40', priceFormat: { type: 'price', precision: 6, minMove: 0.000001 }
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#00ff88',
+                downColor: '#ff2a40',
+                borderVisible: false,
+                wickUpColor: '#00ff88',
+                wickDownColor: '#ff2a40',
+                priceFormat: { type: 'price', precision: 6, minMove: 0.000001 }
             });
 
             new ResizeObserver(entries => {
-                if (entries.length === 0 || entries[0].target !== container) return;
+                if (!entries.length) return;
                 chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
             }).observe(container);
 
             document.querySelectorAll('.tf-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active');
-                    currentInterval = e.target.getAttribute('data-interval'); currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
-                    syntheticCandle = null; loadChartHistory(currentInterval);
+                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentInterval = e.target.getAttribute('data-interval');
+                    currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
+                    syntheticCandle = null;
+                    loadChartHistory(currentInterval);
                 });
             });
+
             loadChartHistory(currentInterval);
         }
 
         async function loadChartHistory(interval) {
             try {
                 const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=200`);
-                if(!res.ok) throw new Error("API Block");
                 const data = await res.json();
-                const klines = data.map(d => ({ time: Math.floor(d[0]/1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
+                const klines = data.map(d => ({
+                    time: Math.floor(d[0] / 1000),
+                    open: parseFloat(d[1]),
+                    high: parseFloat(d[2]),
+                    low: parseFloat(d[3]),
+                    close: parseFloat(d[4])
+                }));
                 candleSeries.setData(klines);
-                updateAIStrategyEngine(klines); 
-                drawMultiplePositionLines();
-            } catch (e) { candleSeries.setData([]); }
+                updateSniperIntelligence(klines);
+                renderAllPositions();
+            } catch (e) {}
         }
 
         function updateLiveCandle(price) {
             if (!candleSeries || price === 0) return;
-            const nowSec = Math.floor(Date.now() / 1000); const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
-            if (!syntheticCandle || syntheticCandle.time !== blockTime) { syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price }; } 
-            else { syntheticCandle.high = Math.max(syntheticCandle.high, price); syntheticCandle.low = Math.min(syntheticCandle.low, price); syntheticCandle.close = price; }
+            const nowSec = Math.floor(Date.now() / 1000);
+            const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
+            if (!syntheticCandle || syntheticCandle.time !== blockTime) {
+                syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price };
+            } else {
+                syntheticCandle.high = Math.max(syntheticCandle.high, price);
+                syntheticCandle.low = Math.min(syntheticCandle.low, price);
+                syntheticCandle.close = price;
+            }
             candleSeries.update(syntheticCandle);
         }
 
-        function updateAIStrategyEngine(klines) {
-            if(klines.length < 50) return;
-            const recentMacro = klines.slice(-96); 
+        function updateSniperIntelligence(klines) {
+            if (klines.length < 25) return;
+            const macroSlice = klines.slice(-96);
             let maxHigh = 0, minLow = Infinity;
-            recentMacro.forEach(k => { maxHigh = Math.max(maxHigh, k.high); minLow = Math.min(minLow, k.low); });
+            macroSlice.forEach(k => { maxHigh = Math.max(maxHigh, k.high); minLow = Math.min(minLow, k.low); });
             document.getElementById('strat-macro').innerText = `${minLow.toFixed(5)} <> ${maxHigh.toFixed(5)}`;
 
-            const recentMicro = klines.slice(-20);
-            let sum = 0;
-            recentMicro.forEach(k => sum += k.close);
-            const avg = sum / recentMicro.length;
-            
-            let variance = 0;
-            recentMicro.forEach(k => variance += Math.pow(k.close - avg, 2));
-            const stdDev = Math.sqrt(variance / recentMicro.length);
+            // Cálculo Sniper focado na volatilidade recente (16 velas)
+            const micro = klines.slice(-16);
+            const avg = micro.reduce((acc, k) => acc + k.close, 0) / micro.length;
+            const variance = micro.reduce((acc, k) => acc + Math.pow(k.close - avg, 2), 0) / micro.length;
+            const stdDev = Math.sqrt(variance);
 
-            const sniperMin = avg - (stdDev * 1.2);
-            const sniperMax = avg + (stdDev * 1.2);
-            
+            // Túnel de alta rotação (1.15x desvio padrão)
+            const sniperMin = avg - (stdDev * 1.15);
+            const sniperMax = avg + (stdDev * 1.15);
+            lastSniperRange = { min: sniperMin, max: sniperMax };
+
             document.getElementById('strat-sniper').innerText = `${sniperMin.toFixed(5)} <> ${sniperMax.toFixed(5)}`;
         }
 
-
-        // 3. SCANNER MULTI-POSIÇÕES (MÉTODO ETHERS.JS NATIVO CORRIGIDO)
-        const btnScan = document.getElementById('btn-scan');
-        const walletInput = document.getElementById('wallet-address');
-
-        btnScan.addEventListener('click', async () => {
-            const address = walletInput.value.trim().toLowerCase();
-            if(!ethers.utils.isAddress(address)) {
-                alert("Endereço Web3 Inválido!"); return;
-            }
-            
-            btnScan.innerText = "...";
-            const listEl = document.getElementById('positions-list');
-            listEl.innerHTML = '<div style="color:#aaa; font-size:0.7rem; text-align:center;">Lendo a Blockchain via RPC...</div>';
-            
-            try {
-                // Utilizando um provedor público de alta performance (mesmo estilo que a própria Uniswap usa de backup)
-                const rpc = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
-                const nfpmABI = [
-                    "function balanceOf(address) view returns (uint256)",
-                    "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
-                    "function positions(uint256) view returns (uint96, address, address token0, address token1, uint24, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256, uint256, uint128, uint128)"
-                ];
-                const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, rpc);
-                
-                // 1. Quantas posições existem nesta carteira?
-                const balance = await nfpm.balanceOf(address);
-                
-                activePositions = [];
-                positionLines.forEach(l => candleSeries.removePriceLine(l));
-                positionLines = [];
-                
-                // 2. Loop para extrair cada Posição
-                for (let i = 0; i < balance; i++) {
-                    const tokenId = await nfpm.tokenOfOwnerByIndex(address, i);
-                    const pos = await nfpm.positions(tokenId);
-                    
-                    const t0 = pos.token0.toLowerCase();
-                    const t1 = pos.token1.toLowerCase();
-                    
-                    // 3. Verifica se os tokens do NFT são POL (WMATIC) e USDT
-                    if ((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) {
-                        // 4. Ignora se a liquidez for zero (posição fechada/vazia)
-                        if (pos.liquidity.toString() !== "0") {
-                            activePositions.push({
-                                tickLower: pos.tickLower,
-                                tickUpper: pos.tickUpper,
-                                tokenId: tokenId.toString(),
-                                token0: t0
-                            });
-                        }
-                    }
-                }
-                
-                listEl.innerHTML = '';
-                if (activePositions.length > 0) {
-                    activePositions.forEach((pos) => {
-                        let calcMin, calcMax;
-                        
-                        // Cálculo Matemático Nativo
-                        if (pos.token0 === POL_ADDRESS) {
-                            calcMin = Math.pow(1.0001, pos.tickLower) * 1e-12;
-                            calcMax = Math.pow(1.0001, pos.tickUpper) * 1e-12;
-                        } else {
-                            calcMax = 1 / (Math.pow(1.0001, pos.tickLower) * 1e12);
-                            calcMin = 1 / (Math.pow(1.0001, pos.tickUpper) * 1e12);
-                        }
-
-                        const amplitude = calcMax - calcMin;
-                        // Define se é Apertada ou Ampla visualmente
-                        const isTight = amplitude < 0.0035; 
-                        const colorCode = isTight ? 'var(--pos1-color)' : 'var(--pos2-color)';
-                        const typeName = isTight ? 'Apertada' : 'Ampla';
-
-                        listEl.innerHTML += `
-                            <div class="pos-item" style="border-color: ${colorCode};">
-                                <span style="color: ${colorCode}; font-weight:700;">[NFT #${pos.tokenId} - ${typeName}]</span>
-                                <span>${calcMin.toFixed(5)} <> ${calcMax.toFixed(5)}</span>
-                            </div>
-                        `;
-
-                        if (candleSeries) {
-                            positionLines.push(candleSeries.createPriceLine({ price: calcMin, color: colorCode, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: `MIN #${pos.tokenId}` }));
-                            positionLines.push(candleSeries.createPriceLine({ price: calcMax, color: colorCode, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: `MAX #${pos.tokenId}` }));
-                        }
-                    });
-                    localStorage.setItem('savedWallet', address);
-                } else {
-                    listEl.innerHTML = '<div style="color:var(--danger-red); font-size:0.7rem;">Nenhuma Posição Ativa Encontrada.</div>';
-                }
-            } catch(e) {
-                console.error(e);
-                listEl.innerHTML = `<div style="color:var(--danger-red); font-size:0.7rem; line-height: 1.2;">Falha na Conexão RPC: A rede Polygon demorou para responder. Tente novamente em alguns segundos.</div>`;
-            }
-            btnScan.innerText = "SCAN";
-        });
-
-        function drawMultiplePositionLines() {
-            if(activePositions.length > 0) btnScan.click(); 
-        }
-
-        // 4. RASTREADORES E MACRO
+        // =========================================================================
+        // FEEDS EM TEMPO REAL (BINANCE WS + POLYGON DEX WS + CÂMBIO BRL)
+        // =========================================================================
         async function buildVariationsPanel() {
-            const grid = document.getElementById('variations-grid'); let html = '';
-            for (let v of VAR_INTERVALS) {
+            const grid = document.getElementById('variations-grid');
+            let html = '';
+            for (const v of VAR_INTERVALS) {
                 try {
                     const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${v.key}&limit=2`);
                     const data = await res.json();
-                    if(data && data.length > 0) {
-                        const current = parseFloat(data[data.length-1][4]); const old = parseFloat(data[0][1]); 
-                        const perc = ((current - old) / old) * 100; const isPos = perc >= 0;
+                    if (data && data.length > 0) {
+                        const current = parseFloat(data[data.length - 1][4]);
+                        const old = parseFloat(data[0][1]);
+                        const perc = ((current - old) / old) * 100;
+                        const isPos = perc >= 0;
                         html += `<div class="var-card ${isPos ? 'positive' : 'negative'}"><span class="var-label">${v.label}</span><span class="var-value">${isPos ? '+' : ''}${perc.toFixed(2)}%</span></div>`;
                     }
-                } catch(e) {}
+                } catch (e) {}
             }
-            grid.innerHTML = html;
+            if (html) grid.innerHTML = html;
         }
 
         function initGlobalTracker() {
@@ -397,54 +1363,151 @@
             ws.onmessage = (event) => {
                 const newPrice = parseFloat(JSON.parse(event.data).c);
                 if (lastPriceGlobal !== 0 && newPrice !== lastPriceGlobal) {
-                    priceGlobalEl.classList.remove('tick-up', 'tick-down'); void priceGlobalEl.offsetWidth; 
+                    priceGlobalEl.classList.remove('tick-up', 'tick-down');
+                    void priceGlobalEl.offsetWidth;
                     priceGlobalEl.classList.add(newPrice > lastPriceGlobal ? 'tick-up' : 'tick-down');
                 }
-                lastPriceGlobal = newPrice; currentPriceGlobal = newPrice;
+                lastPriceGlobal = newPrice;
+                currentPriceGlobal = newPrice;
                 priceGlobalEl.innerText = currentPriceGlobal.toFixed(6);
-                if(usdBrlRate > 0) document.getElementById('macro-pol-brl').innerText = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
+                if (usdBrlRate > 0) {
+                    document.getElementById('macro-pol-brl').innerText = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
+                }
                 updateLiveCandle(currentPriceGlobal);
+                updateFocusedMetrics();
             };
-            ws.onclose = () => setTimeout(initGlobalTracker, 2000);
+            ws.onclose = () => setTimeout(initGlobalTracker, 2500);
         }
 
         function initPolygonScanner() {
             const wsPool = new WebSocket('wss://polygon-bor-rpc.publicnode.com');
-            wsPool.onopen = () => { wsPool.send(JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": ["logs", { "address": POOL_ADDRESS }] })); };
+            const dot = document.getElementById('polygon-dot');
+            wsPool.onopen = () => {
+                wsPool.send(JSON.stringify({
+                    jsonrpc: '2.0', id: 1, method: 'eth_subscribe',
+                    params: ['logs', { address: POOL_ADDRESS }]
+                }));
+            };
             wsPool.onmessage = (event) => {
                 const response = JSON.parse(event.data);
                 if (response.method === 'eth_subscription' && response.params.result.topics[0] === SWAP_TOPIC) {
+                    dot.style.background = 'var(--dekton-copper)';
+                    setTimeout(() => dot.style.background = '#fff', 350);
                     try {
                         const parsed = iface.parseLog(response.params.result);
                         const amount0 = parseFloat(ethers.utils.formatUnits(parsed.args.amount0.toString(), 18));
                         const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
-                        
                         const isBuy = amount0 < 0;
-                        const polVal = Math.abs(amount0).toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits: 1});
-                        const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL', maximumFractionDigits: 0});
+                        const polVal = Math.abs(amount0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+                        const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
                         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
-                        
-                        const row = document.createElement('div'); row.className = 'tape-row new-tx';
+
+                        const row = document.createElement('div');
+                        row.className = 'tape-row';
                         row.innerHTML = `<div>${time}</div><div class="${isBuy ? 'type-buy' : 'type-sell'}">${isBuy ? 'COMPRA' : 'VENDA'}</div><div>${brlVal}</div><div>${polVal} P</div>`;
                         tapeEl.prepend(row);
-                        if(tapeEl.children.length > 25) tapeEl.removeChild(tapeEl.lastChild); 
-                    } catch (error) {}
+                        if (tapeEl.children.length > 30) tapeEl.removeChild(tapeEl.lastChild);
+                    } catch (e) {}
                 }
             };
             wsPool.onclose = () => setTimeout(initPolygonScanner, 3000);
         }
 
         async function fetchMacroData() {
-            try { 
-                const resBRL = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL'); 
-                usdBrlRate = parseFloat((await resBRL.json()).USDBRL.ask); 
+            try {
+                const res = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+                usdBrlRate = parseFloat((await res.json()).USDBRL.ask);
                 document.getElementById('macro-usd').innerText = `R$ ${usdBrlRate.toFixed(4)}`;
-            } catch(e){}
+            } catch (e) {}
         }
 
-        window.addEventListener('load', () => { 
-            const savedWallet = localStorage.getItem('savedWallet');
-            if(savedWallet) { walletInput.value = savedWallet; btnScan.click(); }
+        // =========================================================================
+        // ÁUDIO & REDIMENSIONAMENTO DE PAINÉIS COM O MOUSE
+        // =========================================================================
+        document.getElementById('btn-audio').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-audio');
+            if (!audioEnabled) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+                audioEnabled = true;
+                btn.innerText = 'SOM: ON';
+                btn.classList.add('active-audio');
+                playBeep(1046, 0.12, 'sine');
+            } else {
+                audioEnabled = false;
+                btn.innerText = 'SOM: OFF';
+                btn.classList.remove('active-audio');
+            }
+        });
+
+        function playBeep(freq, dur, type) {
+            if (!audioEnabled || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function setupResizers() {
+            const res1 = document.getElementById('resizer-1');
+            const res2 = document.getElementById('resizer-2');
+            const leftCol = document.getElementById('col-left');
+            const rightCol = document.getElementById('col-right');
+
+            let activeResizer = null;
+
+            res1.addEventListener('mousedown', () => { activeResizer = 1; res1.classList.add('dragging'); });
+            res2.addEventListener('mousedown', () => { activeResizer = 2; res2.classList.add('dragging'); });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!activeResizer) return;
+                if (activeResizer === 1) {
+                    const newW = Math.max(110, Math.min(340, e.clientX - 8));
+                    leftCol.style.width = newW + 'px';
+                } else if (activeResizer === 2) {
+                    const newW = Math.max(250, Math.min(540, window.innerWidth - e.clientX - 8));
+                    rightCol.style.width = newW + 'px';
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (activeResizer) {
+                    res1.classList.remove('dragging');
+                    res2.classList.remove('dragging');
+                    activeResizer = null;
+                }
+            });
+        }
+
+        // =========================================================================
+        // INICIALIZAÇÃO AUTOMÁTICA
+        // =========================================================================
+        window.addEventListener('DOMContentLoaded', async () => {
+            setupResizers();
+            await loadFromTripleBackup();
+
+            if (appState.wallet) {
+                document.getElementById('wallet-address').value = appState.wallet;
+            }
+
+            initTradingViewChart();
+            renderAllPositions();
+            buildVariationsPanel();
+            setInterval(buildVariationsPanel, 60000);
+            initGlobalTracker();
+            initPolygonScanner();
+            fetchMacroData();
+            setInterval(fetchMacroData, 30000);
+
+            if (appState.wallet) {
+                runUnstoppableScan();
+            }
         });
     </script>
 </body>
