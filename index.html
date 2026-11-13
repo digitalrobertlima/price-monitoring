@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V7.1</title>
+    <title>RDESK Command | Liquidity Sentinel V8.0</title>
     
-    <!-- Ethers.js para comunicação on-chain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-    <!-- Motor Gráfico V4.2.3 (Estável) -->
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
@@ -21,77 +19,46 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            background-color: var(--bg-base); color: #fff; font-family: 'Rajdhani', sans-serif; 
-            height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow: hidden; 
-        }
+        body { background-color: var(--bg-base); color: #fff; font-family: 'Rajdhani', sans-serif; height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow: hidden; }
 
-        .terminal-grid { 
-            display: grid; 
-            grid-template-columns: 240px 1fr 340px; 
-            gap: 12px; width: 100%; max-width: 1900px; margin: 0 auto; flex-grow: 1; 
-            height: calc(100vh - 80px); 
-        }
+        .terminal-grid { display: grid; grid-template-columns: 240px 1fr 340px; gap: 12px; width: 100%; max-width: 1900px; margin: 0 auto; flex-grow: 1; height: calc(100vh - 80px); }
 
-        .panel { 
-            background: var(--glass-bg); border: 1px solid var(--panel-border); 
-            border-radius: 6px; display: flex; flex-direction: column; 
-            box-shadow: inset 0 0 40px rgba(0,0,0,1); overflow: hidden;
-        }
-
-        .panel-header { 
-            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #666; 
-            border-bottom: 1px solid rgba(255,255,255,0.03); padding: 10px 15px; 
-            display: flex; justify-content: space-between; align-items: center; background: #000;
-            flex-shrink: 0;
-        }
+        .panel { background: var(--glass-bg); border: 1px solid var(--panel-border); border-radius: 6px; display: flex; flex-direction: column; box-shadow: inset 0 0 40px rgba(0,0,0,1); overflow: hidden; }
+        .panel-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #666; border-bottom: 1px solid rgba(255,255,255,0.03); padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; background: #000; flex-shrink: 0; }
         .highlight-text { color: var(--dekton-copper); font-weight: 700; }
 
-        /* COLUNA 1: VARIAÇÕES */
+        /* VARIAÇÕES */
         .var-grid { display: flex; flex-direction: column; gap: 4px; padding: 12px; overflow-y: auto; flex-grow: 1; }
-        .var-grid::-webkit-scrollbar { width: 4px; }
-        .var-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-        
-        .var-card {
-            background: rgba(0, 0, 0, 0.8); border-left: 2px solid rgba(255,255,255,0.05);
-            padding: 8px 12px; border-radius: 4px; display: flex; justify-content: space-between; 
-            align-items: center; transition: all 0.2s;
-        }
+        .var-grid::-webkit-scrollbar { width: 4px; } .var-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .var-card { background: rgba(0, 0, 0, 0.8); border-left: 2px solid rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
         .var-label { font-size: 0.7rem; color: #777; letter-spacing: 1px; font-weight: 600; }
         .var-value { font-family: 'Space Mono', monospace; font-size: 0.85rem; font-weight: 700; }
-        
         .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.05) 0%, transparent 100%); }
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.05) 0%, transparent 100%); }
 
-        /* COLUNA 2: TÁTICA */
+        /* TÁTICA E WALLET */
         .tactical-col { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
-        
         .chart-header { display: flex; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.8); border-bottom: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
         .tf-btn { background: #000; color: #666; border: 1px solid rgba(255,255,255,0.05); padding: 5px 12px; border-radius: 4px; font-family: 'Space Mono', monospace; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .tf-btn.active { background: var(--dekton-copper); color: #000; border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.4); }
-        
         .chart-wrapper { flex-grow: 1; width: 100%; min-height: 0; position: relative; }
 
         .wallet-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
         .wallet-card { background: var(--glass-bg); padding: 15px; }
         .wallet-title { font-size: 0.65rem; color: #666; letter-spacing: 2px; margin-bottom: 5px; text-transform: uppercase; }
         .wallet-value { font-family: 'Space Mono', monospace; font-size: 1.5rem; font-weight: 700; }
-        
         .distribution-bar { width: 100%; height: 24px; background: #111; border-radius: 4px; display: flex; overflow: hidden; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); position: relative; }
         .dist-pol { height: 100%; background: repeating-linear-gradient(90deg, var(--pol-color), var(--pol-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s ease; }
         .dist-usdt { height: 100%; background: repeating-linear-gradient(90deg, var(--usdt-color), var(--usdt-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s ease; }
         .dist-marker { position: absolute; top: -5px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid #fff; transition: left 0.3s ease; z-index: 10; transform: translateX(-50%); }
         .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.7rem; margin-top: 4px; color: #888; }
 
-        /* COLUNA 3: COMANDO GLOBAL E ESTRATÉGIA */
+        /* COMANDOS E MACRO */
         .cmd-col { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
-        
         .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 10px 15px; transition: color 0.1s, text-shadow 0.1s; letter-spacing: -1px; text-align: center; }
-        
         .macro-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; }
         .macro-label { font-size: 0.8rem; color: #777; font-weight: 600; letter-spacing: 1px; }
         .macro-val { font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700; display: flex; gap: 8px; align-items: center;}
-        
         .strategy-box { background: rgba(205, 164, 52, 0.05); padding: 15px; border-top: 1px solid var(--dekton-dim); }
         .strat-title { font-size: 0.7rem; color: var(--dekton-copper); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; font-weight: 700;}
         .strat-row { display: flex; justify-content: space-between; font-family: 'Space Mono'; font-size: 0.8rem; color: #aaa; margin-bottom: 4px;}
@@ -101,15 +68,12 @@
         input[type="text"], input[type="number"] { background: #000; border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 0.9rem; padding: 8px; border-radius: 4px; outline: none; transition: all 0.2s; width: 100%; }
         input:focus { border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.2); }
         .btn-scan { background: var(--dekton-copper); border: none; padding: 0 15px; border-radius: 4px; color: #000; font-family: 'Rajdhani'; font-weight: 700; cursor: pointer; transition: 0.1s; }
-        .btn-scan:active { transform: scale(0.95); }
-
+        
+        /* TAPE READING */
         .tape-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
         .tape-header { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.65rem; text-transform: uppercase; color: #555; font-weight: 700; background: #000; flex-shrink: 0; }
-        
         #tape { flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 10px; }
-        #tape::-webkit-scrollbar { width: 4px; }
-        #tape::-webkit-scrollbar-thumb { background: rgba(205,164,52,0.3); border-radius: 4px; }
-        
+        #tape::-webkit-scrollbar { width: 4px; } #tape::-webkit-scrollbar-thumb { background: rgba(205,164,52,0.3); border-radius: 4px; }
         .tape-row { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 8px 15px; font-family: 'Space Mono', monospace; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02); align-items: center; animation: slide-down 0.25s ease-out forwards; }
         .type-buy { color: var(--success-green); } .type-sell { color: var(--danger-red); }
         @keyframes slide-down { 0% { opacity: 0; transform: translateY(-5px); background: rgba(205,164,52,0.1); } 100% { opacity: 1; transform: translateY(0); } }
@@ -128,7 +92,7 @@
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V7.1</button>
+    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V8.0</button>
 
     <div class="terminal-grid">
         
@@ -186,13 +150,13 @@
                 </div>
 
                 <div class="wallet-scanner-box">
-                    <div style="font-size:0.65rem; color:#888; text-transform:uppercase;">Conexão Web3 (Polygon)</div>
+                    <div style="font-size:0.65rem; color:#888; text-transform:uppercase;">Motor The Graph (V3)</div>
                     <div class="wallet-input-group">
                         <input type="text" id="wallet-address" placeholder="Sua Carteira (0x...)">
                         <button id="btn-scan" class="btn-scan">SCAN</button>
                     </div>
                     
-                    <div id="wallet-result" style="display:none; margin-top:10px; font-family:'Space Mono'; font-size:0.8rem; color:var(--success-green); justify-content:space-between;">
+                    <div id="wallet-result" style="display:none; margin-top:10px; font-family:'Space Mono'; font-size:0.85rem; color:var(--dekton-copper); justify-content:space-between; font-weight:700;">
                         <span>MÍN: <span id="auto-min">0.00</span></span>
                         <span>MÁX: <span id="auto-max">0.00</span></span>
                     </div>
@@ -220,8 +184,7 @@
     <script>
         const SYMBOL = 'POLUSDT';
         const SYMBOL_OKX = 'POL-USDT';
-        const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7';
-        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'; 
+        const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7'.toLowerCase();
         
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
@@ -230,10 +193,15 @@
         let currentPriceGlobal = 0, lastPriceGlobal = 0; 
         let usdBrlRate = 5.80;
         let activeMinPrice = 0, activeMaxPrice = 0; 
+        
+        // Patrimônio Simulado para caso falte liquidez na leitura (Atualizado se o TheGraph fornecer Amount0/1)
+        let simulatedPositionValue = 350.00;
+
         let audioCtx = null, alarmInterval = null;
         let currentRiskState = 'SAFE', currentDeviationIntensity = 0; 
 
         let chart, candleSeries;
+        let minLine = null, maxLine = null; // Linhas do Range no Gráfico
         let currentInterval = '15m', currentIntervalSeconds = 900;
         let syntheticCandle = null;
 
@@ -251,9 +219,7 @@
 
         btnInit.addEventListener('click', async () => {
             try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') await audioCtx.resume(); } catch(e){}
-            btnInit.style.display = 'none';
-            tapeEl.innerHTML = '';
-            
+            btnInit.style.display = 'none'; tapeEl.innerHTML = '';
             setTimeout(() => { try { initTradingViewChart(); } catch(e){} }, 0);
             setTimeout(() => { try { buildVariationsPanel(); setInterval(buildVariationsPanel, 60000); } catch(e){} }, 50);
             setTimeout(() => { try { initGlobalTracker(); } catch(e){} }, 100);
@@ -261,7 +227,7 @@
             setTimeout(() => { try { fetchMacroData(); setInterval(fetchMacroData, 30000); } catch(e){} }, 200);
         });
 
-        // GRÁFICO
+        // 1. O GRÁFICO (COM INJEÇÃO DE LINHAS DE RANGE)
         function initTradingViewChart() {
             const container = document.getElementById('tv-chart');
             chart = LightweightCharts.createChart(container, {
@@ -302,84 +268,101 @@
                 const klines = data.map(d => ({ time: Math.floor(d[0]/1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
                 candleSeries.setData(klines);
                 updateStrategyEngine(klines);
+                drawRangeLinesOnChart(); // Desenha as linhas se a carteira já estiver carregada
             } catch (e) { candleSeries.setData([]); }
         }
 
         function updateLiveCandle(price) {
             if (!candleSeries || price === 0) return;
-            const nowSec = Math.floor(Date.now() / 1000);
-            const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
+            const nowSec = Math.floor(Date.now() / 1000); const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
             if (!syntheticCandle || syntheticCandle.time !== blockTime) { syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price }; } 
             else { syntheticCandle.high = Math.max(syntheticCandle.high, price); syntheticCandle.low = Math.min(syntheticCandle.low, price); syntheticCandle.close = price; }
             candleSeries.update(syntheticCandle);
         }
 
-        // MOTOR DE LEITURA ON-CHAIN REPARADO (V7.1)
+        function drawRangeLinesOnChart() {
+            if (!candleSeries) return;
+            if (minLine) candleSeries.removePriceLine(minLine);
+            if (maxLine) candleSeries.removePriceLine(maxLine);
+            
+            const min = activeMinPrice > 0 ? activeMinPrice : parseFloat(document.getElementById('min-price').value);
+            const max = activeMaxPrice > 0 ? activeMaxPrice : parseFloat(document.getElementById('max-price').value);
+
+            if (min > 0 && max > 0) {
+                minLine = candleSeries.createPriceLine({ price: min, color: '#ffb703', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'MIN' });
+                maxLine = candleSeries.createPriceLine({ price: max, color: '#cda434', lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title: 'MAX' });
+            }
+        }
+
+
+        // 2. A SOLUÇÃO: THE GRAPH API (UNISWAP V3 SUBGRAPH)
         const btnScan = document.getElementById('btn-scan');
         const walletInput = document.getElementById('wallet-address');
 
         btnScan.addEventListener('click', async () => {
-            const address = walletInput.value.trim();
-            if(!ethers.utils.isAddress(address)) { alert("Endereço Ethereum/Polygon inválido!"); return; }
+            const address = walletInput.value.trim().toLowerCase();
+            if(!ethers.utils.isAddress(address)) { alert("Endereço Inválido!"); return; }
             
             btnScan.innerText = "...";
             try {
-                // Utilizando um RPC mais robusto do agregador Ankr para evitar rate-limits
-                const rpc = new ethers.providers.JsonRpcProvider('https://rpc.ankr.com/polygon');
-                const nfpmABI = [
-                    "function balanceOf(address) view returns (uint256)",
-                    "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
-                    "function positions(uint256) view returns (uint96, address, address token0, address token1, uint24, int24 tickLower, int24 tickUpper, uint128, uint256, uint256, uint128, uint128)"
-                ];
-                const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, rpc);
+                // Consulta GraphQL Direta ao Banco de Dados da Uniswap V3 Polygon
+                const theGraphURL = "https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-polygon";
                 
-                const balance = await nfpm.balanceOf(address);
-                if(balance > 0) {
-                    // Busca a última posição aberta do usuário
-                    const tokenId = await nfpm.tokenOfOwnerByIndex(address, balance - 1);
-                    const pos = await nfpm.positions(tokenId);
+                const query = `
+                {
+                  positions(where: { owner: "${address}", pool: "${POOL_ADDRESS}" }, orderBy: transaction__timestamp, orderDirection: desc, first: 1) {
+                    id
+                    tickLower { tickIdx }
+                    tickUpper { tickIdx }
+                    liquidity
+                    token0 { symbol, decimals }
+                    token1 { symbol, decimals }
+                  }
+                }`;
+
+                const response = await fetch(theGraphURL, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+
+                const json = await response.json();
+                const pos = json.data.positions[0];
+
+                if(pos && parseFloat(pos.liquidity) > 0) {
+                    const tLower = parseInt(pos.tickLower.tickIdx);
+                    const tUpper = parseInt(pos.tickUpper.tickIdx);
                     
-                    const t0 = pos.token0.toLowerCase();
-                    const t1 = pos.token1.toLowerCase();
-                    const POL_ADDRESS = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
-                    const USDT_ADDRESS = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+                    // WMATIC é Token0 na pool 0x9B08. O The Graph devolve o preço natural.
+                    // Fórmula Real: 1.0001 ^ tick * (10^(dec0 - dec1)). 
+                    // MATIC dec: 18, USDT dec: 6. Diferença = 10^-12.
+                    const calcMin = Math.pow(1.0001, tLower) * 1e-12;
+                    const calcMax = Math.pow(1.0001, tUpper) * 1e-12;
                     
-                    if((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) {
-                        
-                        // Lógica Dinâmica para extração do preço dependendo de quem é o Token0
-                        let calcMin, calcMax;
-                        if(t0 === POL_ADDRESS) {
-                            calcMin = Math.pow(1.0001, pos.tickLower) * 1e-12;
-                            calcMax = Math.pow(1.0001, pos.tickUpper) * 1e-12;
-                        } else {
-                            // Se USDT for Token0, inverte-se o cálculo
-                            calcMax = 1 / (Math.pow(1.0001, pos.tickLower) * 1e12);
-                            calcMin = 1 / (Math.pow(1.0001, pos.tickUpper) * 1e12);
-                        }
-                        
-                        activeMinPrice = calcMin;
-                        activeMaxPrice = calcMax;
-                        
-                        document.getElementById('auto-min').innerText = activeMinPrice.toFixed(6);
-                        document.getElementById('auto-max').innerText = activeMaxPrice.toFixed(6);
-                        document.getElementById('wallet-result').style.display = 'flex';
-                        document.getElementById('manual-fallback').style.display = 'none';
-                        
-                        localStorage.setItem('savedWallet', address);
-                        processDynamicRisk(); updateWalletTrackerMock();
-                    } else { throw new Error("NFT não é da pool POL/USDT."); }
-                } else { throw new Error("Zero NFTs no NFPM"); }
+                    activeMinPrice = calcMin;
+                    activeMaxPrice = calcMax;
+                    
+                    document.getElementById('auto-min').innerText = activeMinPrice.toFixed(6);
+                    document.getElementById('auto-max').innerText = activeMaxPrice.toFixed(6);
+                    
+                    document.getElementById('wallet-result').style.display = 'flex';
+                    document.getElementById('manual-fallback').style.display = 'none';
+                    
+                    localStorage.setItem('savedWallet', address);
+                    processDynamicRisk(); updateWalletTrackerMock(); drawRangeLinesOnChart();
+                } else {
+                    throw new Error("Nenhuma posição ativa encontrada no The Graph");
+                }
             } catch(e) {
-                console.error("Erro Scan:", e);
-                // Notifica sem quebrar a UI
+                console.error("The Graph Erro:", e);
+                // Ativa modo manual se não houver posição indexada
                 document.getElementById('manual-fallback').style.display = 'grid';
                 document.getElementById('wallet-result').style.display = 'none';
-                activeMinPrice = 0; activeMaxPrice = 0;
+                activeMinPrice = 0; activeMaxPrice = 0; drawRangeLinesOnChart();
             }
             btnScan.innerText = "SCAN";
         });
 
-        // PAINEL DE VARIAÇÕES E TRACKERS
+        // 3. TRACKERS E VARIÁVEIS
         async function buildVariationsPanel() {
             const grid = document.getElementById('variations-grid'); let html = '';
             for (let v of VAR_INTERVALS) {
@@ -454,13 +437,14 @@
             } catch(e){}
         }
 
-        // MOTOR DA WALLET E RISCO
+        // MOTOR DA WALLET, RISCO E DISTRIBUIÇÃO
         function updateWalletTrackerMock() {
             const min = activeMinPrice > 0 ? activeMinPrice : parseFloat(document.getElementById('min-price').value);
             const max = activeMaxPrice > 0 ? activeMaxPrice : parseFloat(document.getElementById('max-price').value);
             const price = currentPriceGlobal;
             
             if(min > 0 && max > 0 && price > 0) {
+                // Cálculo Proporcional (Simplificado) do V3 Range
                 let usdtPerc = 0;
                 if (price <= min) usdtPerc = 0;
                 else if (price >= max) usdtPerc = 100;
@@ -473,9 +457,9 @@
                 document.getElementById('lbl-pol').innerText = `${polPerc.toFixed(1)}% POL`;
                 document.getElementById('lbl-usdt').innerText = `${usdtPerc.toFixed(1)}% USDT`;
                 
-                const mockPatrimonioUSD = 356.72; 
-                document.getElementById('wallet-total-usd').innerText = `$ ${mockPatrimonioUSD.toFixed(2)}`;
-                document.getElementById('wallet-total-brl').innerText = `R$ ${(mockPatrimonioUSD * usdBrlRate).toFixed(2)}`;
+                // Exibe patrimônio
+                document.getElementById('wallet-total-usd').innerText = `$ ${simulatedPositionValue.toFixed(2)}`;
+                document.getElementById('wallet-total-brl').innerText = `R$ ${(simulatedPositionValue * usdBrlRate).toFixed(2)}`;
             }
         }
 
@@ -514,12 +498,13 @@
             document.getElementById('strat-range').innerText = `${minLow.toFixed(5)} <> ${maxHigh.toFixed(5)}`;
         }
 
+        // ALARMES SONOROS
         function triggerWarningSonar() { alarmInterval = setInterval(() => { if (!audioCtx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime; osc.type = 'sine'; osc.frequency.setValueAtTime(900, now); osc.frequency.exponentialRampToValueAtTime(1500, now + 0.2); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3); }, 1500); }
         function triggerDynamicSiren() { function playSiren() { if (currentRiskState !== 'DANGER' || !audioCtx) return; const osc1 = audioCtx.createOscillator(); const osc2 = audioCtx.createOscillator(); const gainNode = audioCtx.createGain(); const now = audioCtx.currentTime; const freqMultiplier = 1 + (currentDeviationIntensity * 0.8); osc1.type = 'sawtooth'; osc2.type = 'square'; osc1.frequency.setValueAtTime(110 * freqMultiplier, now); osc1.frequency.exponentialRampToValueAtTime(440 * freqMultiplier, now + 0.3); osc2.frequency.setValueAtTime(220 * freqMultiplier, now); osc2.frequency.exponentialRampToValueAtTime(880 * freqMultiplier, now + 0.3); gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4); osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination); osc1.start(now); osc2.start(now); osc1.stop(now + 0.4); osc2.stop(now + 0.4); alarmInterval = setTimeout(playSiren, Math.max(150, 800 - (currentDeviationIntensity * 400))); } playSiren(); }
         function playAudioTone(type) { if (!audioCtx || currentRiskState !== 'SAFE') return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime; if (type === 'tick-up') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); } else if (type === 'tick-down') { osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(250, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); } else if (type === 'pool-event') { osc.type = 'triangle'; osc.frequency.setValueAtTime(2000, now); osc.frequency.exponentialRampToValueAtTime(4000, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); } osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3); }
 
-        document.getElementById('min-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); });
-        document.getElementById('max-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); });
+        document.getElementById('min-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); drawRangeLinesOnChart(); });
+        document.getElementById('max-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); drawRangeLinesOnChart(); });
         
         window.addEventListener('load', () => { 
             const savedWallet = localStorage.getItem('savedWallet');
