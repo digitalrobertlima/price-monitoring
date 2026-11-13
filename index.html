@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V6</title>
+    <title>RDESK Command | Liquidity Sentinel V7</title>
     
+    <!-- Ethers.js para comunicação on-chain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <!-- Motor Gráfico V4.2.3 (Estável) -->
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
     
     <style>
@@ -21,15 +23,14 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
             background-color: var(--bg-base); color: #fff; font-family: 'Rajdhani', sans-serif; 
-            min-height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow-x: hidden;
+            height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow: hidden; /* Trava o scroll global */
         }
 
-        /* GRID ARQUITETURAL V6 */
         .terminal-grid { 
             display: grid; 
             grid-template-columns: 240px 1fr 340px; 
-            grid-template-rows: auto 1fr;
             gap: 12px; width: 100%; max-width: 1900px; margin: 0 auto; flex-grow: 1; 
+            height: calc(100vh - 80px); /* Garante que os painéis não passem da tela */
         }
 
         .panel { 
@@ -42,12 +43,15 @@
             font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #666; 
             border-bottom: 1px solid rgba(255,255,255,0.03); padding: 10px 15px; 
             display: flex; justify-content: space-between; align-items: center; background: #000;
+            flex-shrink: 0;
         }
         .highlight-text { color: var(--dekton-copper); font-weight: 700; }
 
         /* COLUNA 1: VARIAÇÕES */
-        .variations-col { grid-column: 1; grid-row: 1 / -1; }
-        .var-grid { display: flex; flex-direction: column; gap: 4px; padding: 12px; overflow-y: auto; }
+        .var-grid { display: flex; flex-direction: column; gap: 4px; padding: 12px; overflow-y: auto; flex-grow: 1; }
+        .var-grid::-webkit-scrollbar { width: 4px; }
+        .var-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        
         .var-card {
             background: rgba(0, 0, 0, 0.8); border-left: 2px solid rgba(255,255,255,0.05);
             padding: 8px 12px; border-radius: 4px; display: flex; justify-content: space-between; 
@@ -59,22 +63,20 @@
         .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.05) 0%, transparent 100%); }
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.05) 0%, transparent 100%); }
 
-        /* COLUNA 2: TÁTICA (Gráfico e Carteira) */
-        .tactical-col { grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 12px; }
+        /* COLUNA 2: TÁTICA (Gráfico Escuro e Wallet) */
+        .tactical-col { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
         
-        .chart-header { display: flex; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.8); border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .chart-header { display: flex; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.8); border-bottom: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
         .tf-btn { background: #000; color: #666; border: 1px solid rgba(255,255,255,0.05); padding: 5px 12px; border-radius: 4px; font-family: 'Space Mono', monospace; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
         .tf-btn.active { background: var(--dekton-copper); color: #000; border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.4); }
         
-        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 400px; position: relative; }
+        .chart-wrapper { flex-grow: 1; width: 100%; min-height: 0; position: relative; }
 
-        /* WALLET TRACKER (A Distribuição Visual) */
-        .wallet-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); }
+        .wallet-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: rgba(255,255,255,0.05); border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
         .wallet-card { background: var(--glass-bg); padding: 15px; }
         .wallet-title { font-size: 0.65rem; color: #666; letter-spacing: 2px; margin-bottom: 5px; text-transform: uppercase; }
         .wallet-value { font-family: 'Space Mono', monospace; font-size: 1.5rem; font-weight: 700; }
         
-        /* A Barra de Distribuição POL/USDT */
         .distribution-bar { width: 100%; height: 24px; background: #111; border-radius: 4px; display: flex; overflow: hidden; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); position: relative; }
         .dist-pol { height: 100%; background: repeating-linear-gradient(90deg, var(--pol-color), var(--pol-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s ease; }
         .dist-usdt { height: 100%; background: repeating-linear-gradient(90deg, var(--usdt-color), var(--usdt-color) 4px, transparent 4px, transparent 6px); transition: width 0.3s ease; }
@@ -82,69 +84,57 @@
         .dist-labels { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 0.7rem; margin-top: 4px; color: #888; }
 
         /* COLUNA 3: COMANDO GLOBAL E ESTRATÉGIA */
-        .cmd-col { grid-column: 3; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 12px; }
+        .cmd-col { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
         
         .price-huge { font-family: 'Space Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 10px 15px; transition: color 0.1s, text-shadow 0.1s; letter-spacing: -1px; text-align: center; }
-        .price-sub { text-align: center; font-family: 'Space Mono'; font-size: 0.8rem; color: #666; margin-bottom: 10px; }
-
-        /* MACRO INDICADORES (BTC, USD, POL/BRL) */
+        
         .macro-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; }
         .macro-label { font-size: 0.8rem; color: #777; font-weight: 600; letter-spacing: 1px; }
         .macro-val { font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700; display: flex; gap: 8px; align-items: center;}
         
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 15px; background: rgba(0,0,0,0.5);}
-        input { background: #000; border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 1rem; padding: 10px; border-radius: 4px; text-align: center; width: 100%; outline: none; transition: all 0.2s; }
-        input:focus { border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.2); }
-        
-        /* DICA DE RANGE ($1/min) */
         .strategy-box { background: rgba(205, 164, 52, 0.05); padding: 15px; border-top: 1px solid var(--dekton-dim); }
         .strat-title { font-size: 0.7rem; color: var(--dekton-copper); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; font-weight: 700;}
         .strat-row { display: flex; justify-content: space-between; font-family: 'Space Mono'; font-size: 0.8rem; color: #aaa; margin-bottom: 4px;}
-        .strat-val { color: #fff; font-weight: 700; }
+        
+        /* NOVO SCANNER DE WALLET ON-CHAIN */
+        .wallet-scanner-box { background: rgba(0,0,0,0.5); padding: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
+        .wallet-input-group { display: flex; gap: 8px; margin-top: 5px; }
+        input[type="text"], input[type="number"] { background: #000; border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 0.9rem; padding: 8px; border-radius: 4px; outline: none; transition: all 0.2s; width: 100%; }
+        input:focus { border-color: var(--dekton-copper); box-shadow: 0 0 10px rgba(205,164,52,0.2); }
+        .btn-scan { background: var(--dekton-copper); border: none; padding: 0 15px; border-radius: 4px; color: #000; font-family: 'Rajdhani'; font-weight: 700; cursor: pointer; transition: 0.1s; }
+        .btn-scan:active { transform: scale(0.95); }
 
-        /* TAPE READING */
-        .tape-container { flex-grow: 1; display: flex; flex-direction: column; }
-        .tape-header { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.65rem; text-transform: uppercase; color: #555; font-weight: 700; background: #000; }
+        /* TAPE READING (AGORA CONTIDO E ROLÁVEL) */
+        .tape-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .tape-header { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.65rem; text-transform: uppercase; color: #555; font-weight: 700; background: #000; flex-shrink: 0; }
+        
+        #tape { flex-grow: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 10px; }
+        #tape::-webkit-scrollbar { width: 4px; }
+        #tape::-webkit-scrollbar-thumb { background: rgba(205,164,52,0.3); border-radius: 4px; }
+        
         .tape-row { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 8px 15px; font-family: 'Space Mono', monospace; font-size: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.02); align-items: center; animation: slide-down 0.25s ease-out forwards; }
         .type-buy { color: var(--success-green); } .type-sell { color: var(--danger-red); }
         @keyframes slide-down { 0% { opacity: 0; transform: translateY(-5px); background: rgba(205,164,52,0.1); } 100% { opacity: 1; transform: translateY(0); } }
 
         /* UTILITÁRIOS */
-        .btn-start { width: 100%; padding: 15px; background: var(--dekton-copper); border: none; border-radius: 4px; color: #000; font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; margin-bottom: 12px; box-shadow: 0 0 20px rgba(205,164,52,0.2); transition: transform 0.1s; }
-        .btn-start:active { transform: scale(0.98); }
+        .btn-start { width: 100%; padding: 15px; background: var(--dekton-copper); border: none; border-radius: 4px; color: #000; font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; margin-bottom: 12px; box-shadow: 0 0 20px rgba(205,164,52,0.2); transition: transform 0.1s; flex-shrink: 0; }
         .pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green); animation: ws-pulse 1.5s infinite alternate; margin-right: 5px; }
         @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
-        
         .tick-up { color: var(--success-green) !important; text-shadow: 0 0 20px var(--success-green); }
         .tick-down { color: var(--danger-red) !important; text-shadow: 0 0 20px var(--danger-red); }
 
-        /* ALERTAS SONOROS VISUAIS */
         body.warning-mode .panel#panel-radar { border-color: var(--warning-yellow); animation: pulse-warning 1.5s infinite alternate; }
         @keyframes pulse-warning { 0% { box-shadow: inset 0 0 10px rgba(255,183,3,0.1); } 100% { box-shadow: inset 0 0 40px rgba(255,183,3,0.2); } }
         body.danger-mode .panel#panel-radar { border-color: var(--danger-red); animation: pulse-danger 0.5s infinite alternate; }
         @keyframes pulse-danger { 0% { box-shadow: inset 0 0 20px rgba(255,42,42,0.1); } 100% { box-shadow: inset 0 0 80px rgba(255,42,42,0.4); } }
-
-        @media (max-width: 1200px) {
-            .terminal-grid { grid-template-columns: 1fr; grid-template-rows: auto; }
-            .variations-col { grid-column: 1; grid-row: 3; }
-            .var-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
-            .tactical-col { grid-column: 1; grid-row: 1; }
-            .cmd-col { grid-column: 1; grid-row: 2; }
-            .chart-wrapper { min-height: 350px; }
-        }
-        @media (max-width: 600px) {
-            .var-grid { grid-template-columns: repeat(2, 1fr); }
-            .wallet-panel { grid-template-columns: 1fr; }
-        }
     </style>
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V6</button>
+    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V7</button>
 
     <div class="terminal-grid">
         
-        <!-- COLUNA 1: VARIAÇÕES HISTÓRICAS -->
         <div class="panel variations-col">
             <div class="panel-header"><span><span class="pulse-dot" style="background:#fff"></span> Radar OHLC</span></div>
             <div class="var-grid" id="variations-grid">
@@ -152,66 +142,70 @@
             </div>
         </div>
 
-        <!-- COLUNA 2: GRÁFICO TÁTICO E WALLET -->
-        <div class="tactical-col">
-            <div class="panel" style="flex-grow: 1;">
-                <div class="chart-header" id="tf-buttons">
-                    <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
-                    <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
-                    <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
-                    <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
-                    <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
+        <div class="panel tactical-col">
+            <div class="chart-header" id="tf-buttons">
+                <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
+                <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
+                <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
+                <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
+                <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
+            </div>
+            <!-- O Gráfico agora ficará preto devido à injeção no JS -->
+            <div class="chart-wrapper" id="tv-chart"></div>
+            
+            <div class="wallet-panel">
+                <div class="wallet-card">
+                    <div class="wallet-title">Patrimônio da Posição (Estimado)</div>
+                    <div class="wallet-value" id="wallet-total-usd">$ 0.00</div>
+                    <div style="font-family: 'Space Mono'; font-size: 0.8rem; color: #888;" id="wallet-total-brl">R$ 0,00</div>
                 </div>
-                <div class="chart-wrapper" id="tv-chart"></div>
-                
-                <!-- O NOVO RADAR DE CARTEIRA (DISTRIBUIÇÃO) -->
-                <div class="wallet-panel">
-                    <div class="wallet-card">
-                        <div class="wallet-title">Patrimônio da Posição (Estimado)</div>
-                        <div class="wallet-value" id="wallet-total-usd">$ 0.00</div>
-                        <div style="font-family: 'Space Mono'; font-size: 0.8rem; color: #888;" id="wallet-total-brl">R$ 0,00</div>
+                <div class="wallet-card" style="border-left: 1px solid rgba(255,255,255,0.05);">
+                    <div class="wallet-title">Distribuição de Ativos (Liquidez)</div>
+                    <div class="distribution-bar">
+                        <div class="dist-marker" id="dist-marker" style="left: 50%;"></div>
+                        <div class="dist-pol" id="bar-pol" style="width: 50%;"></div>
+                        <div class="dist-usdt" id="bar-usdt" style="width: 50%;"></div>
                     </div>
-                    <div class="wallet-card" style="border-left: 1px solid rgba(255,255,255,0.05);">
-                        <div class="wallet-title">Distribuição de Ativos (Liquidez)</div>
-                        <div class="distribution-bar">
-                            <div class="dist-marker" id="dist-marker" style="left: 50%;"></div>
-                            <div class="dist-pol" id="bar-pol" style="width: 50%;"></div>
-                            <div class="dist-usdt" id="bar-usdt" style="width: 50%;"></div>
-                        </div>
-                        <div class="dist-labels">
-                            <span id="lbl-pol" style="color: var(--pol-color);">50% POL</span>
-                            <span id="lbl-usdt" style="color: var(--usdt-color);">50% USDT</span>
-                        </div>
+                    <div class="dist-labels">
+                        <span id="lbl-pol" style="color: var(--pol-color);">50% POL</span>
+                        <span id="lbl-usdt" style="color: var(--usdt-color);">50% USDT</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- COLUNA 3: COMANDO, MERCADO E TAPE -->
         <div class="cmd-col">
-            <div class="panel" id="panel-radar">
+            <div class="panel" id="panel-radar" style="flex-shrink:0;">
                 <div class="panel-header"><span><span class="pulse-dot" id="global-dot"></span> Radar de Risco</span><span class="highlight-text" id="alert-status">SEGURO</span></div>
                 
-                <!-- PREÇO GLOBAL E SPREAD -->
                 <div id="price-global" class="price-huge">0.000000</div>
-                <div class="price-sub">Spread Uni V3: <span id="spread-value" style="color: #fff; font-weight:700;">0.000%</span></div>
                 
-                <!-- MACROECONOMIA -->
                 <div class="macro-row"><span class="macro-label">USD / BRL</span><span class="macro-val" id="macro-usd">R$ 0.00</span></div>
-                <div class="macro-row"><span class="macro-label">BTC / USD</span><span class="macro-val" id="macro-btc">$ 0.00</span></div>
                 <div class="macro-row"><span class="macro-label">POL / BRL</span><span class="macro-val" id="macro-pol-brl">R$ 0.00</span></div>
                 
-                <!-- ESTRATÉGIA $1/MIN -->
                 <div class="strategy-box">
                     <div class="strat-title">Alvo Tático: R$ 1,00 / Minuto</div>
-                    <div class="strat-row"><span>Range Sugerido (24h)</span><span class="strat-val" id="strat-range">Calculando...</span></div>
-                    <div class="strat-row"><span>Liquidez Necessária Estim.</span><span class="strat-val" id="strat-liq">Calculando...</span></div>
+                    <div class="strat-row"><span>Range (24h)</span><span style="color:#fff; font-weight:700;" id="strat-range">Calculando...</span></div>
                 </div>
 
-                <!-- CONTROLES DO ALARME -->
-                <div class="controls">
-                    <div><div style="font-size:0.65rem; color:#888; margin-bottom:4px;">MÍNIMA (ALERTA)</div><input type="number" id="min-price" step="0.000001"></div>
-                    <div><div style="font-size:0.65rem; color:#888; margin-bottom:4px;">MÁXIMA (ALERTA)</div><input type="number" id="max-price" step="0.000001"></div>
+                <!-- SCANNER ON-CHAIN DA CARTEIRA -->
+                <div class="wallet-scanner-box">
+                    <div style="font-size:0.65rem; color:#888; text-transform:uppercase;">Conexão Web3 (Polygon)</div>
+                    <div class="wallet-input-group">
+                        <input type="text" id="wallet-address" placeholder="Sua Carteira (0x...)">
+                        <button id="btn-scan" class="btn-scan">SCAN</button>
+                    </div>
+                    
+                    <div id="wallet-result" style="display:none; margin-top:10px; font-family:'Space Mono'; font-size:0.8rem; color:var(--success-green); justify-content:space-between;">
+                        <span>MÍN: <span id="auto-min">0.00</span></span>
+                        <span>MÁX: <span id="auto-max">0.00</span></span>
+                    </div>
+
+                    <!-- Fallback se a leitura falhar ou o usuário não tiver NFT ativo -->
+                    <div id="manual-fallback" style="display:none; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
+                        <input type="number" id="min-price" placeholder="Mínima (Manual)" step="0.000001">
+                        <input type="number" id="max-price" placeholder="Máxima (Manual)" step="0.000001">
+                    </div>
                 </div>
             </div>
 
@@ -219,7 +213,7 @@
                 <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Scanner Polygon</span></div>
                 <div class="tape-container">
                     <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRL</div><div>Qtd (POL)</div></div>
-                    <div id="tape" style="display: flex; flex-direction: column; overflow: hidden; padding-bottom: 5px;">
+                    <div id="tape">
                         <div style="padding: 20px; text-align: center; color: #444; font-family: 'Space Mono'; font-size: 0.75rem;">[ AGUARDANDO REDE ]</div>
                     </div>
                 </div>
@@ -229,42 +223,35 @@
     </div>
 
     <script>
-        // CONFIGURAÇÕES DA CARTEIRA E DA REDE
         const SYMBOL = 'POLUSDT';
         const SYMBOL_OKX = 'POL-USDT';
         const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7';
-        
-        // COLOCAR O SEU ENDEREÇO AQUI PARA LER A DISTRIBUIÇÃO DA POSIÇÃO
-        const MY_WALLET_ADDRESS = '0x2833a1C3ddE3B5d2265F057301a89bEf1BB50fe3'.toLowerCase(); 
+        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'; // Contrato V3 das posições
         
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
         const SWAP_TOPIC = iface.getEventTopic("Swap");
         
-        let currentPriceGlobal = 0, lastPriceGlobal = 0, currentPriceUniswap = 0; 
-        let usdBrlRate = 5.80, btcUsdRate = 0;
+        let currentPriceGlobal = 0, lastPriceGlobal = 0; 
+        let usdBrlRate = 5.80;
+        let activeMinPrice = 0, activeMaxPrice = 0; // Armazena o range lido da blockchain
         let audioCtx = null, alarmInterval = null;
         let currentRiskState = 'SAFE', currentDeviationIntensity = 0; 
 
-        // MOTOR TRADINGVIEW
         let chart, candleSeries;
         let currentInterval = '15m', currentIntervalSeconds = 900;
         let syntheticCandle = null;
 
         const priceGlobalEl = document.getElementById('price-global');
-        const spreadEl = document.getElementById('spread-value');
         const tapeEl = document.getElementById('tape');
         const alertStatusEl = document.getElementById('alert-status');
         const bodyEl = document.body;
         const btnInit = document.getElementById('btn-init');
 
         const VAR_INTERVALS = [
-            { label: '1 MIN', key: '1m', fetchType: 'standard' }, { label: '5 MIN', key: '5m', fetchType: 'standard' }, 
-            { label: '15 MIN', key: '15m', fetchType: 'standard' }, { label: '30 MIN', key: '30m', fetchType: 'standard' }, 
-            { label: '1 HORA', key: '1h', fetchType: 'standard' }, { label: '4 HORAS', key: '4h', fetchType: 'standard' },
-            { label: '8 HORAS', key: '8h', fetchType: 'standard' }, { label: '12 HORAS', key: '12h', fetchType: 'standard' }, 
-            { label: '1 DIA', key: '1d', fetchType: 'standard' }, { label: '1 SEM', key: '1w', fetchType: 'standard' }, 
-            { label: '1 MÊS', key: '1M', fetchType: 'standard' }, { label: '1 ANO', key: '1M', fetchType: 'year' }
+            { label: '1 MIN', key: '1m' }, { label: '5 MIN', key: '5m' }, { label: '15 MIN', key: '15m' }, { label: '30 MIN', key: '30m' }, 
+            { label: '1 HORA', key: '1h' }, { label: '4 HORAS', key: '4h' }, { label: '8 HORAS', key: '8h' }, { label: '12 HORAS', key: '12h' }, 
+            { label: '1 DIA', key: '1d' }, { label: '1 SEM', key: '1w' }, { label: '1 MÊS', key: '1M' }
         ];
 
         btnInit.addEventListener('click', async () => {
@@ -277,19 +264,18 @@
             setTimeout(() => { try { initGlobalTracker(); } catch(e){} }, 100);
             setTimeout(() => { try { initPolygonScanner(); } catch(e){} }, 150);
             setTimeout(() => { try { fetchMacroData(); setInterval(fetchMacroData, 30000); } catch(e){} }, 200);
-            
-            // Simulação da Leitura de Carteira (Mock baseado no Revert Finance)
-            // Em um ambiente puro JS sem backend node/ethers completo, estimamos baseado no pool e no preço
-            setTimeout(() => { try { updateWalletTrackerMock(); setInterval(updateWalletTrackerMock, 5000); } catch(e){} }, 250);
         });
 
-        // 1. GRÁFICO (TRADINGVIEW FIXADO NA V4.2.3)
+        // 1. GRÁFICO (AGORA ABSOLUTAMENTE ESCURO)
         function initTradingViewChart() {
             const container = document.getElementById('tv-chart');
             chart = LightweightCharts.createChart(container, {
                 width: container.clientWidth,
                 height: container.clientHeight,
-                layout: { backgroundColor: 'transparent', textColor: '#666' },
+                layout: { 
+                    background: { type: 'solid', color: '#050505' }, // Força o fundo preto real na versão 4
+                    textColor: '#666' 
+                },
                 grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
                 crosshair: { vertLine: { color: '#cda434', style: 3 }, horzLine: { color: '#cda434', style: 3 } },
                 timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.05)' },
@@ -308,12 +294,9 @@
 
             document.querySelectorAll('.tf-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
-                    currentInterval = e.target.getAttribute('data-interval');
-                    currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
-                    syntheticCandle = null;
-                    loadChartHistory(currentInterval);
+                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active');
+                    currentInterval = e.target.getAttribute('data-interval'); currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
+                    syntheticCandle = null; loadChartHistory(currentInterval);
                 });
             });
             loadChartHistory(currentInterval);
@@ -326,7 +309,7 @@
                 const data = await res.json();
                 const klines = data.map(d => ({ time: Math.floor(d[0]/1000), open: parseFloat(d[1]), high: parseFloat(d[2]), low: parseFloat(d[3]), close: parseFloat(d[4]) }));
                 candleSeries.setData(klines);
-                updateStrategyEngine(klines); // Calcula a volatilidade das últimas velas para dar a Dica
+                updateStrategyEngine(klines);
             } catch (e) { candleSeries.setData([]); }
         }
 
@@ -334,33 +317,70 @@
             if (!candleSeries || price === 0) return;
             const nowSec = Math.floor(Date.now() / 1000);
             const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
-
-            if (!syntheticCandle || syntheticCandle.time !== blockTime) {
-                syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price };
-            } else {
-                syntheticCandle.high = Math.max(syntheticCandle.high, price);
-                syntheticCandle.low = Math.min(syntheticCandle.low, price);
-                syntheticCandle.close = price;
-            }
+            if (!syntheticCandle || syntheticCandle.time !== blockTime) { syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price }; } 
+            else { syntheticCandle.high = Math.max(syntheticCandle.high, price); syntheticCandle.low = Math.min(syntheticCandle.low, price); syntheticCandle.close = price; }
             candleSeries.update(syntheticCandle);
         }
 
-        // 2. PAINEL DE VARIAÇÕES 
+        // 2. LEITURA ON-CHAIN DA CARTEIRA (UNISWAP V3 NFPM)
+        const btnScan = document.getElementById('btn-scan');
+        const walletInput = document.getElementById('wallet-address');
+
+        btnScan.addEventListener('click', async () => {
+            const address = walletInput.value.trim();
+            if(!ethers.utils.isAddress(address)) { alert("Endereço inválido!"); return; }
+            
+            btnScan.innerText = "...";
+            try {
+                const rpc = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
+                const nfpmABI = [
+                    "function balanceOf(address) view returns (uint256)",
+                    "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
+                    "function positions(uint256) view returns (uint96, address, address token0, address token1, uint24, int24 tickLower, int24 tickUpper, uint128, uint256, uint256, uint128, uint128)"
+                ];
+                const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, rpc);
+                
+                const balance = await nfpm.balanceOf(address);
+                if(balance > 0) {
+                    // Pega o último NFT criado (geralmente a posição ativa)
+                    const tokenId = await nfpm.tokenOfOwnerByIndex(address, balance - 1);
+                    const pos = await nfpm.positions(tokenId);
+                    
+                    // WMATIC = 0x0d5... | USDT = 0xc21...
+                    if(pos.token0.toLowerCase() === '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270') {
+                        // Cálculo matemático nativo da Uniswap V3 para Ticks -> Preço
+                        activeMinPrice = Math.pow(1.0001, pos.tickLower) * 1e-12;
+                        activeMaxPrice = Math.pow(1.0001, pos.tickUpper) * 1e-12;
+                        
+                        document.getElementById('auto-min').innerText = activeMinPrice.toFixed(6);
+                        document.getElementById('auto-max').innerText = activeMaxPrice.toFixed(6);
+                        document.getElementById('wallet-result').style.display = 'flex';
+                        document.getElementById('manual-fallback').style.display = 'none';
+                        
+                        localStorage.setItem('savedWallet', address);
+                        processDynamicRisk(); updateWalletTrackerMock();
+                    } else { throw new Error("A última posição não é POL/USDT"); }
+                } else { throw new Error("Nenhuma posição de Liquidez encontrada."); }
+            } catch(e) {
+                console.error(e);
+                alert("Falha na leitura automática (RPC ou NFT Ausente). Fallback para Modo Manual ativado.");
+                document.getElementById('manual-fallback').style.display = 'grid';
+                document.getElementById('wallet-result').style.display = 'none';
+                activeMinPrice = 0; activeMaxPrice = 0; // Reseta para ler os inputs manuais
+            }
+            btnScan.innerText = "SCAN";
+        });
+
+        // 3. RASTREADORES E TAPE
         async function buildVariationsPanel() {
-            const grid = document.getElementById('variations-grid');
-            let html = '';
+            const grid = document.getElementById('variations-grid'); let html = '';
             for (let v of VAR_INTERVALS) {
                 try {
-                    let limit = v.fetchType === 'year' ? 12 : 2; 
-                    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${v.key}&limit=${limit}`);
+                    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${v.key}&limit=2`);
                     const data = await res.json();
-                    
                     if(data && data.length > 0) {
-                        const current = parseFloat(data[data.length-1][4]); 
-                        const old = parseFloat(data[0][1]); 
-                        const perc = ((current - old) / old) * 100;
-                        const isPos = perc >= 0;
-                        
+                        const current = parseFloat(data[data.length-1][4]); const old = parseFloat(data[0][1]); 
+                        const perc = ((current - old) / old) * 100; const isPos = perc >= 0;
                         html += `<div class="var-card ${isPos ? 'positive' : 'negative'}"><span class="var-label">${v.label}</span><span class="var-value">${isPos ? '+' : ''}${perc.toFixed(2)}%</span></div>`;
                     }
                 } catch(e) { html += `<div class="var-card"><span class="var-label">${v.label}</span><span class="var-value" style="color:#444;">--</span></div>`; }
@@ -368,82 +388,50 @@
             grid.innerHTML = html;
         }
 
-        // 3. RASTREADORES E TAPE
         function initGlobalTracker() {
-            let ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
+            const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
             const dot = document.getElementById('global-dot');
-            
             ws.onmessage = (event) => {
                 const newPrice = parseFloat(JSON.parse(event.data).c);
-                processGlobalTick(newPrice);
+                if (lastPriceGlobal !== 0 && newPrice !== lastPriceGlobal) {
+                    priceGlobalEl.classList.remove('tick-up', 'tick-down'); void priceGlobalEl.offsetWidth; 
+                    const isUp = newPrice > lastPriceGlobal;
+                    priceGlobalEl.classList.add(isUp ? 'tick-up' : 'tick-down');
+                    if(currentRiskState === 'SAFE') playAudioTone(isUp ? 'tick-up' : 'tick-down');
+                }
+                lastPriceGlobal = newPrice; currentPriceGlobal = newPrice;
+                priceGlobalEl.innerText = currentPriceGlobal.toFixed(6);
+                if(usdBrlRate > 0) document.getElementById('macro-pol-brl').innerText = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
                 dot.style.opacity = dot.style.opacity == 1 ? 0.3 : 1; 
+                processDynamicRisk(); updateLiveCandle(currentPriceGlobal); updateWalletTrackerMock();
             };
-
-            ws.onerror = () => {
-                ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
-                ws.onopen = () => { ws.send(JSON.stringify({"op": "subscribe", "args": [{"channel": "tickers", "instId": SYMBOL_OKX}]})); };
-                ws.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    if(data.data && data.data[0]) {
-                        processGlobalTick(parseFloat(data.data[0].last));
-                        dot.style.opacity = dot.style.opacity == 1 ? 0.3 : 1; 
-                    }
-                };
-            };
-        }
-
-        function processGlobalTick(newPrice) {
-            if (lastPriceGlobal !== 0 && newPrice !== lastPriceGlobal) {
-                priceGlobalEl.classList.remove('tick-up', 'tick-down'); void priceGlobalEl.offsetWidth; 
-                const isUp = newPrice > lastPriceGlobal;
-                priceGlobalEl.classList.add(isUp ? 'tick-up' : 'tick-down');
-                if(currentRiskState === 'SAFE') playAudioTone(isUp ? 'tick-up' : 'tick-down');
-            }
-            lastPriceGlobal = newPrice; currentPriceGlobal = newPrice;
-            priceGlobalEl.innerText = currentPriceGlobal.toFixed(6);
-            
-            // Atualiza MACRO POL/BRL Vivo
-            if(usdBrlRate > 0) {
-                document.getElementById('macro-pol-brl').innerText = `R$ ${(currentPriceGlobal * usdBrlRate).toFixed(4)}`;
-            }
-
-            updateSpread(); processDynamicRisk(); updateLiveCandle(currentPriceGlobal);
+            ws.onclose = () => setTimeout(initGlobalTracker, 2000);
         }
 
         function initPolygonScanner() {
             const wsPool = new WebSocket('wss://polygon-bor-rpc.publicnode.com');
             const dot = document.getElementById('polygon-dot');
             wsPool.onopen = () => { wsPool.send(JSON.stringify({ "jsonrpc": "2.0", "id": 1, "method": "eth_subscribe", "params": ["logs", { "address": POOL_ADDRESS }] })); };
-            
             wsPool.onmessage = (event) => {
                 const response = JSON.parse(event.data);
                 if (response.method === 'eth_subscription' && response.params.result.topics[0] === SWAP_TOPIC) {
                     dot.style.background = 'var(--dekton-copper)'; setTimeout(() => dot.style.background = '#fff', 500);
                     if(currentRiskState === 'SAFE') playAudioTone('pool-event');
-                    
                     try {
                         const parsed = iface.parseLog(response.params.result);
                         const amount0 = parseFloat(ethers.utils.formatUnits(parsed.args.amount0.toString(), 18));
                         const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
                         
-                        // Atualiza Preço Uniswap
-                        currentPriceUniswap = Math.abs(amount1 / amount0);
-                        updateSpread();
-                        
-                        // FITA DE TRANSAÇÕES
                         const isBuy = amount0 < 0;
                         const polVal = Math.abs(amount0).toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits: 1});
                         const brlVal = (Math.abs(amount1) * usdBrlRate).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL', maximumFractionDigits: 0});
                         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
                         
-                        const row = document.createElement('div');
-                        row.className = 'tape-row new-tx';
+                        const row = document.createElement('div'); row.className = 'tape-row new-tx';
                         row.innerHTML = `<div>${time}</div><div class="${isBuy ? 'type-buy' : 'type-sell'}">${isBuy ? 'COMPRA' : 'VENDA'}</div><div>${brlVal}</div><div>${polVal} P</div>`;
-                        
                         tapeEl.prepend(row);
                         setTimeout(() => { row.classList.remove('new-tx'); }, 1000);
-                        if(tapeEl.children.length > 25) tapeEl.removeChild(tapeEl.lastChild);
-                        
+                        if(tapeEl.children.length > 30) tapeEl.removeChild(tapeEl.lastChild); // Fita rolável infinita mantida sob controle
                     } catch (error) {}
                 }
             };
@@ -453,85 +441,40 @@
         async function fetchMacroData() {
             try { 
                 const resBRL = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL'); 
-                const dataBrl = await resBRL.json();
-                usdBrlRate = parseFloat(dataBrl.USDBRL.ask); 
-                const brlVar = parseFloat(dataBrl.USDBRL.pctChange);
-                const brlEl = document.getElementById('macro-usd');
-                brlEl.innerHTML = `R$ ${usdBrlRate.toFixed(4)} <span style="font-size:0.6rem; color:${brlVar >= 0 ? 'var(--success-green)' : 'var(--danger-red)'}">${brlVar >= 0 ? '+' : ''}${brlVar}%</span>`;
-                
-                const resBTC = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
-                const dataBtc = await resBTC.json();
-                btcUsdRate = parseFloat(dataBtc.lastPrice);
-                const btcVar = parseFloat(dataBtc.priceChangePercent);
-                const btcEl = document.getElementById('macro-btc');
-                btcEl.innerHTML = `$ ${btcUsdRate.toLocaleString('en-US', {maximumFractionDigits:0})} <span style="font-size:0.6rem; color:${btcVar >= 0 ? 'var(--success-green)' : 'var(--danger-red)'}">${btcVar >= 0 ? '+' : ''}${btcVar.toFixed(2)}%</span>`;
-                
+                usdBrlRate = parseFloat((await resBRL.json()).USDBRL.ask); 
+                document.getElementById('macro-usd').innerText = `R$ ${usdBrlRate.toFixed(4)}`;
             } catch(e){}
         }
 
-        function updateSpread() {
-            if(currentPriceGlobal > 0 && currentPriceUniswap > 0) {
-                const spread = ((currentPriceUniswap - currentPriceGlobal) / currentPriceGlobal) * 100;
-                spreadEl.innerText = `${spread > 0 ? '+' : ''}${spread.toFixed(3)}%`;
-                spreadEl.style.color = Math.abs(spread) > 0.2 ? 'var(--dekton-copper)' : '#fff';
-            }
-        }
-
-        // ==========================================
-        // 4. WALLET TRACKER & STRATEGY ENGINE
-        // ==========================================
+        // 4. MOTOR DA WALLET E RISCO
         function updateWalletTrackerMock() {
-            // Como você está usando o Revert Finance, a barra flutua baseada na posição do preço vs seu range
-            const min = parseFloat(minInput.value); const max = parseFloat(maxInput.value);
+            // Usa o range da blockchain se foi lido, senão cai pro manual
+            const min = activeMinPrice > 0 ? activeMinPrice : parseFloat(document.getElementById('min-price').value);
+            const max = activeMaxPrice > 0 ? activeMaxPrice : parseFloat(document.getElementById('max-price').value);
             const price = currentPriceGlobal;
             
             if(min > 0 && max > 0 && price > 0) {
-                // Cálculo de Distribuição V3 (Simplificado para o Range)
                 let usdtPerc = 0;
-                if (price <= min) { usdtPerc = 0; } // Tudo virou POL
-                else if (price >= max) { usdtPerc = 100; } // Tudo virou USDT
-                else { usdtPerc = ((price - min) / (max - min)) * 100; } // Misturado
+                if (price <= min) usdtPerc = 0;
+                else if (price >= max) usdtPerc = 100;
+                else usdtPerc = ((price - min) / (max - min)) * 100;
                 
                 const polPerc = 100 - usdtPerc;
-                
                 document.getElementById('bar-usdt').style.width = `${usdtPerc}%`;
                 document.getElementById('bar-pol').style.width = `${polPerc}%`;
                 document.getElementById('dist-marker').style.left = `${usdtPerc}%`;
-                
                 document.getElementById('lbl-pol').innerText = `${polPerc.toFixed(1)}% POL`;
                 document.getElementById('lbl-usdt').innerText = `${usdtPerc.toFixed(1)}% USDT`;
                 
-                // Patrimonio Estimado (Para fins de UI do Dashboard, simula $350 como no seu print)
-                const mockPatrimonioUSD = 356.72; // Você pode puxar isso via API do DeBank se tiver a chave
+                const mockPatrimonioUSD = 356.72; // Simulação fixa para a UI do painel
                 document.getElementById('wallet-total-usd').innerText = `$ ${mockPatrimonioUSD.toFixed(2)}`;
                 document.getElementById('wallet-total-brl').innerText = `R$ ${(mockPatrimonioUSD * usdBrlRate).toFixed(2)}`;
             }
         }
 
-        function updateStrategyEngine(klines) {
-            // A Tática de $1 por Minuto.
-            // Analisa as últimas 24h de velas (96 velas de 15m)
-            const recent = klines.slice(-96);
-            if(recent.length === 0) return;
-            
-            let maxHigh = 0, minLow = Infinity;
-            recent.forEach(k => { maxHigh = Math.max(maxHigh, k.high); minLow = Math.min(minLow, k.low); });
-            
-            // Range recomendado (Bordas de Volatilidade 24h)
-            document.getElementById('strat-range').innerText = `${minLow.toFixed(5)} <> ${maxHigh.toFixed(5)}`;
-            
-            // Para fazer R$ 1/min (R$ 1440/dia), precisando de +- $250 USD de taxas/dia.
-            // Numa APR média da pool de POL de ~50%, a liquidez requerida é alta
-            const liqEstimada = (250 * 365) / 0.50; 
-            document.getElementById('strat-liq').innerText = `$ ${(liqEstimada/1000).toFixed(1)}k`;
-        }
-
-        // ==========================================
-        // 5. MOTOR DE RISCO INTELIGENTE E ALARMES
-        // ==========================================
-        const minInput = document.getElementById('min-price'), maxInput = document.getElementById('max-price');
         function processDynamicRisk() {
-            const min = parseFloat(minInput.value), max = parseFloat(maxInput.value);
+            const min = activeMinPrice > 0 ? activeMinPrice : parseFloat(document.getElementById('min-price').value);
+            const max = activeMaxPrice > 0 ? activeMaxPrice : parseFloat(document.getElementById('max-price').value);
             if (isNaN(min) || isNaN(max) || min >= max) return;
 
             const price = currentPriceGlobal, amplitude = max - min, buffer = amplitude * 0.05; 
@@ -557,13 +500,25 @@
             }
         }
 
+        function updateStrategyEngine(klines) {
+            const recent = klines.slice(-96); if(recent.length === 0) return;
+            let maxHigh = 0, minLow = Infinity;
+            recent.forEach(k => { maxHigh = Math.max(maxHigh, k.high); minLow = Math.min(minLow, k.low); });
+            document.getElementById('strat-range').innerText = `${minLow.toFixed(5)} <> ${maxHigh.toFixed(5)}`;
+        }
+
         function triggerWarningSonar() { alarmInterval = setInterval(() => { if (!audioCtx) return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime; osc.type = 'sine'; osc.frequency.setValueAtTime(900, now); osc.frequency.exponentialRampToValueAtTime(1500, now + 0.2); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3); }, 1500); }
         function triggerDynamicSiren() { function playSiren() { if (currentRiskState !== 'DANGER' || !audioCtx) return; const osc1 = audioCtx.createOscillator(); const osc2 = audioCtx.createOscillator(); const gainNode = audioCtx.createGain(); const now = audioCtx.currentTime; const freqMultiplier = 1 + (currentDeviationIntensity * 0.8); osc1.type = 'sawtooth'; osc2.type = 'square'; osc1.frequency.setValueAtTime(110 * freqMultiplier, now); osc1.frequency.exponentialRampToValueAtTime(440 * freqMultiplier, now + 0.3); osc2.frequency.setValueAtTime(220 * freqMultiplier, now); osc2.frequency.exponentialRampToValueAtTime(880 * freqMultiplier, now + 0.3); gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4); osc1.connect(gainNode); osc2.connect(gainNode); gainNode.connect(audioCtx.destination); osc1.start(now); osc2.start(now); osc1.stop(now + 0.4); osc2.stop(now + 0.4); alarmInterval = setTimeout(playSiren, Math.max(150, 800 - (currentDeviationIntensity * 400))); } playSiren(); }
         function playAudioTone(type) { if (!audioCtx || currentRiskState !== 'SAFE') return; const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); const now = audioCtx.currentTime; if (type === 'tick-up') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); } else if (type === 'tick-down') { osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(250, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); } else if (type === 'pool-event') { osc.type = 'triangle'; osc.frequency.setValueAtTime(2000, now); osc.frequency.exponentialRampToValueAtTime(4000, now + 0.1); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.3, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); } osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.3); }
 
-        minInput.addEventListener('input', () => { localStorage.setItem('minRange', minInput.value); processDynamicRisk(); updateWalletTrackerMock(); }); 
-        maxInput.addEventListener('input', () => { localStorage.setItem('maxRange', maxInput.value); processDynamicRisk(); updateWalletTrackerMock(); }); 
-        window.addEventListener('load', () => { if (localStorage.getItem('minRange')) minInput.value = localStorage.getItem('minRange'); if (localStorage.getItem('maxRange')) maxInput.value = localStorage.getItem('maxRange'); });
+        document.getElementById('min-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); });
+        document.getElementById('max-price').addEventListener('input', () => { processDynamicRisk(); updateWalletTrackerMock(); });
+        
+        window.addEventListener('load', () => { 
+            const savedWallet = localStorage.getItem('savedWallet');
+            if(savedWallet) { walletInput.value = savedWallet; btnScan.click(); }
+            else { document.getElementById('manual-fallback').style.display = 'grid'; }
+        });
     </script>
 </body>
 </html>
