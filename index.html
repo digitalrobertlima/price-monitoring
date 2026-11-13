@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Liquidity Sentinel V7</title>
+    <title>RDESK Command | Liquidity Sentinel V7.1</title>
     
     <!-- Ethers.js para comunicação on-chain -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
@@ -23,14 +23,14 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
             background-color: var(--bg-base); color: #fff; font-family: 'Rajdhani', sans-serif; 
-            height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow: hidden; /* Trava o scroll global */
+            height: 100vh; padding: 12px; display: flex; flex-direction: column; overflow: hidden; 
         }
 
         .terminal-grid { 
             display: grid; 
             grid-template-columns: 240px 1fr 340px; 
             gap: 12px; width: 100%; max-width: 1900px; margin: 0 auto; flex-grow: 1; 
-            height: calc(100vh - 80px); /* Garante que os painéis não passem da tela */
+            height: calc(100vh - 80px); 
         }
 
         .panel { 
@@ -63,7 +63,7 @@
         .positive { color: var(--success-green); border-left-color: var(--success-green); background: linear-gradient(90deg, rgba(0,255,136,0.05) 0%, transparent 100%); }
         .negative { color: var(--danger-red); border-left-color: var(--danger-red); background: linear-gradient(90deg, rgba(255,42,64,0.05) 0%, transparent 100%); }
 
-        /* COLUNA 2: TÁTICA (Gráfico Escuro e Wallet) */
+        /* COLUNA 2: TÁTICA */
         .tactical-col { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
         
         .chart-header { display: flex; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.8); border-bottom: 1px solid rgba(255,255,255,0.03); flex-shrink: 0; }
@@ -96,7 +96,6 @@
         .strat-title { font-size: 0.7rem; color: var(--dekton-copper); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; font-weight: 700;}
         .strat-row { display: flex; justify-content: space-between; font-family: 'Space Mono'; font-size: 0.8rem; color: #aaa; margin-bottom: 4px;}
         
-        /* NOVO SCANNER DE WALLET ON-CHAIN */
         .wallet-scanner-box { background: rgba(0,0,0,0.5); padding: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
         .wallet-input-group { display: flex; gap: 8px; margin-top: 5px; }
         input[type="text"], input[type="number"] { background: #000; border: 1px solid var(--panel-border); color: var(--dekton-copper); font-family: 'Space Mono', monospace; font-size: 0.9rem; padding: 8px; border-radius: 4px; outline: none; transition: all 0.2s; width: 100%; }
@@ -104,7 +103,6 @@
         .btn-scan { background: var(--dekton-copper); border: none; padding: 0 15px; border-radius: 4px; color: #000; font-family: 'Rajdhani'; font-weight: 700; cursor: pointer; transition: 0.1s; }
         .btn-scan:active { transform: scale(0.95); }
 
-        /* TAPE READING (AGORA CONTIDO E ROLÁVEL) */
         .tape-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
         .tape-header { display: grid; grid-template-columns: 55px 50px 1fr 1fr; padding: 10px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.65rem; text-transform: uppercase; color: #555; font-weight: 700; background: #000; flex-shrink: 0; }
         
@@ -116,7 +114,6 @@
         .type-buy { color: var(--success-green); } .type-sell { color: var(--danger-red); }
         @keyframes slide-down { 0% { opacity: 0; transform: translateY(-5px); background: rgba(205,164,52,0.1); } 100% { opacity: 1; transform: translateY(0); } }
 
-        /* UTILITÁRIOS */
         .btn-start { width: 100%; padding: 15px; background: var(--dekton-copper); border: none; border-radius: 4px; color: #000; font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; margin-bottom: 12px; box-shadow: 0 0 20px rgba(205,164,52,0.2); transition: transform 0.1s; flex-shrink: 0; }
         .pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: var(--success-green); box-shadow: 0 0 10px var(--success-green); animation: ws-pulse 1.5s infinite alternate; margin-right: 5px; }
         @keyframes ws-pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
@@ -131,7 +128,7 @@
 </head>
 <body>
 
-    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V7</button>
+    <button id="btn-init" class="btn-start">INICIAR COCKPIT RDESK V7.1</button>
 
     <div class="terminal-grid">
         
@@ -150,7 +147,7 @@
                 <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
                 <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
             </div>
-            <!-- O Gráfico agora ficará preto devido à injeção no JS -->
+            
             <div class="chart-wrapper" id="tv-chart"></div>
             
             <div class="wallet-panel">
@@ -188,7 +185,6 @@
                     <div class="strat-row"><span>Range (24h)</span><span style="color:#fff; font-weight:700;" id="strat-range">Calculando...</span></div>
                 </div>
 
-                <!-- SCANNER ON-CHAIN DA CARTEIRA -->
                 <div class="wallet-scanner-box">
                     <div style="font-size:0.65rem; color:#888; text-transform:uppercase;">Conexão Web3 (Polygon)</div>
                     <div class="wallet-input-group">
@@ -201,10 +197,9 @@
                         <span>MÁX: <span id="auto-max">0.00</span></span>
                     </div>
 
-                    <!-- Fallback se a leitura falhar ou o usuário não tiver NFT ativo -->
                     <div id="manual-fallback" style="display:none; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">
-                        <input type="number" id="min-price" placeholder="Mínima (Manual)" step="0.000001">
-                        <input type="number" id="max-price" placeholder="Máxima (Manual)" step="0.000001">
+                        <input type="number" id="min-price" placeholder="Mínima" step="0.000001">
+                        <input type="number" id="max-price" placeholder="Máxima" step="0.000001">
                     </div>
                 </div>
             </div>
@@ -226,7 +221,7 @@
         const SYMBOL = 'POLUSDT';
         const SYMBOL_OKX = 'POL-USDT';
         const POOL_ADDRESS = '0x9B08288C3Be4F62bbf8d1C20Ac9C5e6f9467d8B7';
-        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'; // Contrato V3 das posições
+        const NFPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'; 
         
         const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
         const iface = new ethers.utils.Interface(swapABI);
@@ -234,7 +229,7 @@
         
         let currentPriceGlobal = 0, lastPriceGlobal = 0; 
         let usdBrlRate = 5.80;
-        let activeMinPrice = 0, activeMaxPrice = 0; // Armazena o range lido da blockchain
+        let activeMinPrice = 0, activeMaxPrice = 0; 
         let audioCtx = null, alarmInterval = null;
         let currentRiskState = 'SAFE', currentDeviationIntensity = 0; 
 
@@ -266,16 +261,13 @@
             setTimeout(() => { try { fetchMacroData(); setInterval(fetchMacroData, 30000); } catch(e){} }, 200);
         });
 
-        // 1. GRÁFICO (AGORA ABSOLUTAMENTE ESCURO)
+        // GRÁFICO
         function initTradingViewChart() {
             const container = document.getElementById('tv-chart');
             chart = LightweightCharts.createChart(container, {
                 width: container.clientWidth,
                 height: container.clientHeight,
-                layout: { 
-                    background: { type: 'solid', color: '#050505' }, // Força o fundo preto real na versão 4
-                    textColor: '#666' 
-                },
+                layout: { background: { type: 'solid', color: '#030303' }, textColor: '#666' },
                 grid: { vertLines: { color: 'rgba(255,255,255,0.02)' }, horzLines: { color: 'rgba(255,255,255,0.02)' } },
                 crosshair: { vertLine: { color: '#cda434', style: 3 }, horzLine: { color: '#cda434', style: 3 } },
                 timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.05)' },
@@ -322,17 +314,18 @@
             candleSeries.update(syntheticCandle);
         }
 
-        // 2. LEITURA ON-CHAIN DA CARTEIRA (UNISWAP V3 NFPM)
+        // MOTOR DE LEITURA ON-CHAIN REPARADO (V7.1)
         const btnScan = document.getElementById('btn-scan');
         const walletInput = document.getElementById('wallet-address');
 
         btnScan.addEventListener('click', async () => {
             const address = walletInput.value.trim();
-            if(!ethers.utils.isAddress(address)) { alert("Endereço inválido!"); return; }
+            if(!ethers.utils.isAddress(address)) { alert("Endereço Ethereum/Polygon inválido!"); return; }
             
             btnScan.innerText = "...";
             try {
-                const rpc = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
+                // Utilizando um RPC mais robusto do agregador Ankr para evitar rate-limits
+                const rpc = new ethers.providers.JsonRpcProvider('https://rpc.ankr.com/polygon');
                 const nfpmABI = [
                     "function balanceOf(address) view returns (uint256)",
                     "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
@@ -342,15 +335,30 @@
                 
                 const balance = await nfpm.balanceOf(address);
                 if(balance > 0) {
-                    // Pega o último NFT criado (geralmente a posição ativa)
+                    // Busca a última posição aberta do usuário
                     const tokenId = await nfpm.tokenOfOwnerByIndex(address, balance - 1);
                     const pos = await nfpm.positions(tokenId);
                     
-                    // WMATIC = 0x0d5... | USDT = 0xc21...
-                    if(pos.token0.toLowerCase() === '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270') {
-                        // Cálculo matemático nativo da Uniswap V3 para Ticks -> Preço
-                        activeMinPrice = Math.pow(1.0001, pos.tickLower) * 1e-12;
-                        activeMaxPrice = Math.pow(1.0001, pos.tickUpper) * 1e-12;
+                    const t0 = pos.token0.toLowerCase();
+                    const t1 = pos.token1.toLowerCase();
+                    const POL_ADDRESS = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
+                    const USDT_ADDRESS = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+                    
+                    if((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) {
+                        
+                        // Lógica Dinâmica para extração do preço dependendo de quem é o Token0
+                        let calcMin, calcMax;
+                        if(t0 === POL_ADDRESS) {
+                            calcMin = Math.pow(1.0001, pos.tickLower) * 1e-12;
+                            calcMax = Math.pow(1.0001, pos.tickUpper) * 1e-12;
+                        } else {
+                            // Se USDT for Token0, inverte-se o cálculo
+                            calcMax = 1 / (Math.pow(1.0001, pos.tickLower) * 1e12);
+                            calcMin = 1 / (Math.pow(1.0001, pos.tickUpper) * 1e12);
+                        }
+                        
+                        activeMinPrice = calcMin;
+                        activeMaxPrice = calcMax;
                         
                         document.getElementById('auto-min').innerText = activeMinPrice.toFixed(6);
                         document.getElementById('auto-max').innerText = activeMaxPrice.toFixed(6);
@@ -359,19 +367,19 @@
                         
                         localStorage.setItem('savedWallet', address);
                         processDynamicRisk(); updateWalletTrackerMock();
-                    } else { throw new Error("A última posição não é POL/USDT"); }
-                } else { throw new Error("Nenhuma posição de Liquidez encontrada."); }
+                    } else { throw new Error("NFT não é da pool POL/USDT."); }
+                } else { throw new Error("Zero NFTs no NFPM"); }
             } catch(e) {
-                console.error(e);
-                alert("Falha na leitura automática (RPC ou NFT Ausente). Fallback para Modo Manual ativado.");
+                console.error("Erro Scan:", e);
+                // Notifica sem quebrar a UI
                 document.getElementById('manual-fallback').style.display = 'grid';
                 document.getElementById('wallet-result').style.display = 'none';
-                activeMinPrice = 0; activeMaxPrice = 0; // Reseta para ler os inputs manuais
+                activeMinPrice = 0; activeMaxPrice = 0;
             }
             btnScan.innerText = "SCAN";
         });
 
-        // 3. RASTREADORES E TAPE
+        // PAINEL DE VARIAÇÕES E TRACKERS
         async function buildVariationsPanel() {
             const grid = document.getElementById('variations-grid'); let html = '';
             for (let v of VAR_INTERVALS) {
@@ -431,7 +439,7 @@
                         row.innerHTML = `<div>${time}</div><div class="${isBuy ? 'type-buy' : 'type-sell'}">${isBuy ? 'COMPRA' : 'VENDA'}</div><div>${brlVal}</div><div>${polVal} P</div>`;
                         tapeEl.prepend(row);
                         setTimeout(() => { row.classList.remove('new-tx'); }, 1000);
-                        if(tapeEl.children.length > 30) tapeEl.removeChild(tapeEl.lastChild); // Fita rolável infinita mantida sob controle
+                        if(tapeEl.children.length > 30) tapeEl.removeChild(tapeEl.lastChild); 
                     } catch (error) {}
                 }
             };
@@ -446,9 +454,8 @@
             } catch(e){}
         }
 
-        // 4. MOTOR DA WALLET E RISCO
+        // MOTOR DA WALLET E RISCO
         function updateWalletTrackerMock() {
-            // Usa o range da blockchain se foi lido, senão cai pro manual
             const min = activeMinPrice > 0 ? activeMinPrice : parseFloat(document.getElementById('min-price').value);
             const max = activeMaxPrice > 0 ? activeMaxPrice : parseFloat(document.getElementById('max-price').value);
             const price = currentPriceGlobal;
@@ -466,7 +473,7 @@
                 document.getElementById('lbl-pol').innerText = `${polPerc.toFixed(1)}% POL`;
                 document.getElementById('lbl-usdt').innerText = `${usdtPerc.toFixed(1)}% USDT`;
                 
-                const mockPatrimonioUSD = 356.72; // Simulação fixa para a UI do painel
+                const mockPatrimonioUSD = 356.72; 
                 document.getElementById('wallet-total-usd').innerText = `$ ${mockPatrimonioUSD.toFixed(2)}`;
                 document.getElementById('wallet-total-brl').innerText = `R$ ${(mockPatrimonioUSD * usdBrlRate).toFixed(2)}`;
             }
