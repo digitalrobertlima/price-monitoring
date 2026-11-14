@@ -1,136 +1,868 @@
-const SYMBOL = 'POLUSDT';
-const POOL_ADDRESS = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
+'use strict';
+
+// =========================================================================
+// 1. CONFIGURAÇÃO DE FUNDADOR, MONETIZAÇÃO & CONSTANTES DE REDE
+// =========================================================================
+const FOUNDER_ADDRESS = '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3';
+const FOUNDER_WHITELIST = [FOUNDER_ADDRESS.toLowerCase()];
+const PUBLIC_PLATFORM_FEE_BPS = 25; // 0.25% para usuários públicos; 0.00% automático para fundador
+
+const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+const POLYGON_POOL_ADDRESS = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
 const POOL_FEE_TIER = 500;      // 0.05%
-const POOL_TICK_SPACING = 10;   // Tick spacing oficial para fee 500
-const GAS_RESERVE_POL = 1.5;    // Reserva obrigatória de gás na carteira
-
-// Contratos Oficiais Uniswap V3 na Polygon Mainnet (Chain ID 137)
-const UNISWAP_SWAP_ROUTER_02 = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45';
-const UNISWAP_QUOTER_V2      = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e';
-const NFPM_ADDRESS           = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
-
-const TOKENS = {
-    POL:   { symbol: 'POL',   address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
-    WPOL:  { symbol: 'WPOL',  address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18, isNative: false },
-    USDT0: { symbol: 'USDT0', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6,  isNative: false },
-    BRZ:   { symbol: 'BRZ',   address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, isNative: false },
-    BRLA:  { symbol: 'BRLA',  address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, isNative: false }
-};
-
-const POL_ADDRESS = TOKENS.WPOL.address.toLowerCase();
-const USDT_ADDRESS = TOKENS.USDT0.address.toLowerCase();
-
-const POLYGON_RPCS = [
-    'https://polygon-bor-rpc.publicnode.com',
-    'https://1rpc.io/matic',
-    'https://polygon.drpc.org',
-    'https://polygon-rpc.com'
-];
-
-const UNISWAP_FEES = [500, 3000, 10000, 100];
+const POOL_TICK_SPACING = 10;   // Tick spacing oficial fee 500
 
 const Q128 = ethers.BigNumber.from(2).pow(128);
 const MAX_UINT256 = ethers.constants.MaxUint256;
 const MAX_UINT128 = ethers.BigNumber.from('0xffffffffffffffffffffffffffffffff');
 
-const swapABI = ["event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"];
-const iface = new ethers.utils.Interface(swapABI);
-const SWAP_TOPIC = iface.getEventTopic("Swap");
-
-let currentPriceGlobal = 0, lastPriceGlobal = 0;
-let usdBrlCommercial = 5.65;
-let usdtToBrzRate = 5.65;
-let usdtToBrlaRate = 5.65;
-let binanceUsdtBrlBid = 5.64;
-
-let audioEnabled = false, audioCtx = null;
-let currentRiskState = 'SAFE';
-let connectedSignerAddress = null;
-let onlyNoKycFilter = false;
-let isAutoPilotRunning = false;
-
-let appState = {
-    wallet: '',
-    web3Positions: [],
-    manualPositions: [],
-    focusedId: null,
-    pnlOverrides: {}
+// 5 Melhores Redes Uniswap (Menor Gás + Maior Liquidez) com Multicall3 idêntico
+const CHAINS = {
+    137: {
+        id: 137,
+        name: 'Polygon',
+        nativeSymbol: 'POL',
+        rpcs: [
+            'https://polygon-bor-rpc.publicnode.com',
+            'https://polygon.drpc.org',
+            'https://1rpc.io/matic'
+        ],
+        explorerApi: 'https://polygon.blockscout.com/api/v2',
+        router02: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+        nfpm: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        quoterV2: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+        tokens: {
+            POL:   { symbol: 'POL',   address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
+            WPOL:  { symbol: 'WPOL',  address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18 },
+            USDT0: { symbol: 'USDT0', address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6  },
+            BRZ:   { symbol: 'BRZ',   address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18 },
+            BRLA:  { symbol: 'BRLA',  address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18 }
+        }
+    },
+    8453: {
+        id: 8453,
+        name: 'Base',
+        nativeSymbol: 'ETH',
+        rpcs: ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'],
+        router02: '0x2626664c2603336E57B271c5C0b26F421741e481',
+        nfpm: '0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1',
+        quoterV2: '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a',
+        tokens: {
+            ETH:  { symbol: 'ETH',  address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
+            WETH: { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', decimals: 18 },
+            USDC: { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6  }
+        }
+    },
+    42161: {
+        id: 42161,
+        name: 'Arbitrum',
+        nativeSymbol: 'ETH',
+        rpcs: ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com'],
+        router02: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+        nfpm: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        quoterV2: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+        tokens: {
+            ETH:  { symbol: 'ETH',  address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
+            USDT: { symbol: 'USDT', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6  },
+            WBTC: { symbol: 'WBTC', address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', decimals: 8  }
+        }
+    },
+    42220: {
+        id: 42220,
+        name: 'Celo',
+        nativeSymbol: 'CELO',
+        rpcs: ['https://forno.celo.org', 'https://celo-rpc.publicnode.com'],
+        router02: '0x5615CDAb10dc425a742d643d949a7F474C01abc4',
+        nfpm: '0x3d79EdAaBC0EaB6F08ED885C05Fc0B014290D95A',
+        quoterV2: '0x82825d0554fA07f7FC52Ab63c961F330fdEFa8E8',
+        tokens: {
+            CELO:  { symbol: 'CELO',  address: '0x471EcE3750Da237f93B8E339c536989b8978a438', decimals: 18, isNative: true },
+            cREAL: { symbol: 'cREAL', address: '0xe8537a3d056DA446677B9E9d6c5dB704EaAb4787', decimals: 18 },
+            cUSD:  { symbol: 'cUSD',  address: '0x765DE816845861e75A25fCA122bb6898B8B1282a', decimals: 18 },
+            USDT:  { symbol: 'USDT',  address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e', decimals: 6  }
+        }
+    },
+    10: {
+        id: 10,
+        name: 'OP Mainnet',
+        nativeSymbol: 'ETH',
+        rpcs: ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com'],
+        router02: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+        nfpm: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        quoterV2: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+        tokens: {
+            ETH:  { symbol: 'ETH',  address: '0x0000000000000000000000000000000000000000', decimals: 18, isNative: true },
+            USDC: { symbol: 'USDC', address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', decimals: 6  }
+        }
+    }
 };
-
-let walletBalances = { pol: 0, wpol: 0, usdt0: 0, brz: 0, brla: 0 };
-let totalUnclaimedFeesUsd = 0;
-let focusedPositionTotalUsd = 0;
-let focusedPositionFeesUsd = 0;
-
-let activeSwapQuote = null;
-let swapDebounceTimer = null;
-
-let sniperTelemetry = {
-    atr14: 0,
-    downWeight: 0.5,
-    upWeight: 0.5,
-    regimeText: 'LATERAL 50/50',
-    min: 0,
-    max: 0
-};
-
-// Telemetria real da Pool Uniswap V3 & Escultor de Meta (R$/min)
-let poolTelemetry = {
-    activeLiquidityRaw: 0,
-    volumeUsdPerMin: 2800, // Fallback conservador até leitura on-chain/API concluir
-    feesUsdPerMin: 1.40,
-    source: 'inicial'
-};
-
-let yieldTargetState = {
-    customTargetBrlPerMin: null,
-    baselineBrlPerMin: 0,
-    projectedBrlPerMin: 0,
-    sculptedTickLower: null,
-    sculptedTickUpper: null,
-    sculptedMin: 0,
-    sculptedMax: 0,
-    riskLabel: 'SNIPER BASE',
-    riskColor: 'var(--success-green)',
-    cappedByPool: false
-};
-
-let autoPilotPlan = null;
-
-let chart = null, candleSeries = null;
-let positionLines = [];
-let previewLines = [];
-let currentInterval = '15m', currentIntervalSeconds = 900;
-let syntheticCandle = null;
-
-const priceGlobalEl = document.getElementById('price-global');
-const tapeEl = document.getElementById('tape');
-const routeStatusEl = document.getElementById('route-status');
-
-const VAR_INTERVALS = [
-    { label: '1 MIN', key: '1m' }, { label: '5 MIN', key: '5m' }, { label: '15 MIN', key: '15m' },
-    { label: '30 MIN', key: '30m' }, { label: '1 HORA', key: '1h' }, { label: '4 HORAS', key: '4h' },
-    { label: '8 HORAS', key: '8h' }, { label: '12 HORAS', key: '12h' }, { label: '1 DIA', key: '1d' },
-    { label: '1 SEM', key: '1w' }, { label: '1 MÊS', key: '1M' }
-];
 
 // =========================================================================
-// UTILITÁRIOS RPC & MATEMÁTICA UNISWAP V3
+// 2. ESTADO GLOBAL & TELEMETRIA EM TEMPO REAL
+// =========================================================================
+let state = {
+    wallet: '',
+    isFounder: false,
+    displayCurrency: 'BRZ', // 'BRZ' | 'BRLA' | 'USD' | 'BRL'
+    privacyHidden: false,
+    notificationsEnabled: false,
+    simulatorMode: 'my-balance', // 'my-balance' | 'sim-capital'
+    riskProfile: 'sniper',       // 'escudo' | 'sniper' | 'turbo'
+    customTargetBrlMin: null,
+    onlyNoKycPix: false,
+    monthlyGoalBrl: 150.0,
+    webhookUrl: '',
+    positions: [],
+    allowances: [],
+    forensics: {
+        depositedUsd: 0,
+        withdrawnUsd: 0,
+        hodlBenchmarkUsd: 0,
+        timeline: []
+    }
+};
+
+let market = {
+    polUsd: 0.087,
+    ethUsd: 3100,
+    btcUsd: 91000,
+    celoUsd: 0.65,
+    usdBrl: 5.65,
+    usdtToBrz: 5.65,
+    usdtToBrla: 5.65,
+    binanceUsdtBrl: 5.64,
+    atr15m: 0.0008,
+    downWeight: 0.5,
+    upWeight: 0.5,
+    regimeText: 'SNIPER 50/50',
+    poolActiveLiquidity: 0,
+    poolFeesUsdPerMin: 1.40,
+    dynamicGasReservePol: 0.85
+};
+
+let balances = {
+    137: { POL: 0, WPOL: 0, USDT0: 0, BRZ: 0, BRLA: 0, totalUsd: 0 },
+    8453: { ETH: 0, WETH: 0, USDC: 0, totalUsd: 0 },
+    42161: { ETH: 0, USDT: 0, WBTC: 0, totalUsd: 0 },
+    42220: { CELO: 0, cREAL: 0, cUSD: 0, USDT: 0, totalUsd: 0 },
+    10: { ETH: 0, USDC: 0, totalUsd: 0 },
+    poolsUsd: 0,
+    unclaimedFeesUsd: 0
+};
+
+let sculptedPlan = {
+    tickLower: 0,
+    tickUpper: 0,
+    pMin: 0,
+    pMax: 0,
+    baselineBrlMin: 0,
+    projectedBrlMin: 0,
+    survivalHours: 12,
+    requiredCapitalUsd: 0,
+    deployableUsd: 0,
+    targetWpolShare: 0.5,
+    targetUsdtShare: 0.5
+};
+
+let activeBridgeQuote = null;
+let chart = null;
+let candleSeries = null;
+let previewLines = [];
+let positionLines = [];
+let currentTf = '15m';
+let currentTfSec = 900;
+let liveCandle = null;
+let isBusyTx = false;
+let lastAlertTag = '';
+let vaultCryptoKey = null;
+
+// =========================================================================
+// 3. COFRE CRIPTOGRAFADO LOCAL (AES-GCM 256-BIT VIA WEB CRYPTO API)
+// =========================================================================
+async function deriveVaultKey(walletAddress) {
+    const enc = new TextEncoder();
+    const material = await window.crypto.subtle.importKey(
+        'raw',
+        enc.encode(`RDESK-BITCOIN-GRADE-VAULT:${walletAddress.toLowerCase()}`),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+    );
+    vaultCryptoKey = await window.crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: enc.encode('RDESK-POLYGON-MULTICHAIN-SALT-V22'),
+            iterations: 120000,
+            hash: 'SHA-256'
+        },
+        material,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+async function saveEncryptedVault() {
+    try {
+        const sensitivePayload = JSON.stringify({
+            monthlyGoalBrl: state.monthlyGoalBrl,
+            webhookUrl: state.webhookUrl,
+            forensics: state.forensics,
+            displayCurrency: state.displayCurrency,
+            riskProfile: state.riskProfile
+        });
+
+        let recordToStore = { plain: sensitivePayload };
+        if (vaultCryptoKey) {
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const cipher = await window.crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                vaultCryptoKey,
+                new TextEncoder().encode(sensitivePayload)
+            );
+            recordToStore = {
+                iv: Array.from(iv),
+                cipher: Array.from(new Uint8Array(cipher))
+            };
+        }
+
+        const req = indexedDB.open('RDESK_CRYPTO_VAULT_V22', 1);
+        req.onupgradeneeded = (e) => e.target.result.createObjectStore('vault');
+        req.onsuccess = (e) => {
+            const db = e.target.result;
+            const tx = db.transaction('vault', 'readwrite');
+            tx.objectStore('vault').put(recordToStore, state.wallet || 'default');
+        };
+    } catch (e) {}
+}
+
+async function loadEncryptedVault() {
+    try {
+        await new Promise((resolve) => {
+            const req = indexedDB.open('RDESK_CRYPTO_VAULT_V22', 1);
+            req.onupgradeneeded = (e) => e.target.result.createObjectStore('vault');
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                const tx = db.transaction('vault', 'readonly');
+                const getReq = tx.objectStore('vault').get(state.wallet || 'default');
+                getReq.onsuccess = async () => {
+                    const rec = getReq.result;
+                    if (rec) {
+                        try {
+                            let jsonStr = rec.plain || null;
+                            if (rec.iv && rec.cipher && vaultCryptoKey) {
+                                const decrypted = await window.crypto.subtle.decrypt(
+                                    { name: 'AES-GCM', iv: new Uint8Array(rec.iv) },
+                                    vaultCryptoKey,
+                                    new Uint8Array(rec.cipher)
+                                );
+                                jsonStr = new TextDecoder().decode(decrypted);
+                            }
+                            if (jsonStr) {
+                                const parsed = JSON.parse(jsonStr);
+                                if (Number.isFinite(parsed.monthlyGoalBrl)) state.monthlyGoalBrl = parsed.monthlyGoalBrl;
+                                if (typeof parsed.webhookUrl === 'string') state.webhookUrl = parsed.webhookUrl;
+                                if (parsed.forensics) state.forensics = parsed.forensics;
+                                if (parsed.displayCurrency) state.displayCurrency = parsed.displayCurrency;
+                                if (parsed.riskProfile) state.riskProfile = parsed.riskProfile;
+                            }
+                        } catch (decErr) {}
+                    }
+                    resolve();
+                };
+                getReq.onerror = () => resolve();
+            };
+            req.onerror = () => resolve();
+        });
+    } catch (e) {}
+}
+
+// =========================================================================
+// 4. UTILITÁRIOS DE CONVERSÃO TRICAMBIAL & SEGURANÇA DE INPUTS
 // =========================================================================
 function withTimeout(promise, ms) {
     return Promise.race([
         promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout RPC')), ms))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Tempo limite RPC')), ms))
     ]);
 }
 
-function getReadProvider() {
-    if (window.ethereum && connectedSignerAddress) {
-        return new ethers.providers.Web3Provider(window.ethereum);
-    }
-    return new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+function getPlatformFeeBps() {
+    return state.isFounder ? 0 : PUBLIC_PLATFORM_FEE_BPS;
 }
 
+function formatInSelectedCurrency(usdAmount, includeCode = true) {
+    const val = Number.isFinite(usdAmount) ? usdAmount : 0;
+    const curr = state.displayCurrency;
+    if (curr === 'USD') {
+        return includeCode ? `$ ${val.toFixed(2)}` : val.toFixed(2);
+    }
+    if (curr === 'BRL') {
+        const brl = val * market.usdBrl;
+        return includeCode ? `R$ ${brl.toFixed(2)}` : brl.toFixed(2);
+    }
+    if (curr === 'BRLA') {
+        const brla = val * market.usdtToBrla;
+        return includeCode ? `${brla.toFixed(2)} BRLA` : brla.toFixed(2);
+    }
+    const brz = val * market.usdtToBrz;
+    return includeCode ? `${brz.toFixed(2)} BRZ` : brz.toFixed(2);
+}
+
+function getActiveConversionRate() {
+    if (state.displayCurrency === 'USD') return 1;
+    if (state.displayCurrency === 'BRL') return market.usdBrl;
+    if (state.displayCurrency === 'BRLA') return market.usdtToBrla;
+    return market.usdtToBrz;
+}
+
+function triggerHaptic(pattern = [25]) {
+    if (navigator.vibrate) {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
+}
+
+function sendRangePushNotification(title, body, tag) {
+    if (lastAlertTag === tag) return;
+    lastAlertTag = tag;
+
+    if (state.notificationsEnabled && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            type: 'SHOW_RANGE_ALERT',
+            title,
+            body,
+            tag
+        });
+    }
+
+    if (state.webhookUrl && state.webhookUrl.startsWith('https://')) {
+        fetch(state.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: 'RDESK_DEFI_SENTINEL',
+                wallet: state.wallet,
+                title,
+                body,
+                polPrice: market.polUsd,
+                timestamp: new Date().toISOString()
+            })
+        }).catch(() => {});
+    }
+}
+
+// =========================================================================
+// 5. MOTOR MULTICALL3 ATÔMICO (< 300MS NAS 5 REDES UNISWAP)
+// =========================================================================
+const MULTICALL3_ABI = [
+    "function tryAggregate(bool requireSuccess, tuple(address target, bytes callData)[] calls) payable returns (tuple(bool success, bytes returnData)[])",
+    "function getEthBalance(address addr) view returns (uint256 balance)"
+];
+
+const ERC20_IFACE = new ethers.utils.Interface([
+    "function balanceOf(address) view returns (uint256)",
+    "function allowance(address owner, address spender) view returns (uint256)"
+]);
+
+const POOL_IFACE = new ethers.utils.Interface([
+    "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
+    "function liquidity() view returns (uint128)",
+    "function feeGrowthGlobal0X128() view returns (uint256)",
+    "function feeGrowthGlobal1X128() view returns (uint256)",
+    "function ticks(int24) view returns (uint128 liquidityGross, int128 liquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128, int56 tickCumulativeOutside, uint160 secondsPerLiquidityOutsideX128, uint32 secondsOutside, bool initialized)"
+]);
+
+const NFPM_IFACE = new ethers.utils.Interface([
+    "function balanceOf(address) view returns (uint256)",
+    "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
+    "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)"
+]);
+
+async function getFastestProvider(chainId) {
+    const chain = CHAINS[chainId];
+    const racers = chain.rpcs.map(async (url) => {
+        const provider = new ethers.providers.JsonRpcProvider(url);
+        await provider.getBlockNumber();
+        return provider;
+    });
+    return withTimeout(Promise.any(racers), 3200);
+}
+
+async function scanSingleChainMulticall(chainId, wallet) {
+    const chain = CHAINS[chainId];
+    const provider = await getFastestProvider(chainId);
+    const mc = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, provider);
+    const mcIface = new ethers.utils.Interface(MULTICALL3_ABI);
+
+    const calls = [];
+    // Call 0: Saldo Nativo
+    calls.push({
+        target: MULTICALL3_ADDRESS,
+        callData: mcIface.encodeFunctionData('getEthBalance', [wallet])
+    });
+
+    // Calls 1..N: Saldos ERC20 da rede
+    const erc20Tokens = Object.values(chain.tokens).filter((t) => !t.isNative || chainId === 42220);
+    erc20Tokens.forEach((tok) => {
+        calls.push({
+            target: tok.address,
+            callData: ERC20_IFACE.encodeFunctionData('balanceOf', [wallet])
+        });
+    });
+
+    // Extras exclusivos da Polygon (Pool slot0, liquidity, feeGrowth, NFTs e Allowances)
+    let polyExtraStart = calls.length;
+    if (chainId === 137) {
+        calls.push({ target: POLYGON_POOL_ADDRESS, callData: POOL_IFACE.encodeFunctionData('slot0', []) });
+        calls.push({ target: POLYGON_POOL_ADDRESS, callData: POOL_IFACE.encodeFunctionData('liquidity', []) });
+        calls.push({ target: POLYGON_POOL_ADDRESS, callData: POOL_IFACE.encodeFunctionData('feeGrowthGlobal0X128', []) });
+        calls.push({ target: POLYGON_POOL_ADDRESS, callData: POOL_IFACE.encodeFunctionData('feeGrowthGlobal1X128', []) });
+        calls.push({ target: chain.nfpm, callData: NFPM_IFACE.encodeFunctionData('balanceOf', [wallet]) });
+
+        // Auditoria de permissões (Allowance Guard) nos tokens críticos
+        const tokensToAudit = [chain.tokens.WPOL, chain.tokens.USDT0, chain.tokens.BRZ, chain.tokens.BRLA];
+        const spendersToAudit = [
+            { name: 'Uniswap SwapRouter02', address: chain.router02 },
+            { name: 'Uniswap Position NFT', address: chain.nfpm }
+        ];
+        tokensToAudit.forEach((tok) => {
+            spendersToAudit.forEach((sp) => {
+                calls.push({
+                    target: tok.address,
+                    callData: ERC20_IFACE.encodeFunctionData('allowance', [wallet, sp.address])
+                });
+            });
+        });
+    }
+
+    const results = await withTimeout(mc.callStatic.tryAggregate(false, calls), 4000);
+
+    // Processa saldo nativo
+    const nativeBal = results[0].success
+        ? parseFloat(ethers.utils.formatUnits(mcIface.decodeFunctionResult('getEthBalance', results[0].returnData)[0], 18))
+        : 0;
+
+    const chainBal = { totalUsd: 0 };
+    if (chain.nativeSymbol === 'POL') {
+        chainBal.POL = nativeBal;
+        chainBal.totalUsd += nativeBal * market.polUsd;
+    } else if (chain.nativeSymbol === 'ETH') {
+        chainBal.ETH = nativeBal;
+        chainBal.totalUsd += nativeBal * market.ethUsd;
+    }
+
+    // Processa saldos ERC20
+    erc20Tokens.forEach((tok, idx) => {
+        const res = results[1 + idx];
+        const amt = res && res.success
+            ? parseFloat(ethers.utils.formatUnits(ERC20_IFACE.decodeFunctionResult('balanceOf', res.returnData)[0], tok.decimals))
+            : 0;
+        chainBal[tok.symbol] = amt;
+
+        if (tok.symbol === 'WPOL') chainBal.totalUsd += amt * market.polUsd;
+        else if (tok.symbol === 'WETH') chainBal.totalUsd += amt * market.ethUsd;
+        else if (tok.symbol === 'WBTC') chainBal.totalUsd += amt * market.btcUsd;
+        else if (tok.symbol === 'CELO') chainBal.totalUsd += amt * market.celoUsd;
+        else if (tok.symbol === 'BRZ') chainBal.totalUsd += amt / market.usdtToBrz;
+        else if (tok.symbol === 'BRLA') chainBal.totalUsd += amt / market.usdtToBrla;
+        else if (tok.symbol === 'cREAL') chainBal.totalUsd += amt / market.usdBrl;
+        else chainBal.totalUsd += amt; // USDT, USDT0, USDC, cUSD
+    });
+
+    balances[chainId] = chainBal;
+
+    // Processa estado da Polygon Pool, NFTs e Allowances
+    if (chainId === 137) {
+        const slot0Res = results[polyExtraStart];
+        const liqRes = results[polyExtraStart + 1];
+        const fg0Res = results[polyExtraStart + 2];
+        const fg1Res = results[polyExtraStart + 3];
+        const nftBalRes = results[polyExtraStart + 4];
+
+        let tickCurrent = 0;
+        let fg0 = ethers.BigNumber.from(0);
+        let fg1 = ethers.BigNumber.from(0);
+
+        if (slot0Res && slot0Res.success) {
+            const dec = POOL_IFACE.decodeFunctionResult('slot0', slot0Res.returnData);
+            tickCurrent = Number(dec.tick);
+            const onChainPol = Math.pow(1.0001, tickCurrent) * 1e12;
+            if (onChainPol > 0) market.polUsd = onChainPol;
+        }
+        if (liqRes && liqRes.success) {
+            const lBN = POOL_IFACE.decodeFunctionResult('liquidity', liqRes.returnData)[0];
+            market.poolActiveLiquidity = parseFloat(lBN.toString());
+        }
+        if (fg0Res && fg0Res.success) fg0 = POOL_IFACE.decodeFunctionResult('feeGrowthGlobal0X128', fg0Res.returnData)[0];
+        if (fg1Res && fg1Res.success) fg1 = POOL_IFACE.decodeFunctionResult('feeGrowthGlobal1X128', fg1Res.returnData)[0];
+
+        // Lê Allowances
+        const auditedAllowances = [];
+        const tokensToAudit = [chain.tokens.WPOL, chain.tokens.USDT0, chain.tokens.BRZ, chain.tokens.BRLA];
+        const spendersToAudit = [
+            { name: 'Uniswap SwapRouter02', address: chain.router02 },
+            { name: 'Uniswap Position NFT', address: chain.nfpm }
+        ];
+        let cursor = polyExtraStart + 5;
+        tokensToAudit.forEach((tok) => {
+            spendersToAudit.forEach((sp) => {
+                const r = results[cursor++];
+                if (r && r.success) {
+                    const allowBN = ERC20_IFACE.decodeFunctionResult('allowance', r.returnData)[0];
+                    if (allowBN.gt(0)) {
+                        auditedAllowances.push({
+                            tokenSymbol: tok.symbol,
+                            tokenAddress: tok.address,
+                            decimals: tok.decimals,
+                            spenderName: sp.name,
+                            spenderAddress: sp.address,
+                            amountFormatted: allowBN.gt(ethers.utils.parseUnits('1000000000', tok.decimals))
+                                ? 'ILIMITADA (RISCO)'
+                                : parseFloat(ethers.utils.formatUnits(allowBN, tok.decimals)).toFixed(2)
+                        });
+                    }
+                }
+            });
+        });
+        state.allowances = auditedAllowances;
+
+        // Lê NFTs em segundo Multicall caso o usuário possua posições
+        const nftCount = nftBalRes && nftBalRes.success
+            ? NFPM_IFACE.decodeFunctionResult('balanceOf', nftBalRes.returnData)[0].toNumber()
+            : 0;
+
+        if (nftCount > 0) {
+            await fetchPolygonPositionsBatch(mc, chain.nfpm, wallet, nftCount, tickCurrent, fg0, fg1);
+        } else {
+            state.positions = [];
+            balances.poolsUsd = 0;
+            balances.unclaimedFeesUsd = 0;
+        }
+
+        // Reserva dinâmica de gás
+        try {
+            const feeData = await provider.getFeeData();
+            const gwei = parseFloat(ethers.utils.formatUnits(feeData.gasPrice || ethers.utils.parseUnits('45', 'gwei'), 'gwei'));
+            market.dynamicGasReservePol = Math.max(0.5, Math.min(2.5, (gwei * 950000 * 2.5) / 1e9));
+        } catch (e) {}
+    }
+}
+
+async function fetchPolygonPositionsBatch(mc, nfpmAddr, wallet, count, tickCurrent, fg0, fg1) {
+    const idxCalls = [];
+    for (let i = 0; i < Math.min(count, 15); i++) {
+        idxCalls.push({
+            target: nfpmAddr,
+            callData: NFPM_IFACE.encodeFunctionData('tokenOfOwnerByIndex', [wallet, i])
+        });
+    }
+    const idxRes = await mc.callStatic.tryAggregate(false, idxCalls);
+    const tokenIds = idxRes
+        .filter((r) => r.success)
+        .map((r) => NFPM_IFACE.decodeFunctionResult('tokenOfOwnerByIndex', r.returnData)[0]);
+
+    if (tokenIds.length === 0) return;
+
+    const posCalls = tokenIds.map((id) => ({
+        target: nfpmAddr,
+        callData: NFPM_IFACE.encodeFunctionData('positions', [id])
+    }));
+    const posRes = await mc.callStatic.tryAggregate(false, posCalls);
+
+    const wpolAddr = CHAINS[137].tokens.WPOL.address.toLowerCase();
+    const usdtAddr = CHAINS[137].tokens.USDT0.address.toLowerCase();
+    const activePositions = [];
+    const tickSet = new Set();
+
+    posRes.forEach((r, i) => {
+        if (!r.success) return;
+        const p = NFPM_IFACE.decodeFunctionResult('positions', r.returnData);
+        const t0 = p.token0.toLowerCase();
+        const t1 = p.token1.toLowerCase();
+        if (((t0 === wpolAddr && t1 === usdtAddr) || (t1 === wpolAddr && t0 === usdtAddr)) && p.liquidity.gt(0)) {
+            const tL = Number(p.tickLower);
+            const tU = Number(p.tickUpper);
+            tickSet.add(tL);
+            tickSet.add(tU);
+            const prices = ticksToHumanPrice(tL, tU, t0 === wpolAddr);
+            activePositions.push({
+                tokenId: tokenIds[i].toString(),
+                min: prices.min,
+                max: prices.max,
+                tickLower: tL,
+                tickUpper: tU,
+                liquidity: p.liquidity.toString(),
+                feeGrowthInside0LastX128: p.feeGrowthInside0LastX128.toString(),
+                feeGrowthInside1LastX128: p.feeGrowthInside1LastX128.toString(),
+                tokensOwed0: p.tokensOwed0.toString(),
+                tokensOwed1: p.tokensOwed1.toString(),
+                principalUsd: 0,
+                feesUsd: 0
+            });
+        }
+    });
+
+    // Busca dados dos ticks únicos em um único batch
+    const uniqueTicks = Array.from(tickSet);
+    const ticksMap = {};
+    if (uniqueTicks.length > 0) {
+        const tickCalls = uniqueTicks.map((t) => ({
+            target: POLYGON_POOL_ADDRESS,
+            callData: POOL_IFACE.encodeFunctionData('ticks', [t])
+        }));
+        const tickRes = await mc.callStatic.tryAggregate(false, tickCalls);
+        tickRes.forEach((r, idx) => {
+            if (r.success) {
+                const dec = POOL_IFACE.decodeFunctionResult('ticks', r.returnData);
+                ticksMap[uniqueTicks[idx]] = {
+                    feeGrowthOutside0X128: dec.feeGrowthOutside0X128,
+                    feeGrowthOutside1X128: dec.feeGrowthOutside1X128
+                };
+            }
+        });
+    }
+
+    let sumPrincipalUsd = 0;
+    let sumFeesUsd = 0;
+
+    activePositions.forEach((pos) => {
+        const L = parseFloat(pos.liquidity);
+        const sP = Math.sqrt(market.polUsd * 1e-12);
+        const sA = Math.pow(1.0001, pos.tickLower / 2);
+        const sB = Math.pow(1.0001, pos.tickUpper / 2);
+
+        let raw0 = 0;
+        let raw1 = 0;
+        if (sP <= sA) raw0 = L * ((1 / sA) - (1 / sB));
+        else if (sP >= sB) raw1 = L * (sB - sA);
+        else {
+            raw0 = L * ((1 / sP) - (1 / sB));
+            raw1 = L * (sP - sA);
+        }
+        pos.principalUsd = ((raw0 / 1e18) * market.polUsd) + (raw1 / 1e6);
+        pos.feesUsd = computePositionUnclaimedFeesUsd(pos, tickCurrent, fg0, fg1, ticksMap);
+
+        sumPrincipalUsd += pos.principalUsd;
+        sumFeesUsd += pos.feesUsd;
+    });
+
+    state.positions = activePositions;
+    balances.poolsUsd = sumPrincipalUsd;
+    balances.unclaimedFeesUsd = sumFeesUsd;
+}
+
+function subUint256(a, b) {
+    return a.gte(b) ? a.sub(b) : MAX_UINT256.sub(b).add(a).add(1);
+}
+
+function computePositionUnclaimedFeesUsd(pos, tickCurrent, fg0, fg1, ticksMap) {
+    try {
+        const lower = ticksMap[pos.tickLower];
+        const upper = ticksMap[pos.tickUpper];
+        if (!lower || !upper) return 0;
+
+        const below0 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside0X128 : subUint256(fg0, lower.feeGrowthOutside0X128);
+        const below1 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside1X128 : subUint256(fg1, lower.feeGrowthOutside1X128);
+        const above0 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside0X128 : subUint256(fg0, upper.feeGrowthOutside0X128);
+        const above1 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside1X128 : subUint256(fg1, upper.feeGrowthOutside1X128);
+
+        const inside0 = subUint256(subUint256(fg0, below0), above0);
+        const inside1 = subUint256(subUint256(fg1, below1), above1);
+
+        const liq = ethers.BigNumber.from(pos.liquidity);
+        const d0 = subUint256(inside0, ethers.BigNumber.from(pos.feeGrowthInside0LastX128)).mul(liq).div(Q128);
+        const d1 = subUint256(inside1, ethers.BigNumber.from(pos.feeGrowthInside1LastX128)).mul(liq).div(Q128);
+
+        const tot0 = parseFloat(ethers.utils.formatUnits(ethers.BigNumber.from(pos.tokensOwed0).add(d0), 18));
+        const tot1 = parseFloat(ethers.utils.formatUnits(ethers.BigNumber.from(pos.tokensOwed1).add(d1), 6));
+        return Math.max(0, (tot0 * market.polUsd) + tot1);
+    } catch (e) {
+        return 0;
+    }
+}
+
+async function syncAllChainsNow() {
+    if (!state.wallet || !ethers.utils.isAddress(state.wallet)) return;
+    const t0 = performance.now();
+    const latEl = document.getElementById('rpc-latency-tag');
+    if (latEl) latEl.textContent = 'LENDO...';
+
+    const chainIds = [137, 8453, 42161, 42220, 10];
+    await Promise.allSettled(chainIds.map((id) => scanSingleChainMulticall(id, state.wallet)));
+
+    const elapsed = Math.round(performance.now() - t0);
+    if (latEl) latEl.textContent = `${elapsed}ms (5 REDES)`;
+
+    recomputeSculptor();
+    renderAllViews();
+}
+
+// =========================================================================
+// 6. AUDITORIA FORENSE DIA 1 & MINI-GRÁFICO DA VERDADE
+// =========================================================================
+async function runDayOneForensics() {
+    if (!state.wallet) return;
+    try {
+        const res = await withTimeout(
+            fetch(`https://polygon.blockscout.com/api/v2/addresses/${state.wallet}/token-transfers?type=ERC-20`),
+            6000
+        );
+        const json = await res.json();
+        const items = Array.isArray(json?.items) ? json.items : [];
+        if (items.length === 0) {
+            renderTruthChart();
+            return;
+        }
+
+        const ignoredContracts = new Set([
+            CHAINS[137].router02.toLowerCase(),
+            CHAINS[137].nfpm.toLowerCase(),
+            POLYGON_POOL_ADDRESS.toLowerCase(),
+            '0x0000000000000000000000000000000000000000'
+        ]);
+
+        let netDepositedUsd = 0;
+        let netWithdrawnUsd = 0;
+        let hodlPolQty = 0;
+        let hodlStableUsd = 0;
+        const timeline = [];
+
+        const ordered = items.slice().reverse();
+        ordered.forEach((tx) => {
+            const from = (tx.from?.hash || '').toLowerCase();
+            const to = (tx.to?.hash || '').toLowerCase();
+            const sym = (tx.token?.symbol || '').toUpperCase();
+            const dec = parseInt(tx.token?.decimals || '18', 10);
+            const rawVal = parseFloat(tx.total?.value || '0') / Math.pow(10, dec);
+            if (!Number.isFinite(rawVal) || rawVal <= 0) return;
+
+            let usdVal = 0;
+            if (sym.includes('USDT') || sym.includes('USDC')) usdVal = rawVal;
+            else if (sym === 'BRZ' || sym === 'BRLA') usdVal = rawVal / market.usdBrl;
+            else if (sym === 'POL' || sym === 'WPOL' || sym === 'MATIC') usdVal = rawVal * market.polUsd;
+            else return;
+
+            // Ignora movimentações internas entre sua carteira e contratos Uniswap
+            if (ignoredContracts.has(from) || ignoredContracts.has(to)) return;
+
+            if (to === state.wallet) {
+                netDepositedUsd += usdVal;
+                if (sym === 'POL' || sym === 'WPOL') hodlPolQty += rawVal;
+                else hodlStableUsd += usdVal;
+            } else if (from === state.wallet) {
+                netWithdrawnUsd += usdVal;
+                if (sym === 'POL' || sym === 'WPOL') hodlPolQty = Math.max(0, hodlPolQty - rawVal);
+                else hodlStableUsd = Math.max(0, hodlStableUsd - usdVal);
+            }
+
+            const netCap = Math.max(0, netDepositedUsd - netWithdrawnUsd);
+            timeline.push({
+                ts: tx.timestamp || '',
+                investedUsd: netCap,
+                hodlUsd: (hodlPolQty * market.polUsd) + hodlStableUsd
+            });
+        });
+
+        state.forensics = {
+            depositedUsd: netDepositedUsd,
+            withdrawnUsd: netWithdrawnUsd,
+            hodlBenchmarkUsd: (hodlPolQty * market.polUsd) + hodlStableUsd,
+            timeline: timeline.slice(-30)
+        };
+        await saveEncryptedVault();
+        renderAllViews();
+    } catch (e) {
+        renderTruthChart();
+    }
+}
+
+function getTotalWealthUsd() {
+    const walletLiquid =
+        (balances[137]?.totalUsd || 0) +
+        (balances[8453]?.totalUsd || 0) +
+        (balances[42161]?.totalUsd || 0) +
+        (balances[42220]?.totalUsd || 0) +
+        (balances[10]?.totalUsd || 0);
+    return walletLiquid + balances.poolsUsd + balances.unclaimedFeesUsd;
+}
+
+function renderTruthChart() {
+    const container = document.getElementById('truth-chart-canvas');
+    if (!container) return;
+    container.replaceChildren();
+
+    const width = container.clientWidth || 320;
+    const height = 135;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+
+    const currentWealth = getTotalWealthUsd();
+    const netInvested = Math.max(0, state.forensics.depositedUsd - state.forensics.withdrawnUsd);
+    const hodlVal = state.forensics.hodlBenchmarkUsd > 0 ? state.forensics.hodlBenchmarkUsd : netInvested;
+
+    const pts = state.forensics.timeline.length >= 2
+        ? state.forensics.timeline.map((item, idx, arr) => {
+            const progress = idx / (arr.length - 1);
+            const interpWealth = item.investedUsd + (currentWealth - netInvested) * progress;
+            return {
+                invested: item.investedUsd,
+                hodl: item.hodlUsd,
+                wealth: Math.max(0, interpWealth)
+            };
+        })
+        : [
+            { invested: netInvested || currentWealth, hodl: netInvested || currentWealth, wealth: netInvested || currentWealth },
+            { invested: netInvested || currentWealth, hodl: hodlVal || currentWealth, wealth: currentWealth }
+        ];
+
+    const allVals = pts.flatMap((p) => [p.invested, p.hodl, p.wealth]);
+    const maxV = Math.max(...allVals, 1) * 1.08;
+    const minV = Math.max(0, Math.min(...allVals) * 0.92);
+    const span = Math.max(0.01, maxV - minV);
+
+    const toCoords = (selector) => pts.map((p, i) => {
+        const x = 10 + (i / Math.max(1, pts.length - 1)) * (width - 20);
+        const y = (height - 14) - (((p[selector] - minV) / span) * (height - 28));
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    const makePolyline = (pointsStr, color, dash = '') => {
+        const pl = document.createElementNS(svgNS, 'polyline');
+        pl.setAttribute('fill', 'none');
+        pl.setAttribute('stroke', color);
+        pl.setAttribute('stroke-width', '2.2');
+        if (dash) pl.setAttribute('stroke-dasharray', dash);
+        pl.setAttribute('points', pointsStr);
+        return pl;
+    };
+
+    svg.appendChild(makePolyline(toCoords('invested'), '#E5E7EB', '4,4'));
+    svg.appendChild(makePolyline(toCoords('hodl'), '#CDA434'));
+    svg.appendChild(makePolyline(toCoords('wealth'), '#10B981'));
+    container.appendChild(svg);
+
+    const verdictEl = document.getElementById('truth-verdict-text');
+    if (verdictEl) {
+        const realProfitUsd = currentWealth - netInvested;
+        const vsHodlUsd = currentWealth - hodlVal;
+        if (netInvested <= 0 && currentWealth <= 0) {
+            verdictEl.textContent = 'Conecte sua carteira para comparar seu patrimônio real contra os depósitos desde o Dia 1.';
+        } else if (realProfitUsd >= 0 && vsHodlUsd >= 0) {
+            verdictEl.textContent = `Lucro genuíno: seu saldo está ${formatInSelectedCurrency(realProfitUsd)} acima do valor tirado do bolso e ${formatInSelectedCurrency(vsHodlUsd)} acima do HODL.`;
+        } else if (realProfitUsd >= 0 && vsHodlUsd < 0) {
+            verdictEl.textContent = `Saldo positivo (+${formatInSelectedCurrency(realProfitUsd)}), porém o HODL renderia ${formatInSelectedCurrency(Math.abs(vsHodlUsd))} a mais devido ao Impermanent Loss.`;
+        } else {
+            verdictEl.textContent = `Atenção: embora as taxas subam, seu patrimônio está ${formatInSelectedCurrency(Math.abs(realProfitUsd))} abaixo do capital investido pela queda do ativo.`;
+        }
+    }
+}
+
+// =========================================================================
+// 7. MOTOR DE ESTRATÉGIAS & SIMULADOR DUPLO (R$/MIN ↔ CAPITAL NECESSÁRIO)
+// =========================================================================
 function humanPriceToAlignedTick(humanPrice, isToken0Pol, roundUp) {
     const rawPrice = isToken0Pol ? (humanPrice * 1e-12) : ((1 / humanPrice) * 1e12);
     const exactTick = Math.log(rawPrice) / Math.log(1.0001);
@@ -146,33 +878,13 @@ function ticksToHumanPrice(tickLower, tickUpper, isToken0Pol) {
             min: Math.pow(1.0001, Number(tickLower)) * 1e12,
             max: Math.pow(1.0001, Number(tickUpper)) * 1e12
         };
-    } else {
-        return {
-            min: 1 / (Math.pow(1.0001, Number(tickUpper)) * 1e12),
-            max: 1 / (Math.pow(1.0001, Number(tickLower)) * 1e12)
-        };
     }
-}
-
-function computeRangeTokenShares(price, pMin, pMax) {
-    if (price <= pMin) return { targetWpolShare: 1.0, targetUsdtShare: 0.0 };
-    if (price >= pMax) return { targetWpolShare: 0.0, targetUsdtShare: 1.0 };
-
-    const sqrtP = Math.sqrt(price);
-    const sqrtA = Math.sqrt(pMin);
-    const sqrtB = Math.sqrt(pMax);
-    const amt0 = (1 / sqrtP) - (1 / sqrtB);
-    const amt1 = sqrtP - sqrtA;
-    const v0 = amt0 * price;
-    const v1 = amt1;
-    const targetUsdtShare = v1 / (v0 + v1);
     return {
-        targetWpolShare: 1 - targetUsdtShare,
-        targetUsdtShare
+        min: 1 / (Math.pow(1.0001, Number(tickUpper)) * 1e12),
+        max: 1 / (Math.pow(1.0001, Number(tickLower)) * 1e12)
     };
 }
 
-// Liquidez concentrada raw (escala 1e12) para capital USD em [pMin, pMax]
 function estimateUserRawLiquidity(capitalUsd, price, pMin, pMax) {
     if (capitalUsd <= 0 || price <= 0 || pMin >= pMax) return 0;
     const clampedP = Math.max(pMin * 1.00001, Math.min(pMax * 0.99999, price));
@@ -184,2963 +896,1475 @@ function estimateUserRawLiquidity(capitalUsd, price, pMin, pMax) {
     return (capitalUsd * 1e12) / denom;
 }
 
-function estimateBrlPerMinForRange(capitalUsd, price, pMin, pMax) {
-    if (capitalUsd <= 0 || price <= 0) return 0;
+function estimateBrlPerMin(capitalUsd, price, pMin, pMax) {
     const userL = estimateUserRawLiquidity(capitalUsd, price, pMin, pMax);
-    const poolL = poolTelemetry.activeLiquidityRaw > 0
-        ? poolTelemetry.activeLiquidityRaw
-        : Math.max(userL * 80, 1e18);
+    if (userL <= 0) return 0;
+    const poolL = market.poolActiveLiquidity > 0 ? market.poolActiveLiquidity : Math.max(userL * 80, 1e18);
     const share = userL / (poolL + userL);
-    const usdPerMin = poolTelemetry.feesUsdPerMin * share;
-    return usdPerMin * usdBrlCommercial;
+    return market.poolFeesUsdPerMin * share * market.usdBrl;
 }
 
-function getMotherRate() {
-    return usdtToBrzRate > 0 ? usdtToBrzRate : usdBrlCommercial;
+function computeRequiredCapitalUsdForTarget(targetBrlPerMin, price, pMin, pMax) {
+    const maxPoolBrlMin = market.poolFeesUsdPerMin * market.usdBrl;
+    if (targetBrlPerMin <= 0 || targetBrlPerMin >= maxPoolBrlMin * 0.95) return Infinity;
+    const poolL = market.poolActiveLiquidity > 0 ? market.poolActiveLiquidity : 1e19;
+    const reqUserL = (poolL * targetBrlPerMin) / (maxPoolBrlMin - targetBrlPerMin);
+    const sqrtP = Math.sqrt(price);
+    const sqrtA = Math.sqrt(pMin);
+    const sqrtB = Math.sqrt(pMax);
+    const factor = (2 * sqrtP) - (price / sqrtB) - sqrtA;
+    return Math.max(0, (reqUserL / 1e12) * factor);
 }
 
-// =========================================================================
-// TELEMETRIA REAL DA POOL (LIQUIDEZ ATIVA ON-CHAIN + VOLUME USD/MIN)
-// =========================================================================
-async function refreshPoolVolumeAndLiquidity() {
-    // 1. Lê liquidez ativa exata no contrato da Pool Uniswap V3
-    for (const rpcUrl of POLYGON_RPCS) {
-        try {
-            const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-            const pool = new ethers.Contract(POOL_ADDRESS, [
-                "function liquidity() view returns (uint128)"
-            ], provider);
-            const liqBN = await withTimeout(pool.liquidity(), 4000);
-            if (liqBN && liqBN.gt(0)) {
-                poolTelemetry.activeLiquidityRaw = parseFloat(liqBN.toString());
-                break;
-            }
-        } catch (e) {}
+function computeDeployablePolygonUsd() {
+    const b = balances[137];
+    const usablePol = Math.max(0, (b.POL || 0) - market.dynamicGasReservePol);
+    return (usablePol * market.polUsd) +
+        ((b.WPOL || 0) * market.polUsd) +
+        (b.USDT0 || 0) +
+        ((b.BRZ || 0) / market.usdtToBrz) +
+        ((b.BRLA || 0) / market.usdtToBrla);
+}
+
+function recomputeSculptor() {
+    const price = market.polUsd > 0 ? market.polUsd : 0.087;
+    const atr = market.atr15m > 0 ? market.atr15m : price * 0.009;
+    const deployableUsd = computeDeployablePolygonUsd();
+
+    const multMap = { escudo: 4.5, sniper: 2.5, turbo: 1.15 };
+    const profileMult = multMap[state.riskProfile] || 2.5;
+    const baseSpan = atr * profileMult;
+
+    let pMin = Math.max(price * 0.1, price - (baseSpan * market.downWeight));
+    let pMax = price + (baseSpan * market.upWeight);
+
+    let tickLower = humanPriceToAlignedTick(pMin, true, false);
+    let tickUpper = humanPriceToAlignedTick(pMax, true, true);
+    if (tickUpper - tickLower < POOL_TICK_SPACING * 2) {
+        const center = humanPriceToAlignedTick(price, true, false);
+        tickLower = center - POOL_TICK_SPACING;
+        tickUpper = center + POOL_TICK_SPACING;
     }
 
-    // 2. Lê volume real (24h e 5m) da pool POL/USDT0 na Polygon via GeckoTerminal
-    try {
-        const res = await withTimeout(
-            fetch(`https://api.geckoterminal.com/api/v2/networks/polygon_pos/pools/${POOL_ADDRESS}`),
-            4500
-        );
-        const json = await res.json();
-        const volObj = json?.data?.attributes?.volume_usd;
-        if (volObj) {
-            const h24 = parseFloat(volObj.h24) || 0;
-            const m5 = parseFloat(volObj.m5) || 0;
-            const avgPerMin24h = h24 / 1440;
-            const recentPerMin5m = m5 / 5;
-            const blendedUsdPerMin = recentPerMin5m > 0
-                ? (avgPerMin24h * 0.65) + (recentPerMin5m * 0.35)
-                : avgPerMin24h;
+    let aligned = ticksToHumanPrice(tickLower, tickUpper, true);
+    pMin = aligned.min;
+    pMax = aligned.max;
 
-            if (blendedUsdPerMin > 0) {
-                poolTelemetry.volumeUsdPerMin = blendedUsdPerMin;
-                poolTelemetry.feesUsdPerMin = blendedUsdPerMin * (POOL_FEE_TIER / 1_000_000);
-                poolTelemetry.source = 'on-chain + gecko';
-            }
-        }
-    } catch (e) {}
+    const baselineBrlMin = estimateBrlPerMin(Math.max(deployableUsd, 50), price, pMin, pMax);
+    const actualBaselineBrlMin = estimateBrlPerMin(deployableUsd, price, pMin, pMax);
+    let projectedBrlMin = actualBaselineBrlMin;
+    let requiredCapitalUsd = deployableUsd;
 
-    recomputeAutoPilotPlan();
-}
-
-// =========================================================================
-// INTERFACE INTERATIVA DE META DE RENDIMENTO (R$/MIN) & PRÉVIA NO GRÁFICO
-// =========================================================================
-function ensureYieldTargetUI() {
-    if (document.getElementById('yield-target-box')) return;
-    const summaryEl = document.getElementById('ap-plan-summary');
-    if (!summaryEl || !summaryEl.parentNode) return;
-
-    const box = document.createElement('div');
-    box.id = 'yield-target-box';
-    box.style.cssText = [
-        'margin: 6px 0;',
-        'padding: 7px 8px;',
-        'background: rgba(0, 212, 255, 0.05);',
-        'border: 1px solid rgba(0, 212, 255, 0.25);',
-        'border-radius: 6px;',
-        'display: flex;',
-        'flex-direction: column;',
-        'gap: 5px;'
-    ].join('');
-
-    const diagnosisEl = document.createElement('div');
-    diagnosisEl.id = 'yt-diagnosis-text';
-    diagnosisEl.style.cssText = 'font-size: 0.64rem; color: #ddd; line-height: 1.35;';
-    diagnosisEl.textContent = 'Calculando potencial de rendimento por minuto com seu saldo...';
-
-    const promptRow = document.createElement('div');
-    promptRow.style.cssText = 'display: flex; align-items: center; gap: 5px; margin-top: 2px;';
-
-    const lbl = document.createElement('label');
-    lbl.htmlFor = 'yt-target-input';
-    lbl.style.cssText = 'font-size: 0.62rem; color: var(--cyan-accent); font-weight: 700; white-space: nowrap;';
-    lbl.textContent = 'META R$/MIN:';
-
-    const input = document.createElement('input');
-    input.id = 'yt-target-input';
-    input.type = 'number';
-    input.step = '0.001';
-    input.min = '0';
-    input.placeholder = 'Ex: 0.050';
-    input.style.cssText = [
-        'flex: 1;',
-        'min-width: 70px;',
-        'background: #090909;',
-        'border: 1px solid rgba(0, 212, 255, 0.45);',
-        'color: #fff;',
-        'font-size: 0.72rem;',
-        'font-weight: 700;',
-        'padding: 4px 6px;',
-        'border-radius: 4px;',
-        'font-family: inherit;'
-    ].join('');
-
-    const clearBtn = document.createElement('button');
-    clearBtn.id = 'yt-clear-btn';
-    clearBtn.type = 'button';
-    clearBtn.textContent = 'AUTO';
-    clearBtn.title = 'Voltar para o range Sniper automático';
-    clearBtn.style.cssText = [
-        'background: rgba(255,255,255,0.08);',
-        'border: 1px solid rgba(255,255,255,0.2);',
-        'color: #ccc;',
-        'font-size: 0.58rem;',
-        'font-weight: 700;',
-        'padding: 4px 6px;',
-        'border-radius: 4px;',
-        'cursor: pointer;'
-    ].join('');
-
-    promptRow.append(lbl, input, clearBtn);
-
-    const chipsRow = document.createElement('div');
-    chipsRow.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;';
-
-    const presets = [
-        { id: 'yt-preset-1x', label: 'SNIPER 1x', mult: 1.0 },
-        { id: 'yt-preset-15x', label: 'META 1.5x', mult: 1.5 },
-        { id: 'yt-preset-25x', label: 'TURBO 2.5x', mult: 2.5 },
-        { id: 'yt-preset-4x', label: 'SCALP 4x', mult: 4.0 }
-    ];
-
-    presets.forEach(p => {
-        const chip = document.createElement('button');
-        chip.id = p.id;
-        chip.type = 'button';
-        chip.textContent = p.label;
-        chip.style.cssText = [
-            'background: rgba(205, 164, 52, 0.12);',
-            'border: 1px solid rgba(205, 164, 52, 0.35);',
-            'color: var(--dekton-copper);',
-            'font-size: 0.56rem;',
-            'font-weight: 700;',
-            'padding: 3px 2px;',
-            'border-radius: 4px;',
-            'cursor: pointer;'
-        ].join('');
-        chip.addEventListener('click', () => {
-            if (p.mult === 1.0) {
-                yieldTargetState.customTargetBrlPerMin = null;
-                input.value = '';
-            } else if (yieldTargetState.baselineBrlPerMin > 0) {
-                const targetVal = Number((yieldTargetState.baselineBrlPerMin * p.mult).toFixed(4));
-                yieldTargetState.customTargetBrlPerMin = targetVal;
-                input.value = targetVal;
-            }
-            recomputeAutoPilotPlan();
-        });
-        chipsRow.appendChild(chip);
-    });
-
-    const feedbackEl = document.createElement('div');
-    feedbackEl.id = 'yt-sculpt-feedback';
-    feedbackEl.style.cssText = 'font-size: 0.61rem; color: var(--success-green); line-height: 1.3;';
-
-    input.addEventListener('input', () => {
-        const val = parseFloat(input.value);
-        if (Number.isFinite(val) && val > 0) {
-            yieldTargetState.customTargetBrlPerMin = val;
-        } else {
-            yieldTargetState.customTargetBrlPerMin = null;
-        }
-        recomputeAutoPilotPlan();
-    });
-
-    clearBtn.addEventListener('click', () => {
-        yieldTargetState.customTargetBrlPerMin = null;
-        input.value = '';
-        recomputeAutoPilotPlan();
-    });
-
-    box.append(diagnosisEl, promptRow, chipsRow, feedbackEl);
-    summaryEl.parentNode.insertBefore(box, summaryEl);
-}
-
-function updateChartPreviewLines(pMin, pMax, isCustomTarget) {
-    if (!candleSeries) return;
-    if (previewLines.length > 0) {
-        previewLines.forEach(line => {
-            try { candleSeries.removePriceLine(line); } catch (e) {}
-        });
-        previewLines = [];
-    }
-    if (!isCustomTarget || pMin <= 0 || pMax <= pMin) return;
-
-    previewLines.push(candleSeries.createPriceLine({
-        price: pMin,
-        color: '#00d4ff',
-        lineWidth: 1,
-        lineStyle: 3,
-        axisLabelVisible: true,
-        title: 'META MIN'
-    }));
-    previewLines.push(candleSeries.createPriceLine({
-        price: pMax,
-        color: '#00d4ff',
-        lineWidth: 1,
-        lineStyle: 3,
-        axisLabelVisible: true,
-        title: 'META MAX'
-    }));
-}
-
-// =========================================================================
-// SOLVER INVERSO DE RANGE PARA META EM R$/MIN (BUSCA BINÁRIA ALINHADA)
-// =========================================================================
-function solveRangeForTargetBrlPerMin(targetBrlPerMin, capitalUsd, price, defaultTickLower, defaultTickUpper) {
-    const defaultPrices = ticksToHumanPrice(defaultTickLower, defaultTickUpper, true);
-    const baselineBrlMin = estimateBrlPerMinForRange(capitalUsd, price, defaultPrices.min, defaultPrices.max);
-
-    // Sem meta customizada: usa range Sniper padrão
-    if (!targetBrlPerMin || targetBrlPerMin <= 0 || capitalUsd <= 0 || price <= 0) {
-        return {
-            tickLower: defaultTickLower,
-            tickUpper: defaultTickUpper,
-            pMin: defaultPrices.min,
-            pMax: defaultPrices.max,
-            baselineBrlMin,
-            projectedBrlMin: baselineBrlMin,
-            riskLabel: 'SNIPER SEGURO',
-            riskColor: 'var(--success-green)',
-            cappedByPool: false,
-            isCustom: false
-        };
-    }
-
-    // Limite físico mínimo: 2 tick spacings (0.20% de largura) para evitar revert/out-of-range instantâneo
-    const centerTick = humanPriceToAlignedTick(price, true, false);
-    const tightestLower = centerTick - POOL_TICK_SPACING;
-    const tightestUpper = centerTick + POOL_TICK_SPACING;
-    const tightestPrices = ticksToHumanPrice(tightestLower, tightestUpper, true);
-    const maxPossibleBrlMin = estimateBrlPerMinForRange(capitalUsd, price, tightestPrices.min, tightestPrices.max);
-
-    let chosenLower = defaultTickLower;
-    let chosenUpper = defaultTickUpper;
-    let cappedByPool = false;
-
-    if (targetBrlPerMin >= maxPossibleBrlMin) {
-        chosenLower = tightestLower;
-        chosenUpper = tightestUpper;
-        cappedByPool = true;
-    } else {
-        // Busca binária no span S mantendo o viés assimétrico da EMA (downWeight / upWeight)
+    if (state.simulatorMode === 'sim-capital') {
+        const target = state.customTargetBrlMin && state.customTargetBrlMin > 0
+            ? state.customTargetBrlMin
+            : Math.max(0.01, baselineBrlMin);
+        requiredCapitalUsd = computeRequiredCapitalUsdForTarget(target, price, pMin, pMax);
+        projectedBrlMin = target;
+    } else if (state.customTargetBrlMin && state.customTargetBrlMin > 0 && deployableUsd > 0) {
         let lowSpan = price * 0.002;
-        let highSpan = price * 0.60;
-        const dW = sniperTelemetry.downWeight || 0.5;
-        const uW = sniperTelemetry.upWeight || 0.5;
-
-        for (let iter = 0; iter < 32; iter++) {
-            const midSpan = (lowSpan + highSpan) / 2;
-            const candMin = Math.max(price * 0.1, price - (midSpan * dW));
-            const candMax = price + (midSpan * uW);
-            const estBrl = estimateBrlPerMinForRange(capitalUsd, price, candMin, candMax);
-
-            if (estBrl > targetBrlPerMin) {
-                // Rendimento acima da meta -> podemos alargar o range para ganhar segurança
-                lowSpan = midSpan;
-            } else {
-                // Rendimento abaixo da meta -> precisamos estreitar o range
-                highSpan = midSpan;
-            }
+        let highSpan = price * 0.65;
+        for (let i = 0; i < 30; i++) {
+            const mid = (lowSpan + highSpan) / 2;
+            const cMin = Math.max(price * 0.1, price - (mid * market.downWeight));
+            const cMax = price + (mid * market.upWeight);
+            const est = estimateBrlPerMin(deployableUsd, price, cMin, cMax);
+            if (est > state.customTargetBrlMin) lowSpan = mid;
+            else highSpan = mid;
         }
-
         const finalSpan = (lowSpan + highSpan) / 2;
-        const rawMin = Math.max(price * 0.1, price - (finalSpan * dW));
-        const rawMax = price + (finalSpan * uW);
-
-        chosenLower = humanPriceToAlignedTick(rawMin, true, false);
-        chosenUpper = humanPriceToAlignedTick(rawMax, true, true);
-        if (chosenUpper - chosenLower < POOL_TICK_SPACING * 2) {
-            chosenLower = tightestLower;
-            chosenUpper = tightestUpper;
+        tickLower = humanPriceToAlignedTick(Math.max(price * 0.1, price - (finalSpan * market.downWeight)), true, false);
+        tickUpper = humanPriceToAlignedTick(price + (finalSpan * market.upWeight), true, true);
+        if (tickUpper - tickLower < POOL_TICK_SPACING * 2) {
+            const c = humanPriceToAlignedTick(price, true, false);
+            tickLower = c - POOL_TICK_SPACING;
+            tickUpper = c + POOL_TICK_SPACING;
         }
+        aligned = ticksToHumanPrice(tickLower, tickUpper, true);
+        pMin = aligned.min;
+        pMax = aligned.max;
+        projectedBrlMin = estimateBrlPerMin(deployableUsd, price, pMin, pMax);
     }
 
-    const sculptedPrices = ticksToHumanPrice(chosenLower, chosenUpper, true);
-    const projectedBrlMin = estimateBrlPerMinForRange(capitalUsd, price, sculptedPrices.min, sculptedPrices.max);
-    const span = sculptedPrices.max - sculptedPrices.min;
-    const atr = sniperTelemetry.atr14 > 0 ? sniperTelemetry.atr14 : (price * 0.01);
-    const atrRatio = span / atr;
+    const halfWidth = (pMax - pMin) / 2;
+    const survivalHours = Math.max(0.2, Math.pow(halfWidth / Math.max(atr, 1e-6), 2) * 0.25);
 
-    let riskLabel = 'EQUILIBRADO';
-    let riskColor = 'var(--success-green)';
-    if (atrRatio < 0.85) {
-        riskLabel = 'SCALPER EXTREMO (SAI RÁPIDO)';
-        riskColor = 'var(--danger-red)';
-    } else if (atrRatio < 1.8) {
-        riskLabel = 'AGRESSIVO (ESTREITO)';
-        riskColor = 'var(--warning-yellow)';
-    }
+    const sqrtP = Math.sqrt(price);
+    const sqrtA = Math.sqrt(pMin);
+    const sqrtB = Math.sqrt(pMax);
+    const amt0Val = ((1 / sqrtP) - (1 / sqrtB)) * price;
+    const amt1Val = sqrtP - sqrtA;
+    const targetUsdtShare = Math.max(0, Math.min(1, amt1Val / Math.max(1e-9, amt0Val + amt1Val)));
 
-    return {
-        tickLower: chosenLower,
-        tickUpper: chosenUpper,
-        pMin: sculptedPrices.min,
-        pMax: sculptedPrices.max,
-        baselineBrlMin,
+    sculptedPlan = {
+        tickLower,
+        tickUpper,
+        pMin,
+        pMax,
+        baselineBrlMin: actualBaselineBrlMin,
         projectedBrlMin,
-        riskLabel,
-        riskColor,
-        cappedByPool,
-        isCustom: true
+        survivalHours,
+        requiredCapitalUsd,
+        deployableUsd,
+        targetWpolShare: 1 - targetUsdtShare,
+        targetUsdtShare
     };
+
+    updateMotorUI();
 }
 
-// =========================================================================
-// COTAÇÃO ON-CHAIN DIRETA NO QUOTERV2 DA UNISWAP V3
-// =========================================================================
-async function quoteUniswapV3OnChain(symIn, symOut, amountWei) {
-    const provider = getReadProvider();
+function updateMotorUI() {
+    const price = market.polUsd;
+    const { pMin, pMax, baselineBrlMin, projectedBrlMin, survivalHours, requiredCapitalUsd } = sculptedPlan;
+    const widthPct = pMin > 0 ? (((pMax - pMin) / pMin) * 100).toFixed(2) : '0.00';
 
-    if ((symIn === 'POL' && symOut === 'WPOL') || (symIn === 'WPOL' && symOut === 'POL')) {
-        return {
-            mode: 'WRAP_UNWRAP',
-            amountOutWei: amountWei,
-            feeTier: 0,
-            viaUsdt: false
-        };
+    const baseLbl = document.getElementById('lbl-baseline-rate');
+    if (baseLbl) baseLbl.textContent = `Seu saldo: R$ ${baselineBrlMin.toFixed(4)}/min`;
+
+    const pisoEl = document.getElementById('sculpt-piso');
+    const tetoEl = document.getElementById('sculpt-teto');
+    const widthEl = document.getElementById('sculpt-width');
+    const survEl = document.getElementById('sculpt-survival');
+    const hourEl = document.getElementById('sculpt-projected-hour');
+    const cursorEl = document.getElementById('sculpt-cursor');
+    const revBanner = document.getElementById('reverse-capital-banner');
+    const revCapEl = document.getElementById('reverse-req-capital');
+
+    if (pisoEl) pisoEl.textContent = `PISO: ${pMin.toFixed(5)}`;
+    if (tetoEl) tetoEl.textContent = `TETO: ${pMax.toFixed(5)}`;
+    if (widthEl) widthEl.textContent = `Largura ${widthPct}%`;
+
+    if (survEl) {
+        const timeStr = survivalHours >= 24
+            ? `~${(survivalHours / 24).toFixed(1)} dias dentro`
+            : `~${survivalHours.toFixed(1)}h dentro`;
+        survEl.textContent = `Duração est.: ${timeStr}`;
+        survEl.style.color = survivalHours < 1.5 ? 'var(--coral)' : (survivalHours < 5 ? 'var(--amber)' : 'var(--emerald)');
     }
 
-    const tokenInAddr = symIn === 'POL' ? TOKENS.WPOL.address : TOKENS[symIn].address;
-    const tokenOutAddr = symOut === 'POL' ? TOKENS.WPOL.address : TOKENS[symOut].address;
+    if (hourEl) hourEl.textContent = `~R$ ${(projectedBrlMin * 60).toFixed(2)} / hora`;
 
-    const quoterAbi = [
-        "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) params) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
-        "function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)"
-    ];
-    const quoter = new ethers.Contract(UNISWAP_QUOTER_V2, quoterAbi, provider);
-
-    let bestDirect = null;
-    for (const fee of UNISWAP_FEES) {
-        try {
-            const res = await withTimeout(quoter.callStatic.quoteExactInputSingle({
-                tokenIn: tokenInAddr,
-                tokenOut: tokenOutAddr,
-                amountIn: amountWei,
-                fee: fee,
-                sqrtPriceLimitX96: 0
-            }), 4500);
-            if (res && res.amountOut && res.amountOut.gt(0)) {
-                if (!bestDirect || res.amountOut.gt(bestDirect.amountOutWei)) {
-                    bestDirect = {
-                        mode: 'SINGLE',
-                        amountOutWei: res.amountOut,
-                        feeTier: fee,
-                        viaUsdt: false
-                    };
-                }
-            }
-        } catch (e) {}
+    if (cursorEl && pMax > pMin) {
+        const pct = Math.max(5, Math.min(95, ((price - pMin) / (pMax - pMin)) * 100));
+        cursorEl.style.left = `${pct.toFixed(1)}%`;
     }
 
-    if (bestDirect) return bestDirect;
-
-    if (tokenInAddr.toLowerCase() !== USDT_ADDRESS && tokenOutAddr.toLowerCase() !== USDT_ADDRESS) {
-        const candidatePairs = [
-            [3000, 500],
-            [500, 500],
-            [10000, 500],
-            [3000, 3000]
-        ];
-        for (const [fee1, fee2] of candidatePairs) {
-            try {
-                const encodedPath = ethers.utils.solidityPack(
-                    ['address', 'uint24', 'address', 'uint24', 'address'],
-                    [tokenInAddr, fee1, TOKENS.USDT0.address, fee2, tokenOutAddr]
-                );
-                const res = await withTimeout(quoter.callStatic.quoteExactInput(encodedPath, amountWei), 4500);
-                if (res && res.amountOut && res.amountOut.gt(0)) {
-                    return {
-                        mode: 'MULTIHOP',
-                        amountOutWei: res.amountOut,
-                        pathBytes: encodedPath,
-                        feeTier: `${fee1}/${fee2}`,
-                        viaUsdt: true
-                    };
-                }
-            } catch (e) {}
-        }
-    }
-
-    throw new Error('Sem pool Uniswap V3 ativa para este par.');
-}
-
-// =========================================================================
-// EXECUÇÃO ON-CHAIN NO SWAPROUTER02 COM APROVAÇÃO EXATA (SEM MAX_UINT256)
-// =========================================================================
-async function executeUniswapV3Swap(symIn, symOut, amountWei, quoteObj, signer, onStatus) {
-    if (quoteObj.mode === 'WRAP_UNWRAP') {
-        const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
-            "function deposit() payable",
-            "function withdraw(uint256 wad)"
-        ], signer);
-
-        if (symIn === 'POL') {
-            if (onStatus) onStatus('Assine na Rabby: converter POL → WPOL (1:1)...');
-            const tx = await wpolC.deposit({ value: amountWei });
-            await tx.wait();
-            return tx;
+    if (revBanner && revCapEl) {
+        if (state.simulatorMode === 'sim-capital') {
+            revBanner.style.display = 'block';
+            revCapEl.textContent = Number.isFinite(requiredCapitalUsd)
+                ? formatInSelectedCurrency(requiredCapitalUsd)
+                : 'Acima do teto da pool';
         } else {
-            if (onStatus) onStatus('Assine na Rabby: converter WPOL → POL (1:1)...');
-            const tx = await wpolC.withdraw(amountWei);
-            await tx.wait();
-            return tx;
+            revBanner.style.display = 'none';
         }
     }
 
-    const tokIn = TOKENS[symIn];
-    const tokenInAddr = tokIn.isNative ? TOKENS.WPOL.address : tokIn.address;
-    const tokenOutAddr = symOut === 'POL' ? TOKENS.WPOL.address : TOKENS[symOut].address;
-
-    if (!tokIn.isNative) {
-        const erc20 = new ethers.Contract(tokIn.address, [
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
-        const allow = await erc20.allowance(connectedSignerAddress, UNISWAP_SWAP_ROUTER_02);
-        if (allow.lt(amountWei)) {
-            if (onStatus) onStatus(`Assine na Rabby: aprovar ${symIn} exato para Uniswap V3...`);
-            const appTx = await erc20.approve(UNISWAP_SWAP_ROUTER_02, amountWei);
-            await appTx.wait();
-        }
-    }
-
-    const minOut = quoteObj.amountOutWei.mul(988).div(1000);
-    const routerAbi = [
-        "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)",
-        "function exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum) params) payable returns (uint256 amountOut)",
-        "function unwrapWETH9(uint256 amountMinimum, address recipient) payable",
-        "function multicall(bytes[] data) payable returns (bytes[] results)"
-    ];
-    const router = new ethers.Contract(UNISWAP_SWAP_ROUTER_02, routerAbi, signer);
-    const txOverrides = tokIn.isNative ? { value: amountWei } : {};
-    const recipient = symOut === 'POL' ? UNISWAP_SWAP_ROUTER_02 : connectedSignerAddress;
-
-    if (onStatus) onStatus(`Confirme a troca ${symIn} → ${symOut} na Rabby Wallet...`);
-
-    if (quoteObj.mode === 'SINGLE') {
-        const swapParams = {
-            tokenIn: tokenInAddr,
-            tokenOut: tokenOutAddr,
-            fee: quoteObj.feeTier,
-            recipient: recipient,
-            amountIn: amountWei,
-            amountOutMinimum: minOut,
-            sqrtPriceLimitX96: 0
-        };
-
-        if (symOut === 'POL') {
-            const d1 = router.interface.encodeFunctionData('exactInputSingle', [swapParams]);
-            const d2 = router.interface.encodeFunctionData('unwrapWETH9', [minOut, connectedSignerAddress]);
-            const tx = await router.multicall([d1, d2], txOverrides);
-            await tx.wait();
-            return tx;
-        } else {
-            const tx = await router.exactInputSingle(swapParams, txOverrides);
-            await tx.wait();
-            return tx;
-        }
-    } else {
-        const multiParams = {
-            path: quoteObj.pathBytes,
-            recipient: recipient,
-            amountIn: amountWei,
-            amountOutMinimum: minOut
-        };
-
-        if (symOut === 'POL') {
-            const d1 = router.interface.encodeFunctionData('exactInput', [multiParams]);
-            const d2 = router.interface.encodeFunctionData('unwrapWETH9', [minOut, connectedSignerAddress]);
-            const tx = await router.multicall([d1, d2], txOverrides);
-            await tx.wait();
-            return tx;
-        } else {
-            const tx = await router.exactInput(multiParams, txOverrides);
-            await tx.wait();
-            return tx;
-        }
-    }
+    updateChartRangeLines();
 }
 
 // =========================================================================
-// ORÁCULO MOEDA MÃE (BRZ & BRLA ON-CHAIN VIA UNISWAP QUOTER + BRL REAL)
+// 8. EXECUÇÃO ON-CHAIN UNISWAP V3 (COM PROTEÇÃO DE NÍVEL BITCOIN)
 // =========================================================================
-async function refreshMotherCurrencyOracle() {
-    try {
-        const res = await withTimeout(fetch('https://economia.awesomeapi.com.br/last/USD-BRL'), 4000);
-        const json = await res.json();
-        if (json?.USDBRL?.bid) {
-            usdBrlCommercial = parseFloat(json.USDBRL.bid);
-        }
-    } catch (e) {}
-
-    try {
-        const bRes = await withTimeout(fetch('https://api.binance.com/api/v3/ticker/bookTicker?symbol=USDTBRL'), 4000);
-        const bJson = await bRes.json();
-        if (bJson?.bidPrice) {
-            binanceUsdtBrlBid = parseFloat(bJson.bidPrice);
-        }
-    } catch (e) {}
-
-    try {
-        const oneHundredUsdt = ethers.utils.parseUnits('100', 6);
-        const [qBrz, qBrla] = await Promise.all([
-            quoteUniswapV3OnChain('USDT0', 'BRZ', oneHundredUsdt).catch(() => null),
-            quoteUniswapV3OnChain('USDT0', 'BRLA', oneHundredUsdt).catch(() => null)
-        ]);
-
-        usdtToBrzRate = qBrz?.amountOutWei
-            ? parseFloat(ethers.utils.formatUnits(qBrz.amountOutWei, 18)) / 100
-            : usdBrlCommercial;
-
-        usdtToBrlaRate = qBrla?.amountOutWei
-            ? parseFloat(ethers.utils.formatUnits(qBrla.amountOutWei, 18)) / 100
-            : usdBrlCommercial;
-    } catch (e) {
-        usdtToBrzRate = usdBrlCommercial;
-        usdtToBrlaRate = usdBrlCommercial;
+async function ensureExactApproval(tokenAddress, spender, amountWei, signer, logFn) {
+    const erc20 = new ethers.Contract(tokenAddress, [
+        "function allowance(address, address) view returns (uint256)",
+        "function approve(address spender, uint256 amount) returns (bool)"
+    ], signer);
+    const current = await erc20.allowance(state.wallet, spender);
+    if (current.lt(amountWei)) {
+        if (logFn) logFn('Assine na carteira: aprovação exata (zero permissão ilimitada)...');
+        // Nunca aprova MAX_UINT256: aprova estritamente o valor exato da operação
+        const tx = await erc20.approve(spender, amountWei);
+        await tx.wait();
     }
-
-    document.getElementById('top-usd-brl').textContent = `R$ ${usdBrlCommercial.toFixed(3)}`;
-    document.getElementById('top-usdt-brz').textContent = `${usdtToBrzRate.toFixed(3)} BRZ`;
-    document.getElementById('top-usdt-brla').textContent = `${usdtToBrlaRate.toFixed(3)} BRLA`;
-
-    recomputeAutoPilotPlan();
-    updateFocusedMetrics();
-    recalculateRealPnL();
-    recalculatePixRanking();
 }
 
-// =========================================================================
-// CONEXÃO DIRETA COM RABBY WALLET / EIP-1193
-// =========================================================================
-async function connectWeb3Wallet() {
-    const btn = document.getElementById('btn-connect-wallet');
-    if (!window.ethereum) {
-        alert('Nenhuma carteira Web3 detectada. Ative sua Rabby Wallet ou MetaMask.');
-        return false;
+async function executeAutoPilotStrategy() {
+    if (isBusyTx) return;
+    if (!state.wallet) {
+        await connectWallet();
+        return;
     }
-    try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        if (!accounts || accounts.length === 0) return false;
 
-        try {
+    const logEl = document.getElementById('autopilot-exec-log');
+    const btn = document.getElementById('btn-confirm-execute');
+    isBusyTx = true;
+    btn.disabled = true;
+
+    try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const net = await provider.getNetwork();
+        if (net.chainId !== 137) {
             await window.ethereum.request({
                 method: 'wallet_switchEthereumChain',
                 params: [{ chainId: '0x89' }]
             });
-        } catch (switchErr) {
-            if (switchErr.code === 4902) {
-                await window.ethereum.request({
-                    method: 'wallet_addEthereumChain',
-                    params: [{
-                        chainId: '0x89',
-                        chainName: 'Polygon Mainnet',
-                        nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
-                        rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
-                        blockExplorerUrls: ['https://polygonscan.com/']
-                    }]
-                });
-            }
         }
 
-        connectedSignerAddress = accounts[0].toLowerCase();
-        appState.wallet = connectedSignerAddress;
-        document.getElementById('wallet-address').value = connectedSignerAddress;
+        const signer = provider.getSigner();
+        const chain = CHAINS[137];
+        const b = balances[137];
+        const usablePol = Math.max(0, (b.POL || 0) - market.dynamicGasReservePol);
 
-        const walletLabel = window.ethereum.isRabby ? 'RABBY' : 'WEB3';
-        btn.textContent = `● ${walletLabel} ${connectedSignerAddress.slice(0, 5)}..${connectedSignerAddress.slice(-3)}`;
-        btn.classList.add('wallet-connected');
-
-        saveTripleBackup();
-        await runUnstoppableScan();
-        refreshSwapQuote();
-        return true;
-    } catch (err) {
-        console.error(err);
-        return false;
-    }
-}
-
-document.getElementById('btn-connect-wallet').addEventListener('click', connectWeb3Wallet);
-
-if (window.ethereum) {
-    window.ethereum.on('accountsChanged', (accs) => {
-        if (accs && accs.length > 0) {
-            connectedSignerAddress = accs[0].toLowerCase();
-            appState.wallet = connectedSignerAddress;
-            document.getElementById('wallet-address').value = connectedSignerAddress;
-            const btn = document.getElementById('btn-connect-wallet');
-            const walletLabel = window.ethereum.isRabby ? 'RABBY' : 'WEB3';
-            btn.textContent = `● ${walletLabel} ${connectedSignerAddress.slice(0, 5)}..${connectedSignerAddress.slice(-3)}`;
-            btn.classList.add('wallet-connected');
-            runUnstoppableScan();
-            refreshSwapQuote();
-        }
-    });
-}
-
-// =========================================================================
-// MOTOR UNIFICADO DE PREPARO DE SALDO (PARA NOVA POOL OU + ADICIONAR)
-// =========================================================================
-function buildLiquidityPrepPlan(targetWpolShare, targetUsdtShare, price, minDeployUsd = 1.0) {
-    const motherRate = getMotherRate();
-    const usablePol = Math.max(0, walletBalances.pol - GAS_RESERVE_POL);
-    const valPolUsd = usablePol * price;
-    const valWpolUsd = walletBalances.wpol * price;
-    const valUsdtUsd = walletBalances.usdt0;
-    const valBrzUsd = walletBalances.brz / motherRate;
-    const valBrlaUsd = walletBalances.brla / (usdtToBrlaRate > 0 ? usdtToBrlaRate : motherRate);
-
-    const totalDeployableUsd = valPolUsd + valWpolUsd + valUsdtUsd + valBrzUsd + valBrlaUsd;
-    const totalDeployableBrz = totalDeployableUsd * motherRate;
-
-    if (totalDeployableUsd < minDeployUsd) return null;
-
-    const targetUsdtUsd = totalDeployableUsd * targetUsdtShare;
-    const targetWpolUsd = totalDeployableUsd * targetWpolShare;
-
-    const swapSteps = [];
-
-    if (valBrzUsd > 0.25) {
-        swapSteps.push({ fromSym: 'BRZ', toSym: 'USDT0', amountFloat: walletBalances.brz });
-    }
-    if (valBrlaUsd > 0.25) {
-        swapSteps.push({ fromSym: 'BRLA', toSym: 'USDT0', amountFloat: walletBalances.brla });
-    }
-    if (valPolUsd > 0.25) {
-        swapSteps.push({ fromSym: 'POL', toSym: 'WPOL', amountFloat: usablePol });
-    }
-
-    const projectedUsdtUsd = valUsdtUsd + valBrzUsd + valBrlaUsd;
-    const projectedWpolUsd = valWpolUsd + valPolUsd;
-
-    if (projectedUsdtUsd > targetUsdtUsd + 0.30) {
-        const usdtToSwapForWpol = Math.min(projectedUsdtUsd, projectedUsdtUsd - targetUsdtUsd);
-        if (usdtToSwapForWpol > 0.25) {
-            swapSteps.push({ fromSym: 'USDT0', toSym: 'WPOL', amountFloat: usdtToSwapForWpol });
-        }
-    } else if (projectedWpolUsd > targetWpolUsd + 0.30) {
-        const wpolToSwapForUsdt = Math.min(walletBalances.wpol + usablePol, (projectedWpolUsd - targetWpolUsd) / price);
-        if (wpolToSwapForUsdt > 0.5) {
-            swapSteps.push({ fromSym: 'WPOL', toSym: 'USDT0', amountFloat: wpolToSwapForUsdt });
-        }
-    }
-
-    return {
-        totalDeployableUsd,
-        totalDeployableBrz,
-        targetWpolShare,
-        targetUsdtShare,
-        swapSteps
-    };
-}
-
-// =========================================================================
-// PILOTO AUTOMÁTICO 100% UNISWAP V3 (COM ESCULTOR DE META R$/MIN)
-// =========================================================================
-function recomputeAutoPilotPlan(onChainPoolPrice) {
-    ensureYieldTargetUI();
-
-    const capEl = document.getElementById('ap-available-capital');
-    const summaryEl = document.getElementById('ap-plan-summary');
-    const btnEl = document.getElementById('btn-start-earning');
-    const diagEl = document.getElementById('yt-diagnosis-text');
-    const fbEl = document.getElementById('yt-sculpt-feedback');
-
-    if (!capEl || !summaryEl || !btnEl) return;
-
-    if (!connectedSignerAddress && !appState.wallet) {
-        capEl.textContent = 'Capital Livre: 0.00 BRZ';
-        summaryEl.textContent = 'Conecte sua Rabby Wallet para simular quanto seu saldo rende por minuto na Uniswap V3.';
-        if (diagEl) diagEl.textContent = 'Conecte a carteira para calcular R$/minuto com seu saldo.';
-        if (!isAutoPilotRunning) btnEl.textContent = 'CONECTAR RABBY & COMEÇAR A GANHAR';
-        autoPilotPlan = null;
-        return;
-    }
-
-    const price = (onChainPoolPrice && onChainPoolPrice > 0)
-        ? onChainPoolPrice
-        : (currentPriceGlobal > 0 ? currentPriceGlobal : 0.087);
-    const motherRate = getMotherRate();
-
-    const usablePol = Math.max(0, walletBalances.pol - GAS_RESERVE_POL);
-    const totalDeployableUsd = (usablePol * price) + (walletBalances.wpol * price) + walletBalances.usdt0 + (walletBalances.brz / motherRate) + (walletBalances.brla / (usdtToBrlaRate > 0 ? usdtToBrlaRate : motherRate));
-    const totalDeployableBrz = totalDeployableUsd * motherRate;
-    const totalDeployableBrl = totalDeployableUsd * usdBrlCommercial;
-
-    capEl.textContent = `Capital Livre: ${totalDeployableBrz.toFixed(2)} BRZ (R$ ${totalDeployableBrl.toFixed(2)})`;
-
-    // Range Sniper base (2.5x ATR)
-    const halfSpanDefault = price * 0.025;
-    const rawMin = sniperTelemetry.min > 0 ? Math.min(sniperTelemetry.min, price - halfSpanDefault * 0.6) : (price - halfSpanDefault);
-    const rawMax = sniperTelemetry.max > 0 ? Math.max(sniperTelemetry.max, price + halfSpanDefault * 0.6) : (price + halfSpanDefault);
-
-    let baseTickLower = humanPriceToAlignedTick(rawMin, true, false);
-    let baseTickUpper = humanPriceToAlignedTick(rawMax, true, true);
-    if (baseTickUpper - baseTickLower < POOL_TICK_SPACING * 4) {
-        baseTickLower -= POOL_TICK_SPACING * 2;
-        baseTickUpper += POOL_TICK_SPACING * 2;
-    }
-
-    // Resolve faixa (Sniper base ou esculpida pela meta R$/min)
-    const solved = solveRangeForTargetBrlPerMin(
-        yieldTargetState.customTargetBrlPerMin,
-        totalDeployableUsd,
-        price,
-        baseTickLower,
-        baseTickUpper
-    );
-
-    yieldTargetState.baselineBrlPerMin = solved.baselineBrlMin;
-    yieldTargetState.projectedBrlPerMin = solved.projectedBrlMin;
-    yieldTargetState.sculptedTickLower = solved.tickLower;
-    yieldTargetState.sculptedTickUpper = solved.tickUpper;
-    yieldTargetState.sculptedMin = solved.pMin;
-    yieldTargetState.sculptedMax = solved.pMax;
-    yieldTargetState.riskLabel = solved.riskLabel;
-    yieldTargetState.riskColor = solved.riskColor;
-    yieldTargetState.cappedByPool = solved.cappedByPool;
-
-    if (diagEl) {
-        const baseHour = solved.baselineBrlMin * 60;
-        const baseDay = baseHour * 24;
-        diagEl.innerHTML =
-            `Olha, com <b>R$ ${totalDeployableBrl.toFixed(2)}</b> no range Sniper seguro você consegue ` +
-            `<b style="color:var(--success-green)">R$ ${solved.baselineBrlMin.toFixed(4)}/min</b> ` +
-            `(R$ ${baseHour.toFixed(2)}/h | R$ ${baseDay.toFixed(2)}/dia). Quanto quer tentar buscar?`;
-    }
-
-    if (fbEl) {
-        const widthPct = (((solved.pMax - solved.pMin) / solved.pMin) * 100).toFixed(2);
-        const concMult = Math.max(1, Math.round(1 / (1 - Math.sqrt(solved.pMin / solved.pMax))));
-        if (solved.isCustom) {
-            const projHour = solved.projectedBrlMin * 60;
-            const capNote = solved.cappedByPool ? ' [Teto técnico da pool]' : '';
-            fbEl.style.color = solved.riskColor;
-            fbEl.textContent =
-                `Alvo: ~R$ ${solved.projectedBrlMin.toFixed(4)}/min (R$ ${projHour.toFixed(2)}/h) • ` +
-                `Largura ${widthPct}% (~${concMult}x) • ${solved.riskLabel}${capNote}`;
-        } else {
-            fbEl.style.color = '#888';
-            fbEl.textContent = `Modo Sniper ativo: largura ${widthPct}% (~${concMult}x concentração).`;
-        }
-    }
-
-    updateChartPreviewLines(solved.pMin, solved.pMax, solved.isCustom);
-
-    const shares = computeRangeTokenShares(price, solved.pMin, solved.pMax);
-    const prep = buildLiquidityPrepPlan(shares.targetWpolShare, shares.targetUsdtShare, price, 1.0);
-    if (!prep) {
-        summaryEl.textContent = `Saldo livre insuficiente ($${totalDeployableUsd.toFixed(2)}). Mantenha pelo menos 1.5 POL para gás + capital disponível.`;
-        autoPilotPlan = null;
-        return;
-    }
-
-    autoPilotPlan = {
-        ...prep,
-        tickLower: solved.tickLower,
-        tickUpper: solved.tickUpper,
-        pMin: solved.pMin,
-        pMax: solved.pMax
-    };
-
-    const actionDesc = prep.swapSteps.length > 0
-        ? `Ajuste V3: ${prep.swapSteps.map(s => `${s.amountFloat.toFixed(2)} ${s.fromSym}→${s.toSym}`).join(' + ')}`
-        : `Balanceado (${Math.round(shares.targetWpolShare*100)}% WPOL / ${Math.round(shares.targetUsdtShare*100)}% USDT0)`;
-
-    summaryEl.textContent = `Faixa Escolhida: ${solved.pMin.toFixed(5)} ↔ ${solved.pMax.toFixed(5)} | ${actionDesc}`;
-    if (!isAutoPilotRunning) {
-        btnEl.textContent = solved.isCustom
-            ? `ABRIR NA META R$ ${solved.projectedBrlMin.toFixed(4)}/MIN`
-            : 'COMEÇAR A GANHAR (UNISWAP V3)';
-    }
-}
-
-function setAutoPilotStepUI(activeStep, logMessage, isError) {
-    const stepper = document.getElementById('ap-stepper');
-    const logEl = document.getElementById('ap-status-log');
-    stepper.style.display = 'grid';
-
-    [1, 2, 3].forEach(n => {
-        const el = document.getElementById(`ap-step-${n}`);
-        el.classList.remove('active', 'done');
-        if (n < activeStep) el.classList.add('done');
-        else if (n === activeStep) el.classList.add('active');
-    });
-
-    logEl.style.color = isError ? 'var(--danger-red)' : (activeStep === 4 ? 'var(--success-green)' : 'var(--cyan-accent)');
-    logEl.textContent = logMessage;
-}
-
-async function getExactOnChainPoolPrice(provider) {
-    try {
-        const pool = new ethers.Contract(POOL_ADDRESS, [
-            "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)"
-        ], provider);
-        const slot0 = await withTimeout(pool.slot0(), 4000);
-        const tick = Number(slot0.tick);
-        return Math.pow(1.0001, tick) * 1e12;
-    } catch (e) {
-        return currentPriceGlobal;
-    }
-}
-
-async function runSwapStepsSequence(swapSteps, signer, onStatus) {
-    for (let i = 0; i < swapSteps.length; i++) {
-        const act = swapSteps[i];
-        const tokIn = TOKENS[act.fromSym];
-
-        await refreshLivePoolFeesAndBalances();
-        const liveAvail = walletBalances[act.fromSym.toLowerCase()] || 0;
-        const safeAmount = act.fromSym === 'POL'
-            ? Math.min(act.amountFloat, Math.max(0, liveAvail - GAS_RESERVE_POL))
-            : Math.min(act.amountFloat, liveAvail);
-
-        if (safeAmount <= 0.05) continue;
-
-        const amountWei = ethers.utils.parseUnits(safeAmount.toFixed(tokIn.decimals), tokIn.decimals);
-        if (onStatus) onStatus(`Passo ${i+1}/${swapSteps.length}: Cotando ${act.fromSym} → ${act.toSym} na Uniswap V3...`);
-
-        const quoteObj = await quoteUniswapV3OnChain(act.fromSym, act.toSym, amountWei);
-        await executeUniswapV3Swap(act.fromSym, act.toSym, amountWei, quoteObj, signer, onStatus);
-    }
-}
-
-async function runAutoPilotWorkflow() {
-    if (isAutoPilotRunning) return;
-
-    if (!connectedSignerAddress) {
-        const ok = await connectWeb3Wallet();
-        if (!ok) return;
-    }
-
-    const btn = document.getElementById('btn-start-earning');
-    isAutoPilotRunning = true;
-    btn.disabled = true;
-    btn.textContent = 'EXECUTANDO NA UNISWAP V3...';
-
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const signer = provider.getSigner();
-
-    try {
-        setAutoPilotStepUI(1, 'Lendo preço real e saldos na Polygon...', false);
-        await refreshLivePoolFeesAndBalances();
-        const realPoolPrice = await getExactOnChainPoolPrice(provider);
-        recomputeAutoPilotPlan(realPoolPrice);
-
-        if (!autoPilotPlan) {
-            throw new Error('Saldo livre insuficiente (mantenha pelo menos 1.5 POL para gás + capital).');
+        if (sculptedPlan.deployableUsd < 1.0) {
+            throw new Error(`Saldo livre insuficiente ($${sculptedPlan.deployableUsd.toFixed(2)}). Mantenha gás + capital.`);
         }
 
-        await runSwapStepsSequence(autoPilotPlan.swapSteps, signer, (msg) => {
-            setAutoPilotStepUI(2, msg, false);
-        });
+        // 1. Converte BRZ/BRLA para USDT0 se houver saldo
+        if ((b.BRZ || 0) > 1.0) {
+            const brzWei = ethers.utils.parseUnits(b.BRZ.toFixed(6), 18);
+            await swapSameChainUniswap(137, 'BRZ', 'USDT0', brzWei, signer, (m) => { logEl.textContent = m; });
+        }
+        if ((b.BRLA || 0) > 1.0) {
+            const brlaWei = ethers.utils.parseUnits(b.BRLA.toFixed(6), 18);
+            await swapSameChainUniswap(137, 'BRLA', 'USDT0', brlaWei, signer, (m) => { logEl.textContent = m; });
+        }
 
-        const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
-            "function balanceOf(address) view returns (uint256)",
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
-        const usdtC = new ethers.Contract(TOKENS.USDT0.address, [
-            "function balanceOf(address) view returns (uint256)",
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
+        // 2. Wrap de POL excedente para WPOL (1:1 sem slippage)
+        if (usablePol > 0.5) {
+            logEl.textContent = 'Convertendo POL livre para WPOL (1:1)...';
+            const wpolC = new ethers.Contract(chain.tokens.WPOL.address, ["function deposit() payable"], signer);
+            const wrapTx = await wpolC.deposit({ value: ethers.utils.parseUnits(usablePol.toFixed(6), 18) });
+            await wrapTx.wait();
+        }
 
-        const [balWpolBN, balUsdtBN] = await Promise.all([
-            wpolC.balanceOf(connectedSignerAddress),
-            usdtC.balanceOf(connectedSignerAddress)
+        await syncAllChainsNow();
+        const freshB = balances[137];
+        const wpolUsd = (freshB.WPOL || 0) * market.polUsd;
+        const usdtUsd = freshB.USDT0 || 0;
+        const totalUsd = wpolUsd + usdtUsd;
+        const targetUsdtUsd = totalUsd * sculptedPlan.targetUsdtShare;
+
+        // 3. Rebalanceia WPOL <-> USDT0 na proporção exata do range
+        if (usdtUsd > targetUsdtUsd + 0.35) {
+            const diffUsd = usdtUsd - targetUsdtUsd;
+            const usdtWei = ethers.utils.parseUnits(diffUsd.toFixed(6), 6);
+            await swapSameChainUniswap(137, 'USDT0', 'WPOL', usdtWei, signer, (m) => { logEl.textContent = m; });
+        } else if (wpolUsd > (totalUsd - targetUsdtUsd) + 0.35) {
+            const diffPol = (wpolUsd - (totalUsd - targetUsdtUsd)) / market.polUsd;
+            const wpolWei = ethers.utils.parseUnits(diffPol.toFixed(6), 18);
+            await swapSameChainUniswap(137, 'WPOL', 'USDT0', wpolWei, signer, (m) => { logEl.textContent = m; });
+        }
+
+        // 4. Lê saldos finais exatos e abre a posição na Uniswap V3
+        const wpolRead = new ethers.Contract(chain.tokens.WPOL.address, ["function balanceOf(address) view returns (uint256)"], signer);
+        const usdtRead = new ethers.Contract(chain.tokens.USDT0.address, ["function balanceOf(address) view returns (uint256)"], signer);
+        const [bal0BN, bal1BN] = await Promise.all([
+            wpolRead.balanceOf(state.wallet),
+            usdtRead.balanceOf(state.wallet)
         ]);
 
-        if (balWpolBN.isZero() || balUsdtBN.isZero()) {
-            throw new Error(`Balanceamento incompleto (WPOL: ${ethers.utils.formatUnits(balWpolBN, 18)}, USDT0: ${ethers.utils.formatUnits(balUsdtBN, 6)}). Clique novamente para completar.`);
+        if (bal0BN.isZero() || bal1BN.isZero()) {
+            throw new Error('Balanceamento parcial concluído. Toque novamente para abrir a posição.');
         }
 
-        setAutoPilotStepUI(2, 'Verificando aprovações exatas na Uniswap V3...', false);
-        const allow0 = await wpolC.allowance(connectedSignerAddress, NFPM_ADDRESS);
-        if (allow0.lt(balWpolBN)) {
-            setAutoPilotStepUI(2, 'Assine na Rabby: aprovar WPOL exato para Uniswap V3...', false);
-            const tx0 = await wpolC.approve(NFPM_ADDRESS, balWpolBN);
-            await tx0.wait();
-        }
+        await ensureExactApproval(chain.tokens.WPOL.address, chain.nfpm, bal0BN, signer, (m) => { logEl.textContent = m; });
+        await ensureExactApproval(chain.tokens.USDT0.address, chain.nfpm, bal1BN, signer, (m) => { logEl.textContent = m; });
 
-        const allow1 = await usdtC.allowance(connectedSignerAddress, NFPM_ADDRESS);
-        if (allow1.lt(balUsdtBN)) {
-            setAutoPilotStepUI(2, 'Assine na Rabby: aprovar USDT0 exato para Uniswap V3...', false);
-            const tx1 = await usdtC.approve(NFPM_ADDRESS, balUsdtBN);
-            await tx1.wait();
-        }
-
-        setAutoPilotStepUI(3, 'Simulando posição na Uniswap V3 (proteção anti-revert & anti-MEV)...', false);
-        const nfpmMint = new ethers.Contract(NFPM_ADDRESS, [
+        logEl.textContent = 'Simulando posição anti-MEV antes de assinar...';
+        const nfpm = new ethers.Contract(chain.nfpm, [
             "function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline) params) payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)"
         ], signer);
 
-        const deadline = Math.floor(Date.now() / 1000) + 1200;
-        const baseMintParams = {
-            token0: TOKENS.WPOL.address,
-            token1: TOKENS.USDT0.address,
+        const deadline = Math.floor(Date.now() / 1000) + 300;
+        const simParams = {
+            token0: chain.tokens.WPOL.address,
+            token1: chain.tokens.USDT0.address,
             fee: POOL_FEE_TIER,
-            tickLower: autoPilotPlan.tickLower,
-            tickUpper: autoPilotPlan.tickUpper,
-            amount0Desired: balWpolBN,
-            amount1Desired: balUsdtBN,
+            tickLower: sculptedPlan.tickLower,
+            tickUpper: sculptedPlan.tickUpper,
+            amount0Desired: bal0BN,
+            amount1Desired: bal1BN,
             amount0Min: 0,
             amount1Min: 0,
-            recipient: connectedSignerAddress,
+            recipient: state.wallet,
             deadline
         };
 
-        const simRes = await nfpmMint.callStatic.mint(baseMintParams);
-        if (!simRes || simRes.liquidity.isZero()) {
-            throw new Error('Liquidez simulada igual a zero. Aumente o capital ou tente novamente.');
-        }
-
-        const protectedMintParams = {
-            ...baseMintParams,
-            amount0Min: simRes.amount0.mul(985).div(1000),
-            amount1Min: simRes.amount1.mul(985).div(1000)
+        const sim = await nfpm.callStatic.mint(simParams);
+        const finalParams = {
+            ...simParams,
+            amount0Min: sim.amount0.mul(992).div(1000),
+            amount1Min: sim.amount1.mul(992).div(1000)
         };
 
-        setAutoPilotStepUI(3, 'Assine na Rabby: abrir pool WPOL/USDT0 (0.05%)...', false);
-        const mintTx = await nfpmMint.mint(protectedMintParams, { gasLimit: 650000 });
+        logEl.textContent = 'Confirme na sua carteira para ativar o rendimento...';
+        const mintTx = await nfpm.mint(finalParams, { gasLimit: 650000 });
+        await mintTx.wait();
 
-        setAutoPilotStepUI(3, `Enviada (${mintTx.hash.slice(0, 10)}...) Confirmando na Polygon...`, false);
-        const receipt = await mintTx.wait();
-        const gasPaidPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
-
-        setAutoPilotStepUI(4, 'SUCESSO! Posição aberta e rendendo tarifas na Uniswap V3!', false);
-        playBeep(1318, 0.35, 'sine');
-
-        updateChartPreviewLines(0, 0, false);
-
-        await runUnstoppableScan();
-        if (appState.focusedId) {
-            appState.pnlOverrides[appState.focusedId] = {
-                initBrz: Number(autoPilotPlan.totalDeployableBrz.toFixed(2)),
-                openGasPol: Number(gasPaidPol.toFixed(5)),
-                autoChecked: true
-            };
-            saveTripleBackup();
-            syncPnlInputsWithFocused();
-            recalculateRealPnL();
-        }
+        triggerHaptic([40, 30, 60]);
+        logEl.style.color = 'var(--emerald)';
+        logEl.textContent = 'Posição ativa na Uniswap V3! Já está gerando tarifas.';
+        await syncAllChainsNow();
+        setTimeout(() => {
+            document.getElementById('sheet-xray').classList.remove('open');
+            switchTab('pools');
+        }, 1200);
     } catch (err) {
-        const cleanMsg = err?.error?.message || err?.reason || err?.message || 'Operação cancelada ou revertida.';
-        setAutoPilotStepUI(1, cleanMsg, true);
+        logEl.style.color = 'var(--coral)';
+        logEl.textContent = err?.reason || err?.message || 'Operação cancelada.';
     } finally {
-        isAutoPilotRunning = false;
+        isBusyTx = false;
         btn.disabled = false;
-        recomputeAutoPilotPlan();
     }
 }
 
-document.getElementById('btn-start-earning').addEventListener('click', runAutoPilotWorkflow);
+async function swapSameChainUniswap(chainId, symIn, symOut, amountWei, signer, logFn) {
+    const chain = CHAINS[chainId];
+    const tokIn = chain.tokens[symIn];
+    const tokOut = chain.tokens[symOut];
+    const addrIn = tokIn.isNative ? (chain.tokens.WPOL?.address || chain.tokens.WETH?.address) : tokIn.address;
+    const addrOut = tokOut.isNative ? (chain.tokens.WPOL?.address || chain.tokens.WETH?.address) : tokOut.address;
 
-// =========================================================================
-// EXECUÇÃO ON-CHAIN UNISWAP V3: + ADICIONAR, COLHER, REBALANCEAR & WITHDRAW
-// =========================================================================
-async function executeIncreaseLiquidityOnChain(tokenId, e) {
-    if (e) e.stopPropagation();
-    if (isAutoPilotRunning) return;
+    const quoter = new ethers.Contract(chain.quoterV2, [
+        "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) params) external returns (uint256 amountOut, uint160, uint32, uint256)"
+    ], signer);
 
-    if (!connectedSignerAddress) {
-        const ok = await connectWeb3Wallet();
-        if (!ok) return;
+    let bestFee = 500;
+    let bestOut = ethers.BigNumber.from(0);
+    for (const fee of [500, 3000, 10000]) {
+        try {
+            const q = await quoter.callStatic.quoteExactInputSingle({
+                tokenIn: addrIn,
+                tokenOut: addrOut,
+                amountIn: amountWei,
+                fee,
+                sqrtPriceLimitX96: 0
+            });
+            if (q.amountOut.gt(bestOut)) {
+                bestOut = q.amountOut;
+                bestFee = fee;
+            }
+        } catch (e) {}
+    }
+    if (bestOut.isZero()) throw new Error(`Sem liquidez direta ${symIn} → ${symOut}`);
+
+    // Desconta comissão da plataforma apenas se NÃO for carteira fundadora
+    let swapAmountWei = amountWei;
+    const feeBps = getPlatformFeeBps();
+    if (feeBps > 0 && !tokIn.isNative) {
+        const feeWei = amountWei.mul(feeBps).div(10000);
+        if (feeWei.gt(0)) {
+            if (logFn) logFn(`Repassando taxa de automação (0.25%)...`);
+            const erc20Fee = new ethers.Contract(tokIn.address, ["function transfer(address, uint256) returns (bool)"], signer);
+            const fTx = await erc20Fee.transfer(FOUNDER_ADDRESS, feeWei);
+            await fTx.wait();
+            swapAmountWei = amountWei.sub(feeWei);
+        }
     }
 
-    const feedbackEl = document.getElementById('nft-tx-feedback');
-    isAutoPilotRunning = true;
-
-    try {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-
-        feedbackEl.style.color = 'var(--cyan-accent)';
-        feedbackEl.textContent = `Lendo faixa exata do NFT #${tokenId} e saldo livre...`;
-
-        await refreshLivePoolFeesAndBalances();
-        const realPoolPrice = await getExactOnChainPoolPrice(provider);
-
-        const nfpmAbi = [
-            "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
-            "function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline) params) payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)"
-        ];
-        const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmAbi, signer);
-        const posOnChain = await nfpm.positions(ethers.BigNumber.from(tokenId));
-
-        const t0 = posOnChain.token0.toLowerCase();
-        const prices = ticksToHumanPrice(posOnChain.tickLower, posOnChain.tickUpper, t0 === POL_ADDRESS);
-        const shares = computeRangeTokenShares(realPoolPrice, prices.min, prices.max);
-
-        const addPlan = buildLiquidityPrepPlan(shares.targetWpolShare, shares.targetUsdtShare, realPoolPrice, 0.50);
-        if (!addPlan) {
-            throw new Error('Saldo livre insuficiente na carteira (mantenha pelo menos 1.5 POL para gás + capital).');
-        }
-
-        const confirmAdd = confirm(
-            `Adicionar saldo restante no NFT #${tokenId} sem fechar a posição?\n\n` +
-            `• Capital livre disponível: ${addPlan.totalDeployableBrz.toFixed(2)} BRZ ($${addPlan.totalDeployableUsd.toFixed(2)})\n` +
-            `• Faixa atual do NFT: ${prices.min.toFixed(5)} ↔ ${prices.max.toFixed(5)}\n` +
-            `• Proporção alvo: ${Math.round(shares.targetWpolShare * 100)}% WPOL / ${Math.round(shares.targetUsdtShare * 100)}% USDT0`
-        );
-        if (!confirmAdd) {
-            feedbackEl.textContent = '';
-            return;
-        }
-
-        await runSwapStepsSequence(addPlan.swapSteps, signer, (msg) => {
-            feedbackEl.style.color = 'var(--cyan-accent)';
-            feedbackEl.textContent = msg;
-        });
-
-        const wpolC = new ethers.Contract(TOKENS.WPOL.address, [
-            "function balanceOf(address) view returns (uint256)",
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
-        const usdtC = new ethers.Contract(TOKENS.USDT0.address, [
-            "function balanceOf(address) view returns (uint256)",
-            "function allowance(address, address) view returns (uint256)",
-            "function approve(address spender, uint256 amount) returns (bool)"
-        ], signer);
-
-        const [balWpolBN, balUsdtBN] = await Promise.all([
-            wpolC.balanceOf(connectedSignerAddress),
-            usdtC.balanceOf(connectedSignerAddress)
-        ]);
-
-        if (balWpolBN.isZero() && balUsdtBN.isZero()) {
-            throw new Error('Nenhum saldo WPOL ou USDT0 disponível após conversão.');
-        }
-
-        if (balWpolBN.gt(0)) {
-            const allow0 = await wpolC.allowance(connectedSignerAddress, NFPM_ADDRESS);
-            if (allow0.lt(balWpolBN)) {
-                feedbackEl.textContent = `Assine na Rabby: aprovar WPOL exato para NFT #${tokenId}...`;
-                const tx0 = await wpolC.approve(NFPM_ADDRESS, balWpolBN);
-                await tx0.wait();
-            }
-        }
-
-        if (balUsdtBN.gt(0)) {
-            const allow1 = await usdtC.allowance(connectedSignerAddress, NFPM_ADDRESS);
-            if (allow1.lt(balUsdtBN)) {
-                feedbackEl.textContent = `Assine na Rabby: aprovar USDT0 exato para NFT #${tokenId}...`;
-                const tx1 = await usdtC.approve(NFPM_ADDRESS, balUsdtBN);
-                await tx1.wait();
-            }
-        }
-
-        feedbackEl.textContent = `Simulando increaseLiquidity no NFT #${tokenId} (anti-revert & anti-MEV)...`;
-        const deadline = Math.floor(Date.now() / 1000) + 1200;
-        const baseIncParams = {
-            tokenId: ethers.BigNumber.from(tokenId),
-            amount0Desired: balWpolBN,
-            amount1Desired: balUsdtBN,
-            amount0Min: 0,
-            amount1Min: 0,
-            deadline
-        };
-
-        const simRes = await nfpm.callStatic.increaseLiquidity(baseIncParams);
-        if (!simRes || simRes.liquidity.isZero()) {
-            throw new Error('Liquidez adicional simulada igual a zero. Verifique o saldo livre.');
-        }
-
-        const protectedIncParams = {
-            ...baseIncParams,
-            amount0Min: simRes.amount0.mul(985).div(1000),
-            amount1Min: simRes.amount1.mul(985).div(1000)
-        };
-
-        feedbackEl.textContent = `Assine na Rabby: adicionar liquidez ao NFT #${tokenId}...`;
-        const incTx = await nfpm.increaseLiquidity(protectedIncParams, { gasLimit: 500000 });
-
-        feedbackEl.textContent = `Enviada (${incTx.hash.slice(0, 10)}...) Confirmando na Polygon...`;
-        const receipt = await incTx.wait();
-        const gasPaidPol = parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
-
-        const posKey = `web3-${tokenId}`;
-        const prevOv = appState.pnlOverrides[posKey] || {};
-        const prevInitBrz = Number.isFinite(Number(prevOv.initBrz)) ? Number(prevOv.initBrz) : 0;
-        const prevGasPol = Number.isFinite(Number(prevOv.openGasPol)) ? Number(prevOv.openGasPol) : 0;
-
-        appState.pnlOverrides[posKey] = {
-            ...prevOv,
-            initBrz: Number((prevInitBrz + addPlan.totalDeployableBrz).toFixed(2)),
-            openGasPol: Number((prevGasPol + gasPaidPol).toFixed(5)),
-            autoChecked: true
-        };
-        saveTripleBackup();
-
-        feedbackEl.style.color = 'var(--success-green)';
-        feedbackEl.textContent = `+${addPlan.totalDeployableBrz.toFixed(2)} BRZ adicionados direto ao NFT #${tokenId}!`;
-        playBeep(1318, 0.3, 'sine');
-
-        await runUnstoppableScan();
-        syncPnlInputsWithFocused();
-        recalculateRealPnL();
-    } catch (err) {
-        feedbackEl.style.color = 'var(--danger-red)';
-        feedbackEl.textContent = err?.error?.message || err?.reason || err?.message || 'Adição cancelada na carteira.';
-    } finally {
-        isAutoPilotRunning = false;
+    if (!tokIn.isNative) {
+        await ensureExactApproval(tokIn.address, chain.router02, swapAmountWei, signer, logFn);
     }
+
+    const router = new ethers.Contract(chain.router02, [
+        "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) payable returns (uint256 amountOut)"
+    ], signer);
+
+    if (logFn) logFn(`Trocando ${symIn} → ${symOut} na Uniswap V3...`);
+    const minOut = bestOut.mul(990).div(1000);
+    const tx = await router.exactInputSingle({
+        tokenIn: addrIn,
+        tokenOut: addrOut,
+        fee: bestFee,
+        recipient: state.wallet,
+        amountIn: swapAmountWei,
+        amountOutMinimum: minOut,
+        sqrtPriceLimitX96: 0
+    }, tokIn.isNative ? { value: swapAmountWei } : {});
+    await tx.wait();
 }
 
-async function executeCollectFeesOnChain(tokenId, e) {
-    if (e) e.stopPropagation();
-    if (!connectedSignerAddress) {
-        const ok = await connectWeb3Wallet();
-        if (!ok) return;
-    }
-
-    const feedbackEl = document.getElementById('nft-tx-feedback');
+// =========================================================================
+// 9. GESTÃO DE POOLS (COLHER, WITHDRAW, REBALANCEAR) & ALLOWANCE GUARD
+// =========================================================================
+async function collectFeesNft(tokenId) {
+    if (!state.wallet) return;
+    const fb = document.getElementById('pool-action-feedback');
     try {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const signer = provider.getSigner();
-        const nfpm = new ethers.Contract(NFPM_ADDRESS, [
-            "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256 amount0, uint256 amount1)"
+        const nfpm = new ethers.Contract(CHAINS[137].nfpm, [
+            "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256, uint256)"
         ], signer);
-
-        feedbackEl.style.color = 'var(--cyan-accent)';
-        feedbackEl.textContent = `Simulando coleta NFT #${tokenId} na Rabby Wallet...`;
-
+        fb.textContent = `Colhendo tarifas do NFT #${tokenId}...`;
         const tx = await nfpm.collect({
             tokenId: ethers.BigNumber.from(tokenId),
-            recipient: connectedSignerAddress,
+            recipient: state.wallet,
             amount0Max: MAX_UINT128,
             amount1Max: MAX_UINT128
         });
-
-        feedbackEl.textContent = `Coleta enviada (${tx.hash.slice(0, 10)}...) Aguardando bloco...`;
         await tx.wait();
-
-        feedbackEl.style.color = 'var(--success-green)';
-        feedbackEl.textContent = `Tarifas do NFT #${tokenId} recolhidas direto para sua carteira!`;
-        playBeep(1174, 0.25, 'sine');
-        await refreshLivePoolFeesAndBalances();
-    } catch (err) {
-        feedbackEl.style.color = 'var(--danger-red)';
-        feedbackEl.textContent = err.reason || err.message || 'Coleta cancelada.';
+        triggerHaptic([35, 25, 35]);
+        fb.style.color = 'var(--emerald)';
+        fb.textContent = `Tarifas do NFT #${tokenId} depositadas na sua carteira!`;
+        await syncAllChainsNow();
+    } catch (e) {
+        fb.style.color = 'var(--coral)';
+        fb.textContent = e?.reason || 'Coleta cancelada.';
     }
 }
 
-async function executeWithdrawPositionOnChain(tokenId, e, skipConfirm = false) {
-    if (e) e.stopPropagation();
-    if (!connectedSignerAddress) {
-        const ok = await connectWeb3Wallet();
-        if (!ok) return false;
-    }
-
-    if (!skipConfirm) {
-        const ok = confirm(`Deseja fechar 100% da posição NFT #${tokenId} e sacar todo o capital + tarifas para sua Rabby Wallet?`);
-        if (!ok) return false;
-    }
-
-    const feedbackEl = document.getElementById('nft-tx-feedback');
+async function withdrawPositionNft(tokenId, autoReopen = false) {
+    if (!state.wallet) return;
+    const fb = document.getElementById('pool-action-feedback');
     try {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         const signer = provider.getSigner();
-
-        const nfpmAbi = [
-            "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
-            "function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline) params) payable returns (uint256 amount0, uint256 amount1)",
-            "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256 amount0, uint256 amount1)",
+        const nfpm = new ethers.Contract(CHAINS[137].nfpm, [
+            "function positions(uint256) view returns (uint96, address, address, address, uint24, int24, int24, uint128 liquidity, uint256, uint256, uint128, uint128)",
+            "function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline) params) payable returns (uint256, uint256)",
+            "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256, uint256)",
             "function multicall(bytes[] data) payable returns (bytes[] results)"
-        ];
+        ], signer);
 
-        const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmAbi, signer);
-        feedbackEl.style.color = 'var(--warning-yellow)';
-        feedbackEl.textContent = `Lendo liquidez exata do NFT #${tokenId}...`;
+        fb.textContent = `Resgatando 100% do NFT #${tokenId}...`;
+        const pos = await nfpm.positions(ethers.BigNumber.from(tokenId));
+        const liq = pos.liquidity;
+        const deadline = Math.floor(Date.now() / 1000) + 300;
 
-        const posOnChain = await nfpm.positions(ethers.BigNumber.from(tokenId));
-        const currentLiquidity = posOnChain.liquidity;
-
-        if (currentLiquidity.isZero()) {
-            feedbackEl.textContent = `Liquidez já zerada. Executando apenas coleta final...`;
-            await executeCollectFeesOnChain(tokenId, null);
-            return true;
-        }
-
-        const deadline = Math.floor(Date.now() / 1000) + 1200;
-
-        const simDec = await nfpm.callStatic.decreaseLiquidity({
+        const decData = nfpm.interface.encodeFunctionData('decreaseLiquidity', [{
             tokenId: ethers.BigNumber.from(tokenId),
-            liquidity: currentLiquidity,
+            liquidity: liq,
             amount0Min: 0,
             amount1Min: 0,
             deadline
-        });
-
-        const decreaseData = nfpm.interface.encodeFunctionData('decreaseLiquidity', [{
-            tokenId: ethers.BigNumber.from(tokenId),
-            liquidity: currentLiquidity,
-            amount0Min: simDec.amount0.mul(985).div(1000),
-            amount1Min: simDec.amount1.mul(985).div(1000),
-            deadline
         }]);
-
-        const collectData = nfpm.interface.encodeFunctionData('collect', [{
+        const colData = nfpm.interface.encodeFunctionData('collect', [{
             tokenId: ethers.BigNumber.from(tokenId),
-            recipient: connectedSignerAddress,
+            recipient: state.wallet,
             amount0Max: MAX_UINT128,
             amount1Max: MAX_UINT128
         }]);
 
-        feedbackEl.textContent = `Confirme o Withdraw atômico (Multicall) na Rabby Wallet...`;
-        const tx = await nfpm.multicall([decreaseData, collectData], { gasLimit: 450000 });
-
-        feedbackEl.textContent = `Withdraw enviado (${tx.hash.slice(0, 10)}...) Aguardando bloco...`;
+        const tx = await nfpm.multicall([decData, colData], { gasLimit: 450000 });
         await tx.wait();
+        triggerHaptic([40, 30, 40]);
+        fb.style.color = 'var(--emerald)';
+        fb.textContent = `Posição #${tokenId} encerrada e devolvida para a carteira.`;
+        await syncAllChainsNow();
 
-        feedbackEl.style.color = 'var(--success-green)';
-        feedbackEl.textContent = `Posição #${tokenId} encerrada! Capital + tarifas na carteira.`;
-        playBeep(1318, 0.3, 'sine');
-        await runUnstoppableScan();
-        return true;
-    } catch (err) {
-        feedbackEl.style.color = 'var(--danger-red)';
-        feedbackEl.textContent = err.reason || err.message || 'Withdraw cancelado.';
-        return false;
-    }
-}
-
-async function executeRebalancePositionOnChain(tokenId, e) {
-    if (e) e.stopPropagation();
-    const targetDesc = yieldTargetState.customTargetBrlPerMin
-        ? `na faixa esculpida para meta R$ ${yieldTargetState.projectedBrlPerMin.toFixed(4)}/min`
-        : 'na nova faixa Sniper atual';
-    const ok = confirm(`Rebalancear NFT #${tokenId}? Isso vai:\n1. Encerrar e sacar 100% da posição #${tokenId}\n2. Ajustar WPOL/USDT0 na Uniswap V3\n3. Reabrir ${targetDesc}.`);
-    if (!ok) return;
-
-    const closed = await executeWithdrawPositionOnChain(tokenId, null, true);
-    if (closed) {
-        await runAutoPilotWorkflow();
-    }
-}
-
-// =========================================================================
-// MOTOR DE LUCRO LÍQUIDO REAL (PÓS-GÁS DE ABERTURA & FECHAMENTO EM BRZ/BRLA)
-// =========================================================================
-async function autoDetectPositionOpeningCost(pos, provider) {
-    if (!pos.tokenId || appState.pnlOverrides[pos.id]?.autoChecked) return;
-    try {
-        const latestBlock = await provider.getBlockNumber();
-        const fromBlock = Math.max(0, latestBlock - 45000);
-        const topic0 = ethers.utils.id("IncreaseLiquidity(uint256,uint128,uint256,uint256)");
-        const topic1 = ethers.utils.hexZeroPad(ethers.BigNumber.from(pos.tokenId).toHexString(), 32);
-
-        const logs = await withTimeout(provider.getLogs({
-            address: NFPM_ADDRESS,
-            topics: [topic0, topic1],
-            fromBlock,
-            toBlock: latestBlock
-        }), 4500);
-
-        appState.pnlOverrides[pos.id] = appState.pnlOverrides[pos.id] || {};
-        appState.pnlOverrides[pos.id].autoChecked = true;
-
-        if (logs && logs.length > 0) {
-            let totalGasPol = 0;
-            let totalInitBrz = 0;
-            const motherRate = getMotherRate();
-
-            for (const lg of logs) {
-                const receipt = await provider.getTransactionReceipt(lg.transactionHash);
-                totalGasPol += parseFloat(ethers.utils.formatEther(receipt.gasUsed.mul(receipt.effectiveGasPrice)));
-
-                const decoded = ethers.utils.defaultAbiCoder.decode(['uint128', 'uint256', 'uint256'], lg.data);
-                const initPol = parseFloat(ethers.utils.formatUnits(decoded[1], 18));
-                const initUsdt = parseFloat(ethers.utils.formatUnits(decoded[2], 6));
-                const initUsd = (initPol * currentPriceGlobal) + initUsdt;
-                totalInitBrz += initUsd * motherRate;
-            }
-
-            if (totalGasPol > 0) appState.pnlOverrides[pos.id].openGasPol = Number(totalGasPol.toFixed(5));
-            if (totalInitBrz > 0 && !appState.pnlOverrides[pos.id].initBrz) {
-                appState.pnlOverrides[pos.id].initBrz = Number(totalInitBrz.toFixed(2));
-            }
-            saveTripleBackup();
-            syncPnlInputsWithFocused();
-            recalculateRealPnL();
+        if (autoReopen) {
+            await executeAutoPilotStrategy();
         }
-    } catch (e) {}
-}
-
-function syncPnlInputsWithFocused() {
-    const focusedId = appState.focusedId;
-    const initInput = document.getElementById('pnl-init-brz');
-    const gasInput = document.getElementById('pnl-open-gas-pol');
-
-    if (focusedId && appState.pnlOverrides[focusedId]) {
-        const ov = appState.pnlOverrides[focusedId];
-        initInput.value = ov.initBrz !== undefined ? ov.initBrz : '';
-        gasInput.value = ov.openGasPol !== undefined ? ov.openGasPol : '0.05';
-    } else {
-        initInput.value = '';
-        gasInput.value = '0.05';
-    }
-}
-
-function recalculateRealPnL() {
-    const motherRate = getMotherRate();
-    const polPriceBrz = currentPriceGlobal * motherRate;
-
-    const initBrzInput = parseFloat(document.getElementById('pnl-init-brz').value);
-    const openGasPol = parseFloat(document.getElementById('pnl-open-gas-pol').value) || 0;
-    const estCloseGasPol = 0.045;
-
-    const totalGasPol = openGasPol + estCloseGasPol;
-    const totalGasBrz = totalGasPol * polPriceBrz;
-
-    const currentPosBrz = focusedPositionTotalUsd * motherRate;
-    const currentFeesBrz = focusedPositionFeesUsd * motherRate;
-
-    const netFeesAfterGasBrz = currentFeesBrz - totalGasBrz;
-    const netFeesEl = document.getElementById('pnl-net-fees-brz');
-    netFeesEl.textContent = `${netFeesAfterGasBrz >= 0 ? '+' : ''}${netFeesAfterGasBrz.toFixed(4)} BRZ`;
-    netFeesEl.style.color = netFeesAfterGasBrz >= 0 ? 'var(--success-green)' : 'var(--danger-red)';
-    document.getElementById('pnl-gas-cost-sub').textContent = `Gás Total (${totalGasPol.toFixed(3)} POL): -${totalGasBrz.toFixed(3)} BRZ`;
-
-    const baseCapitalBrz = Number.isFinite(initBrzInput) && initBrzInput > 0 ? initBrzInput : currentPosBrz;
-    const realNetProfitBrz = (currentPosBrz + currentFeesBrz) - baseCapitalBrz - totalGasBrz;
-    const realNetProfitBrl = realNetProfitBrz * (usdBrlCommercial / motherRate);
-
-    const totalPnlEl = document.getElementById('pnl-real-total-brz');
-    totalPnlEl.textContent = `${realNetProfitBrz >= 0 ? '+' : ''}${realNetProfitBrz.toFixed(2)} BRZ`;
-    totalPnlEl.style.color = realNetProfitBrz >= 0 ? 'var(--success-green)' : 'var(--danger-red)';
-
-    const roiPct = baseCapitalBrz > 0 ? ((realNetProfitBrz / baseCapitalBrz) * 100).toFixed(2) : '0.00';
-    document.getElementById('pnl-real-total-brl').textContent = `R$ ${realNetProfitBrl.toFixed(2)} (${realNetProfitBrz >= 0 ? '+' : ''}${roiPct}%)`;
-}
-
-['pnl-init-brz', 'pnl-open-gas-pol'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-        if (appState.focusedId) {
-            appState.pnlOverrides[appState.focusedId] = appState.pnlOverrides[appState.focusedId] || {};
-            const initVal = parseFloat(document.getElementById('pnl-init-brz').value);
-            const gasVal = parseFloat(document.getElementById('pnl-open-gas-pol').value);
-            if (Number.isFinite(initVal)) appState.pnlOverrides[appState.focusedId].initBrz = initVal;
-            if (Number.isFinite(gasVal)) appState.pnlOverrides[appState.focusedId].openGasPol = gasVal;
-            saveTripleBackup();
-        }
-        recalculateRealPnL();
-    });
-});
-
-// =========================================================================
-// NAVEGAÇÃO ENTRE AS 3 ABAS & SWAP NATIVO 100% UNISWAP V3
-// =========================================================================
-function switchRightTab(target) {
-    ['radar', 'swap', 'pix'].forEach(name => {
-        document.getElementById(`tab-${name}`).classList.toggle('active', name === target);
-        document.getElementById(`view-${name}`).classList.toggle('active', name === target);
-    });
-    if (target === 'swap') {
-        updateSwapBalanceLabels();
-        refreshSwapQuote();
-    } else if (target === 'pix') {
-        recalculatePixRanking();
-    }
-}
-
-document.getElementById('tab-radar').addEventListener('click', () => switchRightTab('radar'));
-document.getElementById('tab-swap').addEventListener('click', () => switchRightTab('swap'));
-document.getElementById('tab-pix').addEventListener('click', () => switchRightTab('pix'));
-
-document.querySelectorAll('.tok-badge').forEach(badge => {
-    badge.addEventListener('click', () => {
-        const sym = badge.getAttribute('data-tok');
-        document.getElementById('swap-token-in').value = sym;
-        if (document.getElementById('swap-token-out').value === sym) {
-            document.getElementById('swap-token-out').value = sym === 'USDT0' ? 'WPOL' : 'USDT0';
-        }
-        const bal = walletBalances[sym.toLowerCase()] || 0;
-        if (bal > 0) {
-            document.getElementById('swap-amount-in').value = (sym === 'POL' ? Math.max(0, bal - GAS_RESERVE_POL) : bal).toFixed(4);
-        }
-        switchRightTab('swap');
-    });
-});
-
-function updateSwapBalanceLabels() {
-    const symIn = document.getElementById('swap-token-in').value;
-    const symOut = document.getElementById('swap-token-out').value;
-    const balIn = walletBalances[symIn.toLowerCase()] || 0;
-    const balOut = walletBalances[symOut.toLowerCase()] || 0;
-    document.getElementById('swap-in-bal').textContent = balIn.toFixed(4);
-    document.getElementById('swap-out-bal').textContent = balOut.toFixed(4);
-}
-
-document.getElementById('btn-swap-max').addEventListener('click', () => {
-    const symIn = document.getElementById('swap-token-in').value;
-    const balIn = walletBalances[symIn.toLowerCase()] || 0;
-    const usable = symIn === 'POL' ? Math.max(0, balIn - GAS_RESERVE_POL) : balIn;
-    document.getElementById('swap-amount-in').value = usable.toFixed(4);
-    scheduleSwapQuote();
-});
-
-document.getElementById('btn-flip-tokens').addEventListener('click', () => {
-    const inSel = document.getElementById('swap-token-in');
-    const outSel = document.getElementById('swap-token-out');
-    const tmp = inSel.value;
-    inSel.value = outSel.value;
-    outSel.value = tmp;
-    updateSwapBalanceLabels();
-    scheduleSwapQuote();
-});
-
-function scheduleSwapQuote() {
-    clearTimeout(swapDebounceTimer);
-    swapDebounceTimer = setTimeout(refreshSwapQuote, 350);
-}
-
-['swap-token-in', 'swap-token-out', 'swap-amount-in'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => { updateSwapBalanceLabels(); scheduleSwapQuote(); });
-    document.getElementById(id).addEventListener('change', () => { updateSwapBalanceLabels(); scheduleSwapQuote(); });
-});
-
-async function checkUniswapAllowanceIfNeeded(tokenObj, amountWei) {
-    if (tokenObj.isNative || !connectedSignerAddress) return true;
-    try {
-        const provider = getReadProvider();
-        const erc20 = new ethers.Contract(tokenObj.address, ["function allowance(address, address) view returns (uint256)"], provider);
-        const currentAllowance = await withTimeout(erc20.allowance(connectedSignerAddress, UNISWAP_SWAP_ROUTER_02), 4000);
-        return currentAllowance.gte(amountWei);
     } catch (e) {
-        return true;
+        fb.style.color = 'var(--coral)';
+        fb.textContent = e?.reason || 'Resgate cancelado.';
     }
 }
 
-async function refreshSwapQuote() {
-    const symIn = document.getElementById('swap-token-in').value;
-    const symOut = document.getElementById('swap-token-out').value;
-    const amtFloat = parseFloat(document.getElementById('swap-amount-in').value);
-    const outInput = document.getElementById('swap-amount-out');
-    const actionBtn = document.getElementById('btn-exec-swap');
+async function revokeTokenAllowance(tokenAddress, spenderAddress, symbol) {
+    if (!state.wallet) return;
+    const fb = document.getElementById('pool-action-feedback');
+    try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const erc20 = new ethers.Contract(tokenAddress, ["function approve(address, uint256) returns (bool)"], signer);
+        fb.textContent = `Revogando permissão de ${symbol}...`;
+        const tx = await erc20.approve(spenderAddress, 0);
+        await tx.wait();
+        fb.style.color = 'var(--emerald)';
+        fb.textContent = `Permissão de ${symbol} revogada com sucesso!`;
+        await syncAllChainsNow();
+    } catch (e) {
+        fb.style.color = 'var(--coral)';
+        fb.textContent = 'Revogação cancelada.';
+    }
+}
 
-    updateSwapBalanceLabels();
+// =========================================================================
+// 10. BRIDGE MULTI-CHAIN (LI.FI / UNISWAP V3) & BTC / LIGHTNING SEM KYC
+// =========================================================================
+async function refreshBridgeQuote() {
+    const fromVal = document.getElementById('bridge-from-asset').value;
+    const toVal = document.getElementById('bridge-to-asset').value;
+    const amt = parseFloat(document.getElementById('bridge-amount-in').value);
+    const outInput = document.getElementById('bridge-amount-out');
+    const feeDisp = document.getElementById('bridge-fee-display');
+    const etaEl = document.getElementById('bridge-eta-tag');
 
-    if (symIn === symOut) {
-        outInput.value = 'Mesmo token';
-        actionBtn.disabled = true;
-        activeSwapQuote = null;
+    const feeBps = getPlatformFeeBps();
+    if (feeDisp) {
+        feeDisp.textContent = feeBps === 0
+            ? 'Taxa App: 0.00% (Fundador)'
+            : 'Taxa App: 0.25%';
+    }
+
+    if (!Number.isFinite(amt) || amt <= 0 || fromVal === toVal) {
+        outInput.value = '0.0000';
+        activeBridgeQuote = null;
         return;
     }
-    if (!Number.isFinite(amtFloat) || amtFloat <= 0) {
-        outInput.value = '0.00';
-        actionBtn.disabled = true;
-        activeSwapQuote = null;
-        return;
-    }
 
-    const tokIn = TOKENS[symIn];
-    const tokOut = TOKENS[symOut];
-    const amountWei = ethers.utils.parseUnits(amtFloat.toFixed(tokIn.decimals), tokIn.decimals);
+    const [fromChainStr, fromSym] = fromVal.split(':');
+    const [toChainStr, toSym] = toVal.split(':');
+    const fromChain = Number(fromChainStr);
+    const toChain = Number(toChainStr);
+    const tokIn = CHAINS[fromChain].tokens[fromSym];
+    const tokOut = CHAINS[toChain].tokens[toSym];
+    const amountWei = ethers.utils.parseUnits(amt.toFixed(tokIn.decimals), tokIn.decimals);
 
-    outInput.value = 'Simulando V3...';
+    outInput.value = 'Cotando...';
 
     try {
-        const quoteObj = await quoteUniswapV3OnChain(symIn, symOut, amountWei);
-        const outFormatted = parseFloat(ethers.utils.formatUnits(quoteObj.amountOutWei, tokOut.decimals));
-        outInput.value = outFormatted.toFixed(4);
+        if (fromChain === toChain) {
+            const provider = await getFastestProvider(fromChain);
+            const quoter = new ethers.Contract(CHAINS[fromChain].quoterV2, [
+                "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96) params) external returns (uint256 amountOut, uint160, uint32, uint256)"
+            ], provider);
+            const addrIn = tokIn.isNative ? (CHAINS[fromChain].tokens.WPOL?.address || CHAINS[fromChain].tokens.WETH?.address) : tokIn.address;
+            const addrOut = tokOut.isNative ? (CHAINS[fromChain].tokens.WPOL?.address || CHAINS[fromChain].tokens.WETH?.address) : tokOut.address;
 
-        const poolLabel = quoteObj.mode === 'WRAP_UNWRAP'
-            ? 'CONTRATO WPOL 1:1'
-            : (quoteObj.viaUsdt ? `UNISWAP V3 (${quoteObj.feeTier})` : `UNISWAP V3 (${(quoteObj.feeTier/10000).toFixed(2)}%)`);
-        document.getElementById('swap-router-tag').textContent = poolLabel;
-        document.getElementById('swap-impact').textContent = quoteObj.mode === 'WRAP_UNWRAP' ? '0.00% (1:1)' : 'Pool Direta / 1.2%';
-
-        let brzEq = 0;
-        if (symOut === 'BRZ' || symOut === 'BRLA') brzEq = outFormatted;
-        else if (symOut === 'USDT0') brzEq = outFormatted * getMotherRate();
-        else brzEq = outFormatted * currentPriceGlobal * getMotherRate();
-        document.getElementById('swap-brl-eq').textContent = `${brzEq.toFixed(2)} BRZ | R$ ${(brzEq * (usdBrlCommercial / getMotherRate())).toFixed(2)}`;
-
-        const hasAllowance = quoteObj.mode === 'WRAP_UNWRAP'
-            ? true
-            : await checkUniswapAllowanceIfNeeded(tokIn, amountWei);
-
-        activeSwapQuote = {
-            symIn,
-            symOut,
-            tokIn,
-            tokOut,
-            amountWei,
-            outFormatted,
-            quoteObj,
-            hasAllowance
-        };
-
-        updateSwapButtonState();
-    } catch (err) {
-        outInput.value = 'Sem pool V3';
-        actionBtn.disabled = true;
-        activeSwapQuote = null;
+            const q = await quoter.callStatic.quoteExactInputSingle({
+                tokenIn: addrIn,
+                tokenOut: addrOut,
+                amountIn: amountWei,
+                fee: 500,
+                sqrtPriceLimitX96: 0
+            });
+            const netOutBN = feeBps > 0 ? q.amountOut.mul(10000 - feeBps).div(10000) : q.amountOut;
+            outInput.value = parseFloat(ethers.utils.formatUnits(netOutBN, tokOut.decimals)).toFixed(5);
+            if (etaEl) etaEl.textContent = '~3 seg (Local)';
+            activeBridgeQuote = { type: 'LOCAL', fromChain, fromSym, toSym, amountWei };
+        } else {
+            // LI.FI Public Cross-Chain Quote (sem API Key, com repasse de fee para fundador)
+            const params = new URLSearchParams({
+                fromChain: String(fromChain),
+                toChain: String(toChain),
+                fromToken: tokIn.address,
+                toToken: tokOut.address,
+                fromAmount: amountWei.toString(),
+                fromAddress: state.wallet || FOUNDER_ADDRESS,
+                integrator: 'rdesk-defi-terminal'
+            });
+            if (feeBps > 0) {
+                params.set('fee', (feeBps / 10000).toString());
+                params.set('referrer', FOUNDER_ADDRESS);
+            }
+            const res = await withTimeout(fetch(`https://li.quest/v1/quote?${params.toString()}`), 6000);
+            const data = await res.json();
+            if (data?.estimate?.toAmount) {
+                const outFmt = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, tokOut.decimals));
+                outInput.value = outFmt.toFixed(5);
+                if (etaEl) etaEl.textContent = `~${Math.max(10, data.estimate.executionDuration || 25)} seg`;
+                activeBridgeQuote = { type: 'LIFI', fromChain, tokIn, amountWei, txRequest: data.transactionRequest };
+            } else {
+                outInput.value = 'Rota indisponível';
+                activeBridgeQuote = null;
+            }
+        }
+    } catch (e) {
+        outInput.value = 'Erro cotação';
+        activeBridgeQuote = null;
     }
 }
 
-function updateSwapButtonState() {
-    const btn = document.getElementById('btn-exec-swap');
-    if (!connectedSignerAddress) {
-        btn.disabled = false;
-        btn.classList.remove('needs-approve');
-        btn.textContent = 'CONECTAR RABBY PARA TROCAR';
+async function executeBridgeOrSwap() {
+    if (!state.wallet) {
+        await connectWallet();
         return;
     }
-    if (!activeSwapQuote) {
-        btn.disabled = true;
-        return;
-    }
-    btn.disabled = false;
-    if (!activeSwapQuote.hasAllowance) {
-        btn.classList.add('needs-approve');
-        btn.textContent = `1. APROVAR ${activeSwapQuote.symIn} EXATO NA UNISWAP`;
-    } else {
-        btn.classList.remove('needs-approve');
-        btn.textContent = `2. TROCAR NA UNISWAP V3 (${activeSwapQuote.symIn} → ${activeSwapQuote.symOut})`;
-    }
-}
-
-document.getElementById('btn-exec-swap').addEventListener('click', async () => {
-    if (!connectedSignerAddress) {
-        await connectWeb3Wallet();
-        return;
-    }
-    if (!activeSwapQuote) return;
-
-    const btn = document.getElementById('btn-exec-swap');
-    const statusEl = document.getElementById('swap-tx-status');
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const signer = provider.getSigner();
+    if (!activeBridgeQuote) return;
+    const btn = document.getElementById('btn-exec-bridge');
+    btn.disabled = true;
+    btn.textContent = 'ASSINANDO NA CARTEIRA...';
 
     try {
-        btn.disabled = true;
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const net = await provider.getNetwork();
+        if (net.chainId !== activeBridgeQuote.fromChain) {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: '0x' + activeBridgeQuote.fromChain.toString(16) }]
+            });
+        }
+        const signer = provider.getSigner();
 
-        if (!activeSwapQuote.hasAllowance) {
-            statusEl.style.color = 'var(--warning-yellow)';
-            statusEl.textContent = `Assine a aprovação exata de ${activeSwapQuote.symIn}...`;
-            const erc20 = new ethers.Contract(
-                activeSwapQuote.tokIn.address,
-                ["function approve(address spender, uint256 amount) returns (bool)"],
-                signer
+        if (activeBridgeQuote.type === 'LOCAL') {
+            await swapSameChainUniswap(
+                activeBridgeQuote.fromChain,
+                activeBridgeQuote.fromSym,
+                activeBridgeQuote.toSym,
+                activeBridgeQuote.amountWei,
+                signer,
+                (msg) => { btn.textContent = msg; }
             );
-            const appTx = await erc20.approve(UNISWAP_SWAP_ROUTER_02, activeSwapQuote.amountWei);
-            statusEl.textContent = 'Aguardando confirmação na Polygon...';
-            await appTx.wait();
-            activeSwapQuote.hasAllowance = true;
-            statusEl.style.color = 'var(--success-green)';
-            statusEl.textContent = 'Aprovado! Clique novamente para trocar na Uniswap V3.';
-            updateSwapButtonState();
-            return;
+        } else if (activeBridgeQuote.type === 'LIFI') {
+            const { tokIn, amountWei, txRequest } = activeBridgeQuote;
+            if (!tokIn.isNative && txRequest.to) {
+                await ensureExactApproval(tokIn.address, txRequest.to, amountWei, signer, (m) => { btn.textContent = m; });
+            }
+            const tx = await signer.sendTransaction({
+                to: txRequest.to,
+                data: txRequest.data,
+                value: txRequest.value ? ethers.BigNumber.from(txRequest.value) : 0,
+                gasLimit: txRequest.gasLimit ? ethers.BigNumber.from(txRequest.gasLimit) : 450000
+            });
+            await tx.wait();
         }
 
-        const tx = await executeUniswapV3Swap(
-            activeSwapQuote.symIn,
-            activeSwapQuote.symOut,
-            activeSwapQuote.amountWei,
-            activeSwapQuote.quoteObj,
-            signer,
-            (msg) => {
-                statusEl.style.color = 'var(--cyan-accent)';
-                statusEl.textContent = msg;
-            }
-        );
-
-        statusEl.style.color = 'var(--success-green)';
-        statusEl.textContent = `SUCESSO UNISWAP V3! Hash: ${tx.hash.slice(0, 14)}...`;
-        playBeep(1174, 0.25, 'sine');
-
-        await refreshLivePoolFeesAndBalances();
-        await refreshSwapQuote();
-    } catch (err) {
-        statusEl.style.color = 'var(--danger-red)';
-        statusEl.textContent = err.reason || err.message || 'Troca cancelada na carteira.';
-        btn.disabled = false;
+        triggerHaptic([35, 25, 45]);
+        btn.textContent = 'CONVERSÃO CONCLUÍDA!';
+        await syncAllChainsNow();
+    } catch (e) {
+        btn.textContent = 'CANCELADO / TENTAR NOVAMENTE';
+    } finally {
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = 'CONVERTER AGORA';
+        }, 2000);
     }
-});
-
-// =========================================================================
-// RANKER INTELIGENTE DE SAQUE PIX (INCLUI SPREAD IMPLÍCITO BIPA & TABELAS REAIS)
-// =========================================================================
-function getBipaRealTieredFeePct(brlAmount) {
-    if (brlAmount < 10) return 0.0300;
-    if (brlAmount < 100) return 0.0225;
-    if (brlAmount < 200) return 0.0200;
-    if (brlAmount < 1000) return 0.0175;
-    if (brlAmount < 2000) return 0.0150;
-    if (brlAmount < 3000) return 0.0125;
-    if (brlAmount < 5000) return 0.0100;
-    return 0.0075;
 }
 
-function recalculatePixRanking() {
-    const asset = document.getElementById('pix-asset').value;
-    const amount = parseFloat(document.getElementById('pix-amount').value) || 0;
-    const listEl = document.getElementById('pix-ranking-list');
-    listEl.replaceChildren();
+// Modo FixedFloat Nativo: Bitcoin On-Chain & Lightning Network Sem KYC (SideShift v2 Permissionless)
+async function createNativeBtcOrLightningOrder() {
+    const pair = document.getElementById('btc-pair-select').value;
+    const amount = parseFloat(document.getElementById('btc-swap-amount').value);
+    const dest = document.getElementById('btc-dest-address').value.trim();
+    const qrBox = document.getElementById('btc-qr-box');
+    const statusEl = document.getElementById('btc-order-status');
 
-    const polPriceUsd = currentPriceGlobal > 0 ? currentPriceGlobal : 0.087;
-    const motherRate = getMotherRate();
+    if (!dest) {
+        alert('Informe o endereço de destino ou fatura Lightning (lnbc...).');
+        return;
+    }
 
-    let usdValue = 0;
-    if (asset === 'USDT0') usdValue = amount;
-    else if (asset === 'POL' || asset === 'WPOL') usdValue = amount * polPriceUsd;
-    else if (asset === 'BRZ' || asset === 'BRLA') usdValue = amount / motherRate;
+    const pairConfig = {
+        BTC_TO_USDT_POLY: { depositCoin: 'btc', depositNetwork: 'bitcoin', settleCoin: 'usdt', settleNetwork: 'polygon' },
+        LN_TO_USDT_POLY:  { depositCoin: 'btc', depositNetwork: 'lightning', settleCoin: 'usdt', settleNetwork: 'polygon' },
+        USDT_POLY_TO_LN:  { depositCoin: 'usdt', depositNetwork: 'polygon', settleCoin: 'btc', settleNetwork: 'lightning' },
+        USDT_POLY_TO_BTC: { depositCoin: 'usdt', depositNetwork: 'polygon', settleCoin: 'btc', settleNetwork: 'bitcoin' }
+    }[pair];
 
-    const grossCommercialBrl = usdValue * usdBrlCommercial;
-    const gasBaseBrl = 0.03;
-    const dexSwapPct = (asset === 'USDT0') ? 0 : 0.0005;
+    const btn = document.getElementById('btn-create-btc-order');
+    btn.disabled = true;
+    btn.textContent = 'GERANDO COFRE SEM KYC...';
+
+    try {
+        const res = await fetch('https://sideshift.ai/api/v2/shifts/variable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                depositCoin: pairConfig.depositCoin,
+                depositNetwork: pairConfig.depositNetwork,
+                settleCoin: pairConfig.settleCoin,
+                settleNetwork: pairConfig.settleNetwork,
+                settleAddress: dest,
+                refundAddress: state.wallet || undefined
+            })
+        });
+        const order = await res.json();
+        if (!order?.depositAddress) {
+            throw new Error(order?.error?.message || 'Não foi possível gerar o endereço agora.');
+        }
+
+        qrBox.classList.add('visible');
+        document.getElementById('btc-deposit-addr').textContent = order.depositAddress;
+        document.getElementById('btc-qr-img').src =
+            `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(order.depositAddress)}`;
+        statusEl.textContent = `Ordem #${order.id} ativa (${Number.isFinite(amount) ? amount : 'livre'}). Aguardando depósito...`;
+
+        // Monitora status da liquidação ao vivo
+        const pollTimer = setInterval(async () => {
+            try {
+                const stRes = await fetch(`https://sideshift.ai/api/v2/shifts/${order.id}`);
+                const stJson = await stRes.json();
+                if (stJson?.status) {
+                    statusEl.textContent = `Status: ${stJson.status.toUpperCase()}`;
+                    if (stJson.status === 'settled') {
+                        clearInterval(pollTimer);
+                        triggerHaptic([50, 30, 70]);
+                        syncAllChainsNow();
+                    }
+                }
+            } catch (e) {}
+        }, 7000);
+    } catch (e) {
+        alert(e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'GERAR ORDEM INSTANTÂNEA';
+    }
+}
+
+// =========================================================================
+// 11. CALCULADORA BIDIRECIONAL DE SAQUE PIX ("QUERO R$ X LIMPOS")
+// =========================================================================
+function renderPixRoutes() {
+    const targetNetBrl = parseFloat(document.getElementById('pix-target-brl').value) || 0;
+    const container = document.getElementById('pix-routes-container');
+    if (!container) return;
+    container.replaceChildren();
 
     const routes = [
-        {
-            id: 'nakpix_coupon',
-            name: 'NakPix (c/ Cupom)',
-            kyc: 'SEM KYC',
-            kycClass: 'kyc-free',
-            isNoKyc: true,
-            url: null,
-            computeNet: () => {
-                const swapCost = grossCommercialBrl * dexSwapPct;
-                const bridgeFee = grossCommercialBrl * 0.02;
-                const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - bridgeFee);
-                return { net, detail: `Taxa 2.0% + Gás Polygon | USDT0 direto` };
-            }
-        },
-        {
-            id: 'pagfinance',
-            name: 'PagFinance',
-            kyc: 'CPF RÁPIDO',
-            kycClass: 'kyc-lite',
-            isNoKyc: false,
-            url: 'https://pag.finance',
-            computeNet: () => {
-                const needSwap = (asset === 'BRZ' || asset === 'BRLA') ? grossCommercialBrl * 0.0005 : 0;
-                const bridgeFee = grossCommercialBrl > 0 ? Math.max(1.20, grossCommercialBrl * 0.02) : 0;
-                const net = Math.max(0, grossCommercialBrl - gasBaseBrl - needSwap - bridgeFee);
-                return { net, detail: `Taxa 2.0% (piso R$1,20) | Auto-custódia` };
-            }
-        },
-        {
-            id: 'depix',
-            name: 'DePix / Liquid',
-            kyc: 'SEM KYC',
-            kycClass: 'kyc-free',
-            isNoKyc: true,
-            url: 'https://depixapp.com',
-            computeNet: () => {
-                const swapCost = grossCommercialBrl * dexSwapPct;
-                const bridgeFee = grossCommercialBrl * 0.018;
-                const net = Math.max(0, grossCommercialBrl - 0.18 - swapCost - bridgeFee);
-                return { net, detail: `~1.8% off-ramp + ponte Liquid` };
-            }
-        },
-        {
-            id: 'nakpix_std',
-            name: 'NakPix (Padrão)',
-            kyc: 'SEM KYC',
-            kycClass: 'kyc-free',
-            isNoKyc: true,
-            url: null,
-            computeNet: () => {
-                const swapCost = grossCommercialBrl * dexSwapPct;
-                const bridgeFee = grossCommercialBrl * 0.04;
-                const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - bridgeFee);
-                return { net, detail: `Taxa 4.0% sem cupom | USDT0 Polygon` };
-            }
-        },
-        {
-            id: 'bipa',
-            name: 'Bipa (Plano Free)',
-            kyc: 'KYC TOTAL',
-            kycClass: 'kyc-full',
-            isNoKyc: false,
-            url: 'https://bipa.app',
-            computeNet: () => {
-                const swapCost = grossCommercialBrl * dexSwapPct;
-                const tierPct = getBipaRealTieredFeePct(grossCommercialBrl);
-                const implicitFxSpreadPct = 0.0115;
-                const totalBipaCost = grossCommercialBrl * (tierPct + implicitFxSpreadPct);
-                const net = Math.max(0, grossCommercialBrl - gasBaseBrl - swapCost - totalBipaCost);
-                return {
-                    net,
-                    detail: `Taxa ${(tierPct*100).toFixed(2)}% + Spread FX ~1.15%`
-                };
-            }
-        },
-        {
-            id: 'binance',
-            name: 'Binance Spot',
-            kyc: 'KYC TOTAL',
-            kycClass: 'kyc-full',
-            isNoKyc: false,
-            url: 'https://www.binance.com/pt-BR/trade/USDT_BRL',
-            computeNet: () => {
-                const swapCost = grossCommercialBrl * dexSwapPct;
-                const effectiveRate = binanceUsdtBrlBid > 0 ? binanceUsdtBrlBid : (usdBrlCommercial * 0.996);
-                const brlOnBook = usdValue * effectiveRate;
-                const tradeFee = brlOnBook * 0.001;
-                const pixWithdrawFee = grossCommercialBrl > 0 ? 3.50 : 0;
-                const net = Math.max(0, brlOnBook - gasBaseBrl - swapCost - tradeFee - pixWithdrawFee);
-                return {
-                    net,
-                    detail: `Book R$${effectiveRate.toFixed(3)} + 0.1% + R$3,50 saque`
-                };
-            }
-        }
+        { name: 'NakPix (c/ Cupom)', kyc: 'SEM KYC', noKyc: true, pct: 0.02, fixedBrl: 0.03, url: null },
+        { name: 'DePix / Liquid', kyc: 'SEM KYC', noKyc: true, pct: 0.018, fixedBrl: 0.20, url: 'https://depixapp.com' },
+        { name: 'PagFinance', kyc: 'CPF RÁPIDO', noKyc: false, pct: 0.02, fixedBrl: 1.20, url: 'https://pag.finance' },
+        { name: 'NakPix (Padrão)', kyc: 'SEM KYC', noKyc: true, pct: 0.04, fixedBrl: 0.03, url: null },
+        { name: 'Binance Spot', kyc: 'KYC TOTAL', noKyc: false, pct: 0.005, fixedBrl: 3.53, url: 'https://www.binance.com/pt-BR/trade/USDT_BRL' },
+        { name: 'Bipa (Plano Free)', kyc: 'KYC TOTAL', noKyc: false, pct: 0.029, fixedBrl: 0.03, url: 'https://bipa.app' }
     ];
 
     const evaluated = routes
-        .filter(r => !onlyNoKycFilter || r.isNoKyc)
-        .map(r => {
-            const res = r.computeNet();
-            const totalLossPct = grossCommercialBrl > 0
-                ? (((grossCommercialBrl - res.net) / grossCommercialBrl) * 100)
-                : 0;
-            return { ...r, netBrl: res.net, detail: res.detail, lossPct: totalLossPct };
+        .filter((r) => !state.onlyNoKycPix || r.noKyc)
+        .map((r) => {
+            const requiredGrossBrl = targetNetBrl > 0 ? (targetNetBrl + r.fixedBrl) / (1 - r.pct) : 0;
+            const requiredUsdt = requiredGrossBrl / market.usdBrl;
+            const totalFeeBrl = Math.max(0, requiredGrossBrl - targetNetBrl);
+            return { ...r, requiredUsdt, totalFeeBrl };
         })
-        .sort((a, b) => b.netBrl - a.netBrl);
+        .sort((a, b) => a.requiredUsdt - b.requiredUsdt);
 
     evaluated.forEach((item, idx) => {
-        const isWinner = idx === 0 && grossCommercialBrl > 0;
         const card = document.createElement('div');
-        card.className = 'rank-card' + (isWinner ? ' best-route' : '');
+        card.className = 'pix-route-item' + (idx === 0 && targetNetBrl > 0 ? ' winner' : '');
 
         const left = document.createElement('div');
-        left.className = 'rank-left';
-
-        const titleRow = document.createElement('div');
-        titleRow.className = 'rank-title';
-        const trophy = isWinner ? '★ ' : `#${idx + 1} `;
-        titleRow.appendChild(document.createTextNode(`${trophy}${item.name} `));
-
-        const pill = document.createElement('span');
-        pill.className = `kyc-pill ${item.kycClass}`;
-        pill.textContent = item.kyc;
-        titleRow.appendChild(pill);
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: var(--text-primary);';
+        title.textContent = `${idx === 0 ? '★ ' : ''}${item.name} (${item.kyc})`;
 
         const sub = document.createElement('div');
-        sub.className = 'rank-sub';
-        sub.textContent = item.detail;
-
-        left.append(titleRow, sub);
+        sub.style.cssText = 'font-size: 0.65rem; color: var(--text-secondary);';
+        sub.textContent = `Custo total da rota: R$ ${item.totalFeeBrl.toFixed(2)}`;
+        left.append(title, sub);
 
         const right = document.createElement('div');
-        right.className = 'rank-right';
+        right.style.textAlign = 'right';
+        const usdtEl = document.createElement('div');
+        usdtEl.className = 'mono';
+        usdtEl.style.cssText = 'font-size: 0.78rem; font-weight: 800; color: var(--emerald);';
+        usdtEl.textContent = `${item.requiredUsdt.toFixed(2)} USDT0`;
 
-        const netEl = document.createElement('div');
-        netEl.className = 'rank-net';
-        netEl.textContent = `R$ ${item.netBrl.toFixed(2)}`;
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size: 0.62rem; color: var(--text-muted);';
+        hint.textContent = 'Toque p/ copiar';
+        right.append(usdtEl, hint);
 
-        const lossEl = document.createElement('div');
-        lossEl.className = 'rank-loss';
-        lossEl.textContent = `-${item.lossPct.toFixed(2)}% real`;
-
-        right.append(netEl, lossEl);
         card.append(left, right);
-
         card.addEventListener('click', () => {
-            navigator.clipboard.writeText(String(amount)).catch(() => {});
-            document.getElementById('pix-hint').textContent = `Copiado (${amount} ${asset})! Rota selecionada: ${item.name} → Líquido R$ ${item.netBrl.toFixed(2)}.`;
-            if (item.url) {
-                window.open(item.url, '_blank', 'noopener,noreferrer');
-            }
+            navigator.clipboard.writeText(item.requiredUsdt.toFixed(2)).catch(() => {});
+            triggerHaptic([20]);
+            if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer');
         });
-
-        listEl.appendChild(card);
+        container.appendChild(card);
     });
 }
 
-document.getElementById('btn-filter-nokyc').addEventListener('click', (e) => {
-    onlyNoKycFilter = !onlyNoKycFilter;
-    e.target.textContent = onlyNoKycFilter ? 'FILTRO: 100% SEM KYC' : 'FILTRO: TODAS';
-    e.target.classList.toggle('active-filter', onlyNoKycFilter);
-    recalculatePixRanking();
-});
-
-['pix-asset', 'pix-amount'].forEach(id => {
-    document.getElementById(id).addEventListener('input', recalculatePixRanking);
-    document.getElementById(id).addEventListener('change', recalculatePixRanking);
-});
-
-document.getElementById('chip-use-usdt').addEventListener('click', () => {
-    document.getElementById('pix-asset').value = 'USDT0';
-    document.getElementById('pix-amount').value = walletBalances.usdt0 > 0 ? walletBalances.usdt0.toFixed(4) : '50';
-    recalculatePixRanking();
-});
-
-document.getElementById('chip-use-wpol').addEventListener('click', () => {
-    document.getElementById('pix-asset').value = 'WPOL';
-    document.getElementById('pix-amount').value = walletBalances.wpol > 0 ? walletBalances.wpol.toFixed(4) : '500';
-    recalculatePixRanking();
-});
-
-document.getElementById('chip-use-brz').addEventListener('click', () => {
-    if (walletBalances.brla > walletBalances.brz) {
-        document.getElementById('pix-asset').value = 'BRLA';
-        document.getElementById('pix-amount').value = walletBalances.brla.toFixed(2);
-    } else {
-        document.getElementById('pix-asset').value = 'BRZ';
-        document.getElementById('pix-amount').value = walletBalances.brz > 0 ? walletBalances.brz.toFixed(2) : '250';
-    }
-    recalculatePixRanking();
-});
-
-document.getElementById('chip-use-fees').addEventListener('click', () => {
-    document.getElementById('pix-asset').value = 'USDT0';
-    document.getElementById('pix-amount').value = totalUnclaimedFeesUsd > 0 ? totalUnclaimedFeesUsd.toFixed(4) : '1.00';
-    recalculatePixRanking();
-});
-
 // =========================================================================
-// SANITIZAÇÃO E VALIDAÇÃO DE SEGURANÇA
+// 12. RENDERIZAÇÃO UNIFICADA DAS 4 TELAS
 // =========================================================================
-function sanitizeLabel(str) {
-    return String(str || '').replace(/[<>"'&]/g, '').trim().slice(0, 26) || 'Faixa';
-}
+function renderAllViews() {
+    const totalUsd = getTotalWealthUsd();
+    const netInvested = Math.max(0, state.forensics.depositedUsd - state.forensics.withdrawnUsd);
+    const realPnlUsd = totalUsd - netInvested;
+    const pnlPct = netInvested > 0 ? ((realPnlUsd / netInvested) * 100).toFixed(2) : '0.00';
 
-function sanitizePosition(p) {
-    if (!p || typeof p !== 'object') return null;
-    const min = Number(p.min);
-    const max = Number(p.max);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || min >= max) return null;
-    return {
-        id: String(p.id || ('pos-' + Math.random().toString(36).slice(2, 8))).replace(/[^a-zA-Z0-9_-]/g, ''),
-        tokenId: p.tokenId ? String(p.tokenId).replace(/[^0-9]/g, '') : undefined,
-        min,
-        max,
-        tickLower: Number.isFinite(Number(p.tickLower)) ? Number(p.tickLower) : undefined,
-        tickUpper: Number.isFinite(Number(p.tickUpper)) ? Number(p.tickUpper) : undefined,
-        liquidity: p.liquidity && /^[0-9]+$/.test(String(p.liquidity)) ? String(p.liquidity) : undefined,
-        feeGrowthInside0LastX128: p.feeGrowthInside0LastX128 && /^[0-9]+$/.test(String(p.feeGrowthInside0LastX128)) ? String(p.feeGrowthInside0LastX128) : undefined,
-        feeGrowthInside1LastX128: p.feeGrowthInside1LastX128 && /^[0-9]+$/.test(String(p.feeGrowthInside1LastX128)) ? String(p.feeGrowthInside1LastX128) : undefined,
-        tokensOwed0: p.tokensOwed0 && /^[0-9]+$/.test(String(p.tokensOwed0)) ? String(p.tokensOwed0) : '0',
-        tokensOwed1: p.tokensOwed1 && /^[0-9]+$/.test(String(p.tokensOwed1)) ? String(p.tokensOwed1) : '0',
-        liveFeesUsd: Number.isFinite(Number(p.liveFeesUsd)) ? Number(p.liveFeesUsd) : 0,
-        label: sanitizeLabel(p.label),
-        source: p.source === 'web3' ? 'web3' : 'manual'
-    };
-}
+    document.getElementById('top-pol-price').textContent = `POL $${market.polUsd.toFixed(4)}`;
+    document.getElementById('top-fx-rate').textContent = `1$ = R$${market.usdBrl.toFixed(2)}`;
 
-function applyValidatedState(raw) {
-    if (!raw || typeof raw !== 'object') return;
-    if (raw.wallet && ethers.utils.isAddress(String(raw.wallet))) {
-        appState.wallet = String(raw.wallet).toLowerCase();
-    }
-    if (Array.isArray(raw.web3Positions)) {
-        appState.web3Positions = raw.web3Positions.map(sanitizePosition).filter(Boolean).slice(0, 20);
-    }
-    if (Array.isArray(raw.manualPositions)) {
-        appState.manualPositions = raw.manualPositions.map(sanitizePosition).filter(Boolean).slice(0, 20);
-    }
-    if (raw.focusedId) {
-        appState.focusedId = String(raw.focusedId).replace(/[^a-zA-Z0-9_-]/g, '');
-    }
-    if (raw.pnlOverrides && typeof raw.pnlOverrides === 'object') {
-        appState.pnlOverrides = raw.pnlOverrides;
-    }
-}
+    // Tela 1: Cofre
+    document.getElementById('hero-total-wealth').textContent = formatInSelectedCurrency(totalUsd);
+    const pnlBadge = document.getElementById('hero-real-pnl');
+    pnlBadge.textContent = `Lucro Real: ${realPnlUsd >= 0 ? '+' : ''}${formatInSelectedCurrency(realPnlUsd)} (${realPnlUsd >= 0 ? '+' : ''}${pnlPct}%)`;
+    pnlBadge.className = 'pnl-badge sensitive-val ' + (realPnlUsd >= 0 ? 'pos' : 'neg');
+    document.getElementById('hero-unclaimed-fees').textContent = `Taxas livres: +${formatInSelectedCurrency(balances.unclaimedFeesUsd)}`;
 
-// =========================================================================
-// BACKUPS LOCAIS PRIVADOS (SEM EXPOR CARTEIRA NA URL)
-// =========================================================================
-function saveTripleBackup() {
-    const payload = JSON.stringify(appState);
-    try { localStorage.setItem('rdesk_v21_backup', payload); } catch (e) {}
-    try {
-        const req = indexedDB.open('RDESK_VAULT', 1);
-        req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
-        req.onsuccess = (e) => {
-            const db = e.target.result;
-            const tx = db.transaction('state', 'readwrite');
-            tx.objectStore('state').put(payload, 'latest');
-        };
-    } catch (e) {}
-}
-
-async function loadFromTripleBackup() {
-    try {
-        const ls = localStorage.getItem('rdesk_v21_backup') || localStorage.getItem('rdesk_v20_backup') || localStorage.getItem('rdesk_v19_backup');
-        if (ls) {
-            applyValidatedState(JSON.parse(ls));
-            return;
-        }
-    } catch (e) {}
-    try {
-        await new Promise((resolve) => {
-            const req = indexedDB.open('RDESK_VAULT', 1);
-            req.onupgradeneeded = (e) => e.target.result.createObjectStore('state');
-            req.onsuccess = (e) => {
-                const db = e.target.result;
-                const tx = db.transaction('state', 'readonly');
-                const getReq = tx.objectStore('state').get('latest');
-                getReq.onsuccess = () => {
-                    if (getReq.result) applyValidatedState(JSON.parse(getReq.result));
-                    resolve();
-                };
-                getReq.onerror = () => resolve();
-            };
-            req.onerror = () => resolve();
-        });
-    } catch (e) {}
-}
-
-document.getElementById('btn-export-json').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `rdesk-backup-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-});
-
-document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('file-import').click());
-document.getElementById('file-import').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file || file.size > 262144) {
-        alert('Arquivo inválido ou maior que 256 KB.');
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        try {
-            applyValidatedState(JSON.parse(ev.target.result));
-            if (appState.wallet) document.getElementById('wallet-address').value = appState.wallet;
-            saveTripleBackup();
-            syncPnlInputsWithFocused();
-            renderAllPositions();
-        } catch (err) { alert('Arquivo JSON inválido.'); }
-    };
-    reader.readAsText(file);
-});
-
-document.getElementById('btn-copy-link').addEventListener('click', () => {
-    const payload = JSON.stringify(appState);
-    const encoded = btoa(unescape(encodeURIComponent(payload)));
-    const shareUrl = `${window.location.origin}${window.location.pathname}#rdesk=${encoded}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-        const btn = document.getElementById('btn-copy-link');
-        btn.textContent = 'COPIADO!';
-        setTimeout(() => btn.textContent = 'LINK', 2000);
+    [137, 8453, 42161, 42220, 10].forEach((id) => {
+        const el = document.getElementById(`chain-val-${id}`);
+        if (el) el.textContent = formatInSelectedCurrency(balances[id]?.totalUsd || 0, false);
     });
-});
+    const poolsEl = document.getElementById('chain-val-pools');
+    if (poolsEl) poolsEl.textContent = formatInSelectedCurrency(balances.poolsUsd + balances.unclaimedFeesUsd, false);
 
-// =========================================================================
-// TARIFAS NÃO RECOLHIDAS EM TEMPO REAL (256-BIT) & SALDOS LIVRES
-// =========================================================================
-function subUint256(a, b) {
-    return a.gte(b) ? a.sub(b) : MAX_UINT256.sub(b).add(a).add(1);
+    // Anel de Meta Mensal
+    const projectedMonthBrl = sculptedPlan.projectedBrlMin * 60 * 24 * 30;
+    const goalPct = Math.min(100, Math.round((projectedMonthBrl / Math.max(1, state.monthlyGoalBrl)) * 100));
+    const circle = document.getElementById('goal-ring-circle');
+    if (circle) {
+        const offset = 138.2 - (138.2 * goalPct) / 100;
+        circle.style.strokeDashoffset = offset.toFixed(1);
+    }
+    document.getElementById('goal-ring-pct').textContent = `${goalPct}%`;
+    document.getElementById('goal-title-display').textContent = `Meta: R$ ${state.monthlyGoalBrl.toFixed(2)} / mês`;
+    document.getElementById('goal-progress-sub').textContent =
+        `Ritmo projetado: R$ ${(sculptedPlan.projectedBrlMin * 60 * 24).toFixed(2)}/dia`;
+
+    // Tela 3: Pools Ativas & Escudo de Permissões
+    renderActivePoolsList();
+    renderAllowanceGuardList();
+
+    // Tela 4: Auditoria Dia 1
+    document.getElementById('forensic-deposited').textContent = formatInSelectedCurrency(state.forensics.depositedUsd);
+    document.getElementById('forensic-withdrawn').textContent = formatInSelectedCurrency(state.forensics.withdrawnUsd);
+    document.getElementById('forensic-current').textContent = formatInSelectedCurrency(totalUsd);
+    const netEl = document.getElementById('forensic-net-result');
+    netEl.textContent = `${realPnlUsd >= 0 ? '+' : ''}${formatInSelectedCurrency(realPnlUsd)}`;
+    netEl.style.color = realPnlUsd >= 0 ? 'var(--emerald)' : 'var(--coral)';
+
+    applyPrivacyMask();
+    renderTruthChart();
 }
 
-function computeLiveUnclaimedFees(pos, poolState) {
-    if (!pos.liquidity || pos.tickLower === undefined || pos.tickUpper === undefined || !poolState) {
-        return { owed0: 0, owed1: 0, usd: 0 };
-    }
-    try {
-        const tickCurrent = poolState.tickCurrent;
-        const fg0 = poolState.feeGrowthGlobal0X128;
-        const fg1 = poolState.feeGrowthGlobal1X128;
-        const lower = poolState.ticksMap[pos.tickLower];
-        const upper = poolState.ticksMap[pos.tickUpper];
-        if (!lower || !upper) return { owed0: 0, owed1: 0, usd: 0 };
+function renderActivePoolsList() {
+    const container = document.getElementById('active-pools-container');
+    const shell = document.getElementById('app-shell');
+    if (!container) return;
+    container.replaceChildren();
 
-        const below0 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside0X128 : subUint256(fg0, lower.feeGrowthOutside0X128);
-        const below1 = tickCurrent >= pos.tickLower ? lower.feeGrowthOutside1X128 : subUint256(fg1, lower.feeGrowthOutside1X128);
-        const above0 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside0X128 : subUint256(fg0, upper.feeGrowthOutside0X128);
-        const above1 = tickCurrent < pos.tickUpper ? upper.feeGrowthOutside1X128 : subUint256(fg1, upper.feeGrowthOutside1X128);
-
-        const inside0 = subUint256(subUint256(fg0, below0), above0);
-        const inside1 = subUint256(subUint256(fg1, below1), above1);
-
-        const last0 = ethers.BigNumber.from(pos.feeGrowthInside0LastX128 || '0');
-        const last1 = ethers.BigNumber.from(pos.feeGrowthInside1LastX128 || '0');
-        const liq = ethers.BigNumber.from(pos.liquidity);
-
-        const delta0 = subUint256(inside0, last0).mul(liq).div(Q128);
-        const delta1 = subUint256(inside1, last1).mul(liq).div(Q128);
-
-        const base0 = ethers.BigNumber.from(pos.tokensOwed0 || '0');
-        const base1 = ethers.BigNumber.from(pos.tokensOwed1 || '0');
-
-        const total0 = parseFloat(ethers.utils.formatUnits(base0.add(delta0), 18));
-        const total1 = parseFloat(ethers.utils.formatUnits(base1.add(delta1), 6));
-        const usd = (total0 * currentPriceGlobal) + total1;
-
-        return { owed0: total0, owed1: total1, usd: Number.isFinite(usd) ? usd : 0 };
-    } catch (e) {
-        return { owed0: 0, owed1: 0, usd: 0 };
-    }
-}
-
-async function refreshLivePoolFeesAndBalances() {
-    if (!appState.wallet || !ethers.utils.isAddress(appState.wallet)) return;
-
-    const poolABI = [
-        "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
-        "function liquidity() view returns (uint128)",
-        "function feeGrowthGlobal0X128() view returns (uint256)",
-        "function feeGrowthGlobal1X128() view returns (uint256)",
-        "function ticks(int24) view returns (uint128 liquidityGross, int128 liquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128, int56 tickCumulativeOutside, uint160 secondsPerLiquidityOutsideX128, uint32 secondsOutside, bool initialized)"
-    ];
-    const erc20ABI = ["function balanceOf(address) view returns (uint256)"];
-
-    for (const rpcUrl of POLYGON_RPCS) {
-        try {
-            const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-            const pool = new ethers.Contract(POOL_ADDRESS, poolABI, provider);
-
-            const wpolC = new ethers.Contract(TOKENS.WPOL.address, erc20ABI, provider);
-            const usdtC = new ethers.Contract(TOKENS.USDT0.address, erc20ABI, provider);
-            const brzC = new ethers.Contract(TOKENS.BRZ.address, erc20ABI, provider);
-            const brlaC = new ethers.Contract(TOKENS.BRLA.address, erc20ABI, provider);
-
-            const [bPolNative, bWpol, bUsdt, bBrz, bBrla, poolLiqBN] = await withTimeout(Promise.all([
-                provider.getBalance(appState.wallet),
-                wpolC.balanceOf(appState.wallet),
-                usdtC.balanceOf(appState.wallet),
-                brzC.balanceOf(appState.wallet),
-                brlaC.balanceOf(appState.wallet),
-                pool.liquidity().catch(() => null)
-            ]), 4500);
-
-            if (poolLiqBN && poolLiqBN.gt(0)) {
-                poolTelemetry.activeLiquidityRaw = parseFloat(poolLiqBN.toString());
-            }
-
-            walletBalances = {
-                pol: parseFloat(ethers.utils.formatUnits(bPolNative, 18)),
-                wpol: parseFloat(ethers.utils.formatUnits(bWpol, 18)),
-                usdt0: parseFloat(ethers.utils.formatUnits(bUsdt, 6)),
-                brz: parseFloat(ethers.utils.formatUnits(bBrz, 18)),
-                brla: parseFloat(ethers.utils.formatUnits(bBrla, 18))
-            };
-
-            document.getElementById('bal-pol').textContent = walletBalances.pol.toFixed(2);
-            document.getElementById('bal-wpol').textContent = walletBalances.wpol.toFixed(2);
-            document.getElementById('bal-usdt0').textContent = walletBalances.usdt0.toFixed(2);
-            document.getElementById('bal-brz').textContent = walletBalances.brz.toFixed(2);
-            document.getElementById('bal-brla').textContent = walletBalances.brla.toFixed(2);
-
-            updateSwapBalanceLabels();
-            recomputeAutoPilotPlan();
-
-            if (appState.web3Positions.length > 0) {
-                const [slot0, fg0, fg1] = await withTimeout(Promise.all([
-                    pool.slot0(),
-                    pool.feeGrowthGlobal0X128(),
-                    pool.feeGrowthGlobal1X128()
-                ]), 4500);
-
-                const uniqueTicks = new Set();
-                appState.web3Positions.forEach(p => {
-                    if (p.tickLower !== undefined) uniqueTicks.add(p.tickLower);
-                    if (p.tickUpper !== undefined) uniqueTicks.add(p.tickUpper);
-                    autoDetectPositionOpeningCost(p, provider);
-                });
-
-                const ticksMap = {};
-                await Promise.all(Array.from(uniqueTicks).map(async (t) => {
-                    const tData = await pool.ticks(t);
-                    ticksMap[t] = {
-                        feeGrowthOutside0X128: tData.feeGrowthOutside0X128,
-                        feeGrowthOutside1X128: tData.feeGrowthOutside1X128
-                    };
-                }));
-
-                const poolState = {
-                    tickCurrent: Number(slot0.tick),
-                    feeGrowthGlobal0X128: fg0,
-                    feeGrowthGlobal1X128: fg1,
-                    ticksMap
-                };
-
-                let totalFeesUsd = 0;
-                appState.web3Positions.forEach(p => {
-                    const fees = computeLiveUnclaimedFees(p, poolState);
-                    p.liveFeesUsd = fees.usd;
-                    totalFeesUsd += fees.usd;
-                });
-
-                totalUnclaimedFeesUsd = totalFeesUsd;
-                const motherRate = getMotherRate();
-                document.getElementById('fees-total-brz').textContent = `${(totalFeesUsd * motherRate).toFixed(4)} BRZ`;
-                document.getElementById('fees-total-usd').textContent = `$ ${totalFeesUsd.toFixed(4)} | R$ ${(totalFeesUsd * usdBrlCommercial).toFixed(4)}`;
-                renderAllPositions();
-            }
-            return;
-        } catch (e) {}
-    }
-}
-
-// =========================================================================
-// MOTOR SNIPER PRO (15M ATR 14 + EMA 9/21 SKEW)
-// =========================================================================
-function computeEMA(values, period) {
-    const k = 2 / (period + 1);
-    let ema = values[0];
-    for (let i = 1; i < values.length; i++) {
-        ema = values[i] * k + ema * (1 - k);
-    }
-    return ema;
-}
-
-async function refreshSniperModel15m() {
-    try {
-        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=15m&limit=100`);
-        const raw = await res.json();
-        const candles = raw.map(d => ({
-            open: parseFloat(d[1]),
-            high: parseFloat(d[2]),
-            low: parseFloat(d[3]),
-            close: parseFloat(d[4])
-        }));
-
-        if (candles.length < 30) return;
-
-        const macroSlice = candles.slice(-96);
-        let max24 = 0, min24 = Infinity;
-        macroSlice.forEach(c => { max24 = Math.max(max24, c.high); min24 = Math.min(min24, c.low); });
-        document.getElementById('strat-macro').textContent = `${min24.toFixed(5)} <> ${max24.toFixed(5)}`;
-
-        const trs = [];
-        for (let i = candles.length - 15; i < candles.length; i++) {
-            const curr = candles[i];
-            const prev = candles[i - 1];
-            trs.push(Math.max(
-                curr.high - curr.low,
-                Math.abs(curr.high - prev.close),
-                Math.abs(curr.low - prev.close)
-            ));
-        }
-        const atr14 = trs.reduce((a, b) => a + b, 0) / trs.length;
-
-        const closes = candles.map(c => c.close);
-        const ema9 = computeEMA(closes.slice(-30), 9);
-        const ema21 = computeEMA(closes.slice(-45), 21);
-        const rawBias = atr14 > 0 ? (ema9 - ema21) / atr14 : 0;
-        const clampedBias = Math.max(-1, Math.min(1, rawBias));
-
-        const upWeight = 0.50 + (clampedBias * 0.18);
-        const downWeight = 1 - upWeight;
-
-        let regimeText = 'LATERAL 50/50';
-        if (clampedBias > 0.25) regimeText = `ALTA ${Math.round(downWeight*100)}/${Math.round(upWeight*100)}`;
-        else if (clampedBias < -0.25) regimeText = `BAIXA ${Math.round(downWeight*100)}/${Math.round(upWeight*100)}`;
-
-        sniperTelemetry = { ...sniperTelemetry, atr14, upWeight, downWeight, regimeText };
-        if (currentPriceGlobal === 0) currentPriceGlobal = closes[closes.length - 1];
-        recalculateLiveSniperBounds();
-    } catch (e) {}
-}
-
-function recalculateLiveSniperBounds() {
-    if (currentPriceGlobal <= 0 || sniperTelemetry.atr14 <= 0) return;
-
-    const totalSpan = sniperTelemetry.atr14 * 2.5;
-    const sMin = currentPriceGlobal - (totalSpan * sniperTelemetry.downWeight);
-    const sMax = currentPriceGlobal + (totalSpan * sniperTelemetry.upWeight);
-
-    sniperTelemetry.min = sMin;
-    sniperTelemetry.max = sMax;
-
-    const widthPct = ((sMax - sMin) / sMin) * 100;
-    const concMult = Math.round(1 / (1 - Math.sqrt(sMin / sMax)));
-
-    document.getElementById('sniper-regime').textContent = sniperTelemetry.regimeText;
-    document.getElementById('sniper-efficiency').textContent = `${widthPct.toFixed(2)}% (~${concMult}x)`;
-    document.getElementById('strat-sniper').textContent = `${sMin.toFixed(5)} <> ${sMax.toFixed(5)}`;
-
-    recomputeAutoPilotPlan();
-}
-
-// =========================================================================
-// 3 CAMADAS DE LEITURA WEB3
-// =========================================================================
-async function fetchViaMultiRpcEthers(address) {
-    const nfpmABI = [
-        "function balanceOf(address) view returns (uint256)",
-        "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
-        "function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)"
-    ];
-
-    for (let i = 0; i < POLYGON_RPCS.length; i++) {
-        const rpcUrl = POLYGON_RPCS[i];
-        try {
-            routeStatusEl.textContent = `ROTA 1.${i+1}...`;
-            const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-            const nfpm = new ethers.Contract(NFPM_ADDRESS, nfpmABI, provider);
-
-            const balanceBN = await withTimeout(nfpm.balanceOf(address), 4500);
-            const balance = balanceBN.toNumber();
-            const found = [];
-
-            for (let idx = 0; idx < balance; idx++) {
-                const tokenIdBN = await withTimeout(nfpm.tokenOfOwnerByIndex(address, idx), 4500);
-                const pos = await withTimeout(nfpm.positions(tokenIdBN), 4500);
-                const t0 = pos.token0.toLowerCase();
-                const t1 = pos.token1.toLowerCase();
-
-                if ((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) {
-                    if (pos.liquidity.gt(0)) {
-                        const prices = ticksToHumanPrice(pos.tickLower, pos.tickUpper, t0 === POL_ADDRESS);
-                        found.push({
-                            id: `web3-${tokenIdBN.toString()}`,
-                            tokenId: tokenIdBN.toString(),
-                            min: prices.min,
-                            max: prices.max,
-                            tickLower: Number(pos.tickLower),
-                            tickUpper: Number(pos.tickUpper),
-                            liquidity: pos.liquidity.toString(),
-                            feeGrowthInside0LastX128: pos.feeGrowthInside0LastX128.toString(),
-                            feeGrowthInside1LastX128: pos.feeGrowthInside1LastX128.toString(),
-                            tokensOwed0: pos.tokensOwed0.toString(),
-                            tokensOwed1: pos.tokensOwed1.toString(),
-                            liveFeesUsd: 0,
-                            label: `NFT #${tokenIdBN.toString()}`,
-                            source: 'web3'
-                        });
-                    }
-                }
-            }
-            routeStatusEl.textContent = `OK (RPC #${i+1})`;
-            return found;
-        } catch (err) {}
-    }
-    throw new Error('Todos os RPCs falharam');
-}
-
-async function fetchViaRawJsonRpc(address) {
-    routeStatusEl.textContent = 'ROTA 2 (RAW)...';
-    const cleanAddr = address.replace('0x', '').padStart(64, '0');
-    const res = await withTimeout(fetch('https://polygon-bor-rpc.publicnode.com', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            jsonrpc: '2.0', id: 1, method: 'eth_call',
-            params: [{ to: NFPM_ADDRESS, data: '0x70a08231' + cleanAddr }, 'latest']
-        })
-    }), 5000);
-    const json = await res.json();
-    if (!json.result) throw new Error('Falha Raw eth_call');
-    const count = parseInt(json.result, 16);
-    if (count === 0) return [];
-
-    const nfpmIface = new ethers.utils.Interface([
-        "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)",
-        "function positions(uint256) view returns (uint96, address, address, address, uint24, int24, int24, uint128, uint256, uint256, uint128, uint128)"
-    ]);
-
-    const found = [];
-    for (let i = 0; i < count; i++) {
-        const callDataIdx = nfpmIface.encodeFunctionData('tokenOfOwnerByIndex', [address, i]);
-        const r1 = await fetch('https://polygon-bor-rpc.publicnode.com', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_call', params: [{ to: NFPM_ADDRESS, data: callDataIdx }, 'latest'] })
-        }).then(r => r.json());
-        const [tokenId] = nfpmIface.decodeFunctionResult('tokenOfOwnerByIndex', r1.result);
-
-        const callDataPos = nfpmIface.encodeFunctionData('positions', [tokenId]);
-        const r2 = await fetch('https://polygon-bor-rpc.publicnode.com', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'eth_call', params: [{ to: NFPM_ADDRESS, data: callDataPos }, 'latest'] })
-        }).then(r => r.json());
-        const pos = nfpmIface.decodeFunctionResult('positions', r2.result);
-
-        const t0 = pos[2].toLowerCase();
-        const t1 = pos[3].toLowerCase();
-        const liq = pos[7];
-        if (((t0 === POL_ADDRESS && t1 === USDT_ADDRESS) || (t1 === POL_ADDRESS && t0 === USDT_ADDRESS)) && liq.gt(0)) {
-            const prices = ticksToHumanPrice(pos[5], pos[6], t0 === POL_ADDRESS);
-            found.push({
-                id: `web3-${tokenId.toString()}`,
-                tokenId: tokenId.toString(),
-                min: prices.min,
-                max: prices.max,
-                tickLower: Number(pos[5]),
-                tickUpper: Number(pos[6]),
-                liquidity: liq.toString(),
-                feeGrowthInside0LastX128: pos[8].toString(),
-                feeGrowthInside1LastX128: pos[9].toString(),
-                tokensOwed0: pos[10].toString(),
-                tokensOwed1: pos[11].toString(),
-                liveFeesUsd: 0,
-                label: `NFT #${tokenId.toString()}`,
-                source: 'web3'
-            });
-        }
-    }
-    routeStatusEl.textContent = 'OK (ROTA 2)';
-    return found;
-}
-
-async function fetchViaSubgraph(address) {
-    routeStatusEl.textContent = 'ROTA 3 (GRAPH)...';
-    const query = `{
-        positions(where: { owner: "${address}", pool: "${POOL_ADDRESS}", liquidity_gt: "0" }) {
-            id
-            liquidity
-            tickLower { tickIdx }
-            tickUpper { tickIdx }
-        }
-    }`;
-    const res = await withTimeout(fetch('https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-polygon', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-    }), 4500);
-    const json = await res.json();
-    const list = json?.data?.positions || [];
-    const found = list.map(p => {
-        const prices = ticksToHumanPrice(p.tickLower.tickIdx, p.tickUpper.tickIdx, true);
-        return {
-            id: `web3-${p.id}`,
-            tokenId: p.id,
-            min: prices.min,
-            max: prices.max,
-            tickLower: Number(p.tickLower.tickIdx),
-            tickUpper: Number(p.tickUpper.tickIdx),
-            liquidity: p.liquidity,
-            liveFeesUsd: 0,
-            label: `NFT #${p.id}`,
-            source: 'web3'
-        };
-    });
-    routeStatusEl.textContent = 'OK (ROTA 3)';
-    return found;
-}
-
-async function runUnstoppableScan() {
-    const rawAddr = document.getElementById('wallet-address').value.trim();
-    if (!ethers.utils.isAddress(rawAddr)) {
-        routeStatusEl.textContent = 'ENDEREÇO INVÁLIDO';
-        routeStatusEl.style.color = 'var(--danger-red)';
-        return;
-    }
-    const address = rawAddr.toLowerCase();
-    appState.wallet = address;
-    const btnScan = document.getElementById('btn-scan');
-    btnScan.textContent = '...';
-    routeStatusEl.style.color = 'var(--dekton-copper)';
-
-    let scannedPositions = null;
-    try {
-        scannedPositions = await fetchViaMultiRpcEthers(address);
-    } catch (e1) {
-        try {
-            scannedPositions = await fetchViaRawJsonRpc(address);
-        } catch (e2) {
-            try {
-                scannedPositions = await fetchViaSubgraph(address);
-            } catch (e3) {
-                routeStatusEl.textContent = 'OFFLINE (BACKUP)';
-                routeStatusEl.style.color = 'var(--warning-yellow)';
-            }
-        }
-    }
-
-    if (Array.isArray(scannedPositions)) {
-        appState.web3Positions = scannedPositions;
-        if (!appState.focusedId && scannedPositions.length > 0) {
-            appState.focusedId = scannedPositions[0].id;
-        }
-        saveTripleBackup();
-    }
-
-    syncPnlInputsWithFocused();
-    renderAllPositions();
-    await refreshLivePoolFeesAndBalances();
-    btnScan.textContent = 'SCAN';
-}
-
-document.getElementById('btn-scan').addEventListener('click', runUnstoppableScan);
-
-// =========================================================================
-// INSERÇÃO MANUAL MULTI-FAIXA
-// =========================================================================
-function addManualPosition(minVal, maxVal, tagVal) {
-    const min = parseFloat(minVal);
-    const max = parseFloat(maxVal);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || min >= max) {
-        alert('Informe valores válidos (Mínima menor que Máxima).');
-        return;
-    }
-    const id = 'man-' + Date.now();
-    const label = sanitizeLabel(tagVal) || `Manual #${appState.manualPositions.length + 1}`;
-    appState.manualPositions.push({ id, min, max, label, source: 'manual' });
-    appState.focusedId = id;
-    saveTripleBackup();
-    syncPnlInputsWithFocused();
-    renderAllPositions();
-}
-
-document.getElementById('btn-add-manual').addEventListener('click', () => {
-    const minEl = document.getElementById('manual-min');
-    const maxEl = document.getElementById('manual-max');
-    const tagEl = document.getElementById('manual-tag');
-    addManualPosition(minEl.value, maxEl.value, tagEl.value);
-    minEl.value = '';
-    maxEl.value = '';
-    tagEl.value = '';
-});
-
-document.getElementById('btn-use-sniper').addEventListener('click', () => {
-    const targetMin = yieldTargetState.customTargetBrlPerMin ? yieldTargetState.sculptedMin : sniperTelemetry.min;
-    const targetMax = yieldTargetState.customTargetBrlPerMin ? yieldTargetState.sculptedMax : sniperTelemetry.max;
-    const tag = yieldTargetState.customTargetBrlPerMin
-        ? `Meta R$${yieldTargetState.projectedBrlPerMin.toFixed(3)}/m`
-        : `Sniper ${sniperTelemetry.regimeText.split(' ')[0]}`;
-
-    if (targetMin > 0 && targetMax > 0) {
-        addManualPosition(targetMin.toFixed(6), targetMax.toFixed(6), tag);
-    }
-});
-
-function removePosition(id, e) {
-    e.stopPropagation();
-    appState.manualPositions = appState.manualPositions.filter(p => p.id !== id);
-    appState.web3Positions = appState.web3Positions.filter(p => p.id !== id);
-    if (appState.focusedId === id) {
-        const remaining = [...appState.web3Positions, ...appState.manualPositions];
-        appState.focusedId = remaining.length > 0 ? remaining[0].id : null;
-    }
-    saveTripleBackup();
-    syncPnlInputsWithFocused();
-    renderAllPositions();
-}
-
-// =========================================================================
-// RENDERIZAÇÃO SEGURA DOS CARDS (+ ADICIONAR, COLHER, REBALANCEAR & WITHDRAW)
-// =========================================================================
-function getAllPositions() {
-    return [...appState.web3Positions, ...appState.manualPositions];
-}
-
-function renderAllPositions() {
-    const listEl = document.getElementById('positions-list');
-    const all = getAllPositions();
-    listEl.replaceChildren();
-
-    if (candleSeries && positionLines.length > 0) {
-        positionLines.forEach(line => {
-            try { candleSeries.removePriceLine(line); } catch (e) {}
-        });
-        positionLines = [];
-    }
-
-    if (all.length === 0) {
-        const emptyDiv = document.createElement('div');
-        emptyDiv.style.cssText = 'color:#555; font-size:0.65rem; text-align:center; padding:6px;';
-        emptyDiv.textContent = 'Nenhuma faixa ativa. Defina sua meta acima e clique em COMEÇAR A GANHAR.';
-        listEl.appendChild(emptyDiv);
-        document.getElementById('focused-label').textContent = 'FOCO: NENHUMA POSIÇÃO';
+    if (state.positions.length === 0) {
+        shell.classList.remove('state-warning', 'state-danger');
+        const empty = document.createElement('div');
+        empty.style.cssText = 'text-align: center; padding: 14px; color: var(--text-muted); font-size: 0.75rem;';
+        empty.textContent = 'Nenhuma posição ativa na Uniswap V3. Use a aba Motor para começar.';
+        container.appendChild(empty);
         return;
     }
 
-    if (!all.some(p => p.id === appState.focusedId)) {
-        appState.focusedId = all[0].id;
-    }
+    let worstState = 'SAFE';
 
-    const palette = ['#00ff88', '#00d4ff', '#cda434', '#ff7b00', '#b565ff'];
-    const motherRate = getMotherRate();
+    state.positions.forEach((pos) => {
+        const inRange = market.polUsd >= pos.min && market.polUsd <= pos.max;
+        const margin = (pos.max - pos.min) * 0.08;
+        const nearEdge = inRange && (market.polUsd <= pos.min + margin || market.polUsd >= pos.max - margin);
 
-    all.forEach((pos, idx) => {
-        const color = palette[idx % palette.length];
-        const isFocused = pos.id === appState.focusedId;
-        const widthPct = (((pos.max - pos.min) / pos.min) * 100).toFixed(2);
-        const badge = pos.source === 'manual' ? 'MAN' : 'V3';
-
-        const item = document.createElement('div');
-        item.className = 'pos-item' + (isFocused ? ' focused-pos' : '');
-        item.style.borderLeftColor = color;
-
-        const topRow = document.createElement('div');
-        topRow.className = 'pos-top-row';
-
-        const meta = document.createElement('div');
-        meta.className = 'pos-meta';
-
-        const titleLine = document.createElement('span');
-        titleLine.style.color = color;
-        titleLine.style.fontWeight = '700';
-        const feeTag = pos.source === 'web3' ? ` | +${(pos.liveFeesUsd * motherRate).toFixed(3)} BRZ` : '';
-        titleLine.textContent = `[${badge}] ${pos.label} (${widthPct}%)${feeTag}`;
-
-        const rangeLine = document.createElement('span');
-        rangeLine.style.color = '#ccc';
-        rangeLine.textContent = `${pos.min.toFixed(5)} → ${pos.max.toFixed(5)}`;
-
-        meta.appendChild(titleLine);
-        meta.appendChild(rangeLine);
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'pos-del';
-        delBtn.title = 'Ocultar faixa';
-        delBtn.textContent = '✕';
-        delBtn.addEventListener('click', (ev) => removePosition(pos.id, ev));
-
-        topRow.append(meta, delBtn);
-        item.appendChild(topRow);
-
-        if (pos.source === 'web3' && pos.tokenId) {
-            const actionsRow = document.createElement('div');
-            actionsRow.className = 'pos-actions-row';
-            actionsRow.style.flexWrap = 'wrap';
-
-            const addBtn = document.createElement('button');
-            addBtn.className = 'btn-nft-collect';
-            addBtn.style.borderColor = 'var(--success-green)';
-            addBtn.style.color = 'var(--success-green)';
-            addBtn.textContent = '+ ADICIONAR';
-            addBtn.title = 'Injeta o saldo livre da carteira direto neste NFT sem fechar a posição';
-            addBtn.addEventListener('click', (ev) => executeIncreaseLiquidityOnChain(pos.tokenId, ev));
-
-            const collectBtn = document.createElement('button');
-            collectBtn.className = 'btn-nft-collect';
-            collectBtn.textContent = 'COLHER';
-            collectBtn.title = 'Assina collect() na Rabby Wallet e envia tarifas para sua carteira';
-            collectBtn.addEventListener('click', (ev) => executeCollectFeesOnChain(pos.tokenId, ev));
-
-            const rebalBtn = document.createElement('button');
-            rebalBtn.className = 'btn-nft-collect';
-            rebalBtn.style.borderColor = 'var(--cyan-accent)';
-            rebalBtn.style.color = 'var(--cyan-accent)';
-            rebalBtn.textContent = 'REBALANCEAR';
-            rebalBtn.title = 'Fecha esta posição, ajusta WPOL/USDT0 e reabre na faixa Sniper ou Meta atual';
-            rebalBtn.addEventListener('click', (ev) => executeRebalancePositionOnChain(pos.tokenId, ev));
-
-            const withdrawBtn = document.createElement('button');
-            withdrawBtn.className = 'btn-nft-withdraw';
-            withdrawBtn.textContent = 'WITHDRAW';
-            withdrawBtn.title = 'Fecha 100% da posição e devolve capital + tarifas para sua Rabby Wallet';
-            withdrawBtn.addEventListener('click', (ev) => executeWithdrawPositionOnChain(pos.tokenId, ev));
-
-            actionsRow.append(addBtn, collectBtn, rebalBtn, withdrawBtn);
-            item.appendChild(actionsRow);
+        if (!inRange) {
+            worstState = 'DANGER';
+            sendRangePushNotification(
+                `NFT #${pos.tokenId} fora da faixa!`,
+                `POL em $${market.polUsd.toFixed(5)} saiu de [${pos.min.toFixed(5)} - ${pos.max.toFixed(5)}].`,
+                `out-${pos.tokenId}`
+            );
+        } else if (nearEdge && worstState !== 'DANGER') {
+            worstState = 'WARNING';
+            sendRangePushNotification(
+                `NFT #${pos.tokenId} encostando na borda`,
+                `Preço próximo do limite da faixa. Verifique na aba Pools.`,
+                `edge-${pos.tokenId}`
+            );
         }
 
-        item.addEventListener('click', () => {
-            appState.focusedId = pos.id;
-            saveTripleBackup();
-            syncPnlInputsWithFocused();
-            renderAllPositions();
-        });
+        const card = document.createElement('div');
+        card.className = 'pos-card' + (!inRange ? ' out-range' : '');
 
-        listEl.appendChild(item);
+        const head = document.createElement('div');
+        head.className = 'pos-card-head';
 
-        if (candleSeries) {
-            positionLines.push(candleSeries.createPriceLine({
-                price: pos.min,
-                color: color,
-                lineWidth: isFocused ? 2 : 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: `MIN ${pos.label}`
-            }));
-            positionLines.push(candleSeries.createPriceLine({
-                price: pos.max,
-                color: color,
-                lineWidth: isFocused ? 2 : 1,
-                lineStyle: 2,
-                axisLabelVisible: true,
-                title: `MAX ${pos.label}`
-            }));
-        }
+        const title = document.createElement('strong');
+        title.style.fontSize = '0.78rem';
+        title.textContent = `NFT #${pos.tokenId} • ${formatInSelectedCurrency(pos.principalUsd)}`;
+
+        const badge = document.createElement('span');
+        badge.className = 'status-badge' + (!inRange ? ' danger' : nearEdge ? ' warn' : '');
+        badge.textContent = !inRange ? 'FORA DA FAIXA' : nearEdge ? 'BORDA' : 'RENDENDO';
+        head.append(title, badge);
+
+        const sub = document.createElement('div');
+        sub.className = 'mono';
+        sub.style.cssText = 'font-size: 0.68rem; color: var(--text-secondary); display: flex; justify-content: space-between;';
+        sub.textContent = `${pos.min.toFixed(5)} ↔ ${pos.max.toFixed(5)} | Taxas: +${formatInSelectedCurrency(pos.feesUsd)}`;
+
+        const btnGrid = document.createElement('div');
+        btnGrid.className = 'pos-btn-grid';
+        btnGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+
+        const btnCollect = document.createElement('button');
+        btnCollect.className = 'pos-act-btn';
+        btnCollect.style.color = 'var(--emerald)';
+        btnCollect.textContent = 'COLHER';
+        btnCollect.addEventListener('click', () => collectFeesNft(pos.tokenId));
+
+        const btnRebal = document.createElement('button');
+        btnRebal.className = 'pos-act-btn';
+        btnRebal.style.color = 'var(--gold-accent)';
+        btnRebal.textContent = 'REBALANCEAR';
+        btnRebal.addEventListener('click', () => withdrawPositionNft(pos.tokenId, true));
+
+        const btnWithdraw = document.createElement('button');
+        btnWithdraw.className = 'pos-act-btn danger';
+        btnWithdraw.textContent = 'SACAR 100%';
+        btnWithdraw.addEventListener('click', () => withdrawPositionNft(pos.tokenId, false));
+
+        btnGrid.append(btnCollect, btnRebal, btnWithdraw);
+        card.append(head, sub, btnGrid);
+        container.appendChild(card);
     });
 
-    updateFocusedMetrics();
+    shell.classList.toggle('state-warning', worstState === 'WARNING');
+    shell.classList.toggle('state-danger', worstState === 'DANGER');
+    updateChartRangeLines();
 }
 
-function updateFocusedMetrics() {
-    const all = getAllPositions();
-    const focused = all.find(p => p.id === appState.focusedId);
-    if (!focused || currentPriceGlobal <= 0) return;
+function renderAllowanceGuardList() {
+    const list = document.getElementById('allowance-list');
+    if (!list) return;
+    list.replaceChildren();
 
-    document.getElementById('focused-label').textContent = `FOCO: ${focused.label.toUpperCase()}`;
-
-    const min = focused.min;
-    const max = focused.max;
-    const price = currentPriceGlobal;
-    const motherRate = getMotherRate();
-
-    const sqrtP = Math.sqrt(price);
-    const sqrtA = Math.sqrt(min);
-    const sqrtB = Math.sqrt(max);
-
-    let usdtPct = 50;
-    if (price <= min) usdtPct = 0;
-    else if (price >= max) usdtPct = 100;
-    else {
-        const amt0 = (1 / sqrtP) - (1 / sqrtB);
-        const amt1 = sqrtP - sqrtA;
-        const val0Usd = amt0 * price;
-        const val1Usd = amt1;
-        usdtPct = (val1Usd / (val0Usd + val1Usd)) * 100;
+    if (!state.wallet) {
+        list.textContent = 'Conecte sua carteira para auditar aprovações abertas nos contratos.';
+        return;
+    }
+    if (state.allowances.length === 0) {
+        list.style.color = 'var(--emerald)';
+        list.textContent = '✓ Blindagem limpa: nenhuma permissão aberta em roteadores.';
+        return;
     }
 
-    const polPct = 100 - usdtPct;
-    document.getElementById('bar-usdt').style.width = `${usdtPct.toFixed(1)}%`;
-    document.getElementById('bar-pol').style.width = `${polPct.toFixed(1)}%`;
-    document.getElementById('dist-marker').style.left = `${usdtPct.toFixed(1)}%`;
-    document.getElementById('lbl-pol').textContent = `${polPct.toFixed(1)}% POL`;
-    document.getElementById('lbl-usdt').textContent = `${usdtPct.toFixed(1)}% USDT`;
+    state.allowances.forEach((al) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border-subtle);';
 
-    if (focused.liquidity && focused.tickLower !== undefined) {
-        const L = parseFloat(focused.liquidity);
-        const sP = Math.sqrt(price * 1e-12);
-        const sA = Math.pow(1.0001, focused.tickLower / 2);
-        const sB = Math.pow(1.0001, focused.tickUpper / 2);
+        const info = document.createElement('div');
+        info.innerHTML = `<strong style="color:var(--text-primary);">${al.tokenSymbol}</strong> → ${al.spenderName}<br><span class="mono" style="font-size:0.64rem; color:var(--amber);">Limite: ${al.amountFormatted}</span>`;
 
-        let raw0 = 0, raw1 = 0;
-        if (sP <= sA) raw0 = L * ((1 / sA) - (1 / sB));
-        else if (sP >= sB) raw1 = L * (sB - sA);
-        else {
-            raw0 = L * ((1 / sP) - (1 / sB));
-            raw1 = L * (sP - sA);
-        }
-        const humanPol = raw0 / 1e18;
-        const humanUsdt = raw1 / 1e6;
-        const totalUsd = (humanPol * price) + humanUsdt;
+        const revBtn = document.createElement('button');
+        revBtn.className = 'pos-act-btn danger';
+        revBtn.style.padding = '5px 9px';
+        revBtn.textContent = 'REVOGAR';
+        revBtn.addEventListener('click', () => revokeTokenAllowance(al.tokenAddress, al.spenderAddress, al.tokenSymbol));
 
-        focusedPositionTotalUsd = totalUsd;
-        focusedPositionFeesUsd = focused.liveFeesUsd || 0;
-
-        document.getElementById('wallet-total-brz').textContent = `${(totalUsd * motherRate).toFixed(2)} BRZ`;
-        document.getElementById('wallet-total-usd').textContent = `$ ${totalUsd.toFixed(2)} | R$ ${(totalUsd * usdBrlCommercial).toFixed(2)}`;
-    } else {
-        focusedPositionTotalUsd = 0;
-        focusedPositionFeesUsd = 0;
-        document.getElementById('wallet-total-brz').textContent = `FAIXA MANUAL`;
-        document.getElementById('wallet-total-usd').textContent = `${min.toFixed(5)} <> ${max.toFixed(5)}`;
-    }
-
-    recalculateRealPnL();
-    evaluateRiskAlert(price, min, max);
+        row.append(info, revBtn);
+        list.appendChild(row);
+    });
 }
 
-function evaluateRiskAlert(price, min, max) {
-    const statusEl = document.getElementById('alert-status');
-    const span = max - min;
-    const buffer = span * 0.08;
-
-    if (price < min || price > max) {
-        if (currentRiskState !== 'DANGER') {
-            currentRiskState = 'DANGER';
-            document.body.classList.remove('warning-mode');
-            document.body.classList.add('danger-mode');
-            statusEl.textContent = 'FORA DO RANGE';
-            statusEl.className = 'status-pill danger';
-            playBeep(320, 0.35, 'sawtooth');
-        }
-    } else if (price <= min + buffer || price >= max - buffer) {
-        if (currentRiskState !== 'WARNING') {
-            currentRiskState = 'WARNING';
-            document.body.classList.remove('danger-mode');
-            document.body.classList.add('warning-mode');
-            statusEl.textContent = 'BORDA DO RANGE';
-            statusEl.className = 'status-pill warning';
-            playBeep(880, 0.2, 'sine');
-        }
-    } else {
-        if (currentRiskState !== 'SAFE') {
-            currentRiskState = 'SAFE';
-            document.body.classList.remove('danger-mode', 'warning-mode');
-            statusEl.textContent = 'SEGURO';
-            statusEl.className = 'status-pill safe';
-        }
-    }
+function applyPrivacyMask() {
+    document.querySelectorAll('.sensitive-val').forEach((el) => {
+        el.classList.toggle('privacy-blur', state.privacyHidden);
+    });
 }
 
 // =========================================================================
-// GRÁFICO TRADINGVIEW & FEEDS EM TEMPO REAL
+// 13. GRÁFICO TRADINGVIEW & TELEMETRIA DE MERCADO EM TEMPO REAL
 // =========================================================================
-function initTradingViewChart() {
+function initChart() {
     const container = document.getElementById('tv-chart');
+    if (!container || typeof LightweightCharts === 'undefined') return;
+
     chart = LightweightCharts.createChart(container, {
         width: container.clientWidth,
-        height: container.clientHeight,
-        layout: { background: { type: 'solid', color: '#030303' }, textColor: '#666' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.025)' }, horzLines: { color: 'rgba(255,255,255,0.025)' } },
-        crosshair: { vertLine: { color: '#cda434', style: 3 }, horzLine: { color: '#cda434', style: 3 } },
-        timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.05)' },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.05)' }
+        height: 190,
+        layout: { background: { type: 'solid', color: '#0D0F14' }, textColor: '#9CA3AF' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+        timeScale: { timeVisible: true, borderColor: 'rgba(255,255,255,0.06)' },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' }
     });
 
     candleSeries = chart.addCandlestickSeries({
-        upColor: '#00ff88',
-        downColor: '#ff2a40',
+        upColor: '#10B981',
+        downColor: '#EF4444',
         borderVisible: false,
-        wickUpColor: '#00ff88',
-        wickDownColor: '#ff2a40',
-        priceFormat: { type: 'price', precision: 6, minMove: 0.000001 }
+        wickUpColor: '#10B981',
+        wickDownColor: '#EF4444',
+        priceFormat: { type: 'price', precision: 5, minMove: 0.00001 }
     });
 
-    new ResizeObserver(entries => {
-        if (!entries.length) return;
-        chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
+    new ResizeObserver((entries) => {
+        if (entries.length && chart) {
+            chart.resize(entries[0].contentRect.width, 190);
+        }
     }).observe(container);
 
-    document.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            currentInterval = e.target.getAttribute('data-interval');
-            currentIntervalSeconds = parseInt(e.target.getAttribute('data-seconds'));
-            syntheticCandle = null;
-            loadChartHistory(currentInterval);
-        });
-    });
-
-    loadChartHistory(currentInterval);
+    loadKlines(currentTf);
 }
 
-async function loadChartHistory(interval) {
+async function loadKlines(interval) {
     try {
-        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=200`);
-        const data = await res.json();
-        const klines = data.map(d => ({
+        const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=POLUSDT&interval=${interval}&limit=140`);
+        const raw = await res.json();
+        const data = raw.map((d) => ({
             time: Math.floor(d[0] / 1000),
             open: parseFloat(d[1]),
             high: parseFloat(d[2]),
             low: parseFloat(d[3]),
             close: parseFloat(d[4])
         }));
-        candleSeries.setData(klines);
-        renderAllPositions();
+        if (candleSeries) candleSeries.setData(data);
+
+        if (interval === '15m' && data.length > 25) {
+            const trs = [];
+            for (let i = data.length - 14; i < data.length; i++) {
+                trs.push(Math.max(
+                    data[i].high - data[i].low,
+                    Math.abs(data[i].high - data[i - 1].close),
+                    Math.abs(data[i].low - data[i - 1].close)
+                ));
+            }
+            market.atr15m = trs.reduce((a, b) => a + b, 0) / trs.length;
+
+            const closes = data.map((c) => c.close);
+            const ema9 = closes.slice(-9).reduce((a, b) => a + b, 0) / 9;
+            const ema21 = closes.slice(-21).reduce((a, b) => a + b, 0) / 21;
+            const bias = Math.max(-1, Math.min(1, (ema9 - ema21) / Math.max(1e-6, market.atr15m)));
+            market.upWeight = 0.5 + (bias * 0.16);
+            market.downWeight = 1 - market.upWeight;
+            market.regimeText = bias > 0.25
+                ? `ALTA ${Math.round(market.downWeight * 100)}/${Math.round(market.upWeight * 100)}`
+                : bias < -0.25
+                    ? `BAIXA ${Math.round(market.downWeight * 100)}/${Math.round(market.upWeight * 100)}`
+                    : 'SNIPER 50/50';
+            const badge = document.getElementById('motor-regime-badge');
+            if (badge) badge.textContent = market.regimeText;
+        }
+        recomputeSculptor();
     } catch (e) {}
 }
 
-function updateLiveCandle(price) {
-    if (!candleSeries || price === 0) return;
-    const nowSec = Math.floor(Date.now() / 1000);
-    const blockTime = Math.floor(nowSec / currentIntervalSeconds) * currentIntervalSeconds;
-    if (!syntheticCandle || syntheticCandle.time !== blockTime) {
-        syntheticCandle = { time: blockTime, open: price, high: price, low: price, close: price };
-    } else {
-        syntheticCandle.high = Math.max(syntheticCandle.high, price);
-        syntheticCandle.low = Math.min(syntheticCandle.low, price);
-        syntheticCandle.close = price;
+function updateChartRangeLines() {
+    if (!candleSeries) return;
+    previewLines.forEach((l) => { try { candleSeries.removePriceLine(l); } catch (e) {} });
+    positionLines.forEach((l) => { try { candleSeries.removePriceLine(l); } catch (e) {} });
+    previewLines = [];
+    positionLines = [];
+
+    if (sculptedPlan.pMin > 0 && sculptedPlan.pMax > sculptedPlan.pMin) {
+        previewLines.push(candleSeries.createPriceLine({
+            price: sculptedPlan.pMin,
+            color: '#38BDF8',
+            lineWidth: 1,
+            lineStyle: 3,
+            axisLabelVisible: true,
+            title: 'PISO'
+        }));
+        previewLines.push(candleSeries.createPriceLine({
+            price: sculptedPlan.pMax,
+            color: '#CDA434',
+            lineWidth: 1,
+            lineStyle: 3,
+            axisLabelVisible: true,
+            title: 'TETO'
+        }));
     }
-    candleSeries.update(syntheticCandle);
+
+    state.positions.forEach((p) => {
+        positionLines.push(candleSeries.createPriceLine({
+            price: p.min,
+            color: '#10B981',
+            lineWidth: 2,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: `#${p.tokenId} MIN`
+        }));
+        positionLines.push(candleSeries.createPriceLine({
+            price: p.max,
+            color: '#10B981',
+            lineWidth: 2,
+            lineStyle: 2,
+            axisLabelVisible: true,
+            title: `#${p.tokenId} MAX`
+        }));
+    });
 }
 
-async function buildVariationsPanel() {
-    const grid = document.getElementById('variations-grid');
-    const frag = document.createDocumentFragment();
-    let count = 0;
+async function refreshMarketOracles() {
+    try {
+        const [fxRes, geckoRes] = await Promise.allSettled([
+            fetch('https://economia.awesomeapi.com.br/last/USD-BRL').then((r) => r.json()),
+            fetch(`https://api.geckoterminal.com/api/v2/networks/polygon_pos/pools/${POLYGON_POOL_ADDRESS}`).then((r) => r.json())
+        ]);
 
-    for (const v of VAR_INTERVALS) {
+        if (fxRes.status === 'fulfilled' && fxRes.value?.USDBRL?.bid) {
+            market.usdBrl = parseFloat(fxRes.value.USDBRL.bid);
+            market.usdtToBrz = market.usdBrl;
+            market.usdtToBrla = market.usdBrl;
+        }
+        if (geckoRes.status === 'fulfilled') {
+            const volH24 = parseFloat(geckoRes.value?.data?.attributes?.volume_usd?.h24 || '0');
+            if (volH24 > 0) {
+                market.poolFeesUsdPerMin = (volH24 / 1440) * 0.0005;
+            }
+        }
+    } catch (e) {}
+    recomputeSculptor();
+    renderPixRoutes();
+}
+
+function startBinanceWebSocket() {
+    const ws = new WebSocket('wss://stream.binance.com:9443/stream?streams=polusdt@ticker/ethusdt@ticker/btcusdt@ticker');
+    ws.onmessage = (ev) => {
         try {
-            const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${v.key}&limit=2`);
-            const data = await res.json();
-            if (data && data.length > 0) {
-                const current = parseFloat(data[data.length - 1][4]);
-                const old = parseFloat(data[0][1]);
-                const perc = ((current - old) / old) * 100;
-                const isPos = perc >= 0;
+            const msg = JSON.parse(ev.data);
+            const stream = msg.stream || '';
+            const price = parseFloat(msg.data?.c);
+            if (!Number.isFinite(price) || price <= 0) return;
 
-                const card = document.createElement('div');
-                card.className = 'var-card ' + (isPos ? 'positive' : 'negative');
-
-                const lbl = document.createElement('span');
-                lbl.className = 'var-label';
-                lbl.textContent = v.label;
-
-                const val = document.createElement('span');
-                val.className = 'var-value';
-                val.textContent = `${isPos ? '+' : ''}${perc.toFixed(2)}%`;
-
-                card.appendChild(lbl);
-                card.appendChild(val);
-                frag.appendChild(card);
-                count++;
+            if (stream.startsWith('polusdt')) {
+                market.polUsd = price;
+                if (candleSeries) {
+                    const blockTime = Math.floor(Date.now() / 1000 / currentTfSec) * currentTfSec;
+                    if (!liveCandle || liveCandle.time !== blockTime) {
+                        liveCandle = { time: blockTime, open: price, high: price, low: price, close: price };
+                    } else {
+                        liveCandle.high = Math.max(liveCandle.high, price);
+                        liveCandle.low = Math.min(liveCandle.low, price);
+                        liveCandle.close = price;
+                    }
+                    candleSeries.update(liveCandle);
+                }
+                recomputeSculptor();
+                renderAllViews();
+            } else if (stream.startsWith('ethusdt')) {
+                market.ethUsd = price;
+            } else if (stream.startsWith('btcusdt')) {
+                market.btcUsd = price;
             }
         } catch (e) {}
+    };
+    ws.onclose = () => setTimeout(startBinanceWebSocket, 3000);
+}
+
+// =========================================================================
+// 14. CONEXÃO WEB3, NAVEGAÇÃO & BOTTOM SHEETS EDUCATIVOS
+// =========================================================================
+async function connectWallet() {
+    if (!window.ethereum) {
+        alert('Instale ou ative sua carteira Web3 (Rabby Wallet ou MetaMask).');
+        return;
     }
-    if (count > 0) grid.replaceChildren(frag);
-}
+    try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        if (!accounts || accounts.length === 0) return;
 
-function initGlobalTracker() {
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${SYMBOL.toLowerCase()}@ticker`);
-    ws.onmessage = (event) => {
-        const newPrice = parseFloat(JSON.parse(event.data).c);
-        if (lastPriceGlobal !== 0 && newPrice !== lastPriceGlobal) {
-            priceGlobalEl.classList.remove('tick-up', 'tick-down');
-            void priceGlobalEl.offsetWidth;
-            priceGlobalEl.classList.add(newPrice > lastPriceGlobal ? 'tick-up' : 'tick-down');
+        state.wallet = accounts[0].toLowerCase();
+        state.isFounder = FOUNDER_WHITELIST.includes(state.wallet);
+
+        const btn = document.getElementById('btn-connect-wallet');
+        btn.textContent = `${state.wallet.slice(0, 6)}...${state.wallet.slice(-4)}`;
+        btn.classList.add('connected');
+
+        const badge = document.getElementById('founder-status-badge');
+        badge.textContent = state.isFounder
+            ? 'MODO FUNDADOR • TAXA 0.00%'
+            : 'CARTEIRA CONECTADA • TAXA 0.25%';
+        badge.style.color = state.isFounder ? 'var(--emerald)' : 'var(--gold-accent)';
+
+        await deriveVaultKey(state.wallet);
+        await loadEncryptedVault();
+        if (state.webhookUrl) {
+            const whInput = document.getElementById('input-webhook-url');
+            if (whInput) whInput.value = state.webhookUrl;
         }
-        lastPriceGlobal = newPrice;
-        currentPriceGlobal = newPrice;
-        priceGlobalEl.textContent = currentPriceGlobal.toFixed(6);
 
-        document.getElementById('macro-pol-brz').textContent = `${(currentPriceGlobal * getMotherRate()).toFixed(4)} BRZ`;
-        document.getElementById('macro-pol-brl').textContent = `R$ ${(currentPriceGlobal * usdBrlCommercial).toFixed(4)}`;
-
-        updateLiveCandle(currentPriceGlobal);
-        recalculateLiveSniperBounds();
-        updateFocusedMetrics();
-        recalculatePixRanking();
-    };
-    ws.onclose = () => setTimeout(initGlobalTracker, 3000);
+        await syncAllChainsNow();
+        runDayOneForensics();
+    } catch (e) {}
 }
 
-function initPolygonScanner() {
-    const wsPool = new WebSocket('wss://polygon-bor-rpc.publicnode.com');
-    const dot = document.getElementById('polygon-dot');
-    wsPool.onopen = () => {
-        wsPool.send(JSON.stringify({
-            jsonrpc: '2.0', id: 1, method: 'eth_subscribe',
-            params: ['logs', { address: POOL_ADDRESS }]
-        }));
-    };
-    wsPool.onmessage = (event) => {
-        const response = JSON.parse(event.data);
-        if (response.method === 'eth_subscription' && response.params.result.topics[0] === SWAP_TOPIC) {
-            dot.style.background = 'var(--dekton-copper)';
-            setTimeout(() => dot.style.background = '#fff', 350);
+function switchTab(tabName) {
+    document.querySelectorAll('.nav-item').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-tab') === tabName);
+    });
+    document.querySelectorAll('.screen-view').forEach((v) => {
+        v.classList.toggle('active', v.id === `view-${tabName}`);
+    });
+    triggerHaptic([12]);
+}
+
+const EDU_TEXTS = {
+    patrimonio: {
+        title: 'Patrimônio Líquido Real vs. Ilusório',
+        body: 'Soma todo o seu saldo livre nas 5 redes mais o valor real das suas posições na Uniswap V3 e tarifas não colhidas. Toque no card do saldo para ver se seu patrimônio está realmente acima do dinheiro que saiu do seu bolso.'
+    },
+    meta: {
+        title: 'Planejador de Meta Mensal',
+        body: 'Converte o ritmo atual de geração de tarifas por minuto em projeção mensal para mostrar quanto das suas contas reais já está coberto pelo rendimento.'
+    },
+    escultor: {
+        title: 'Escultor de Rendimento (R$/min)',
+        body: 'Na Uniswap V3, quanto mais estreita a faixa entre Piso e Teto, maior sua fatia nas tarifas por minuto — porém maior a chance de o preço sair da faixa. Use o Simulador Reverso para descobrir quanto capital precisa para ganhar sua meta com segurança.'
+    },
+    allowance: {
+        title: 'Escudo de Permissões (Zero Dreno)',
+        body: 'Diferente de sites comuns que pedem permissão ilimitada, o RDESK aprova apenas o valor exato da operação. Aqui você audita e revoga qualquer autorização antiga em 1 clique.'
+    }
+};
+
+function bindEvents() {
+    document.getElementById('btn-connect-wallet').addEventListener('click', connectWallet);
+
+    document.querySelectorAll('.nav-item').forEach((btn) => {
+        btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab')));
+    });
+
+    document.getElementById('btn-goto-motor').addEventListener('click', () => switchTab('motor'));
+
+    // Alternador de Moeda (BRZ | BRLA | USD | R$)
+    document.querySelectorAll('.curr-pill').forEach((pill) => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.curr-pill').forEach((p) => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.displayCurrency = pill.getAttribute('data-curr');
+            saveEncryptedVault();
+            recomputeSculptor();
+            renderAllViews();
+        });
+    });
+
+    // Olho Mágico (Privacidade)
+    document.getElementById('btn-privacy-eye').addEventListener('click', (e) => {
+        state.privacyHidden = !state.privacyHidden;
+        e.currentTarget.classList.toggle('active', state.privacyHidden);
+        applyPrivacyMask();
+    });
+
+    // Notificações Nativas
+    document.getElementById('btn-notif-bell').addEventListener('click', async (e) => {
+        if ('Notification' in window) {
+            const perm = await Notification.requestPermission();
+            state.notificationsEnabled = perm === 'granted';
+            e.currentTarget.classList.toggle('active', state.notificationsEnabled);
+        }
+    });
+
+    // Gaveta do Mini-Gráfico da Verdade
+    document.getElementById('card-hero-balance').addEventListener('click', (e) => {
+        if (e.target.closest('.help-trigger')) return;
+        document.getElementById('truth-chart-drawer').classList.toggle('open');
+        renderTruthChart();
+    });
+
+    // Editar Meta Mensal
+    document.getElementById('btn-edit-goal').addEventListener('click', () => {
+        const val = parseFloat(prompt('Qual sua meta de renda mensal em Reais (R$)?', String(state.monthlyGoalBrl)));
+        if (Number.isFinite(val) && val > 0) {
+            state.monthlyGoalBrl = val;
+            saveEncryptedVault();
+            renderAllViews();
+        }
+    });
+
+    // Seletor do Simulador Duplo
+    document.getElementById('mode-my-balance').addEventListener('click', () => {
+        state.simulatorMode = 'my-balance';
+        document.getElementById('mode-my-balance').classList.add('active');
+        document.getElementById('mode-sim-capital').classList.remove('active');
+        recomputeSculptor();
+    });
+
+    document.getElementById('mode-sim-capital').addEventListener('click', () => {
+        state.simulatorMode = 'sim-capital';
+        document.getElementById('mode-sim-capital').classList.add('active');
+        document.getElementById('mode-my-balance').classList.remove('active');
+        recomputeSculptor();
+    });
+
+    // Perfis 1-Clique
+    document.querySelectorAll('.profile-pill').forEach((pill) => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.profile-pill').forEach((p) => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.riskProfile = pill.getAttribute('data-profile');
+            state.customTargetBrlMin = null;
+            document.getElementById('input-target-brl-min').value = '';
+            saveEncryptedVault();
+            recomputeSculptor();
+        });
+    });
+
+    // Input Meta R$/minuto
+    document.getElementById('input-target-brl-min').addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        state.customTargetBrlMin = Number.isFinite(val) && val > 0 ? val : null;
+        recomputeSculptor();
+    });
+
+    document.getElementById('btn-reset-target').addEventListener('click', () => {
+        state.customTargetBrlMin = null;
+        document.getElementById('input-target-brl-min').value = '';
+        recomputeSculptor();
+    });
+
+    // Timeframes do Gráfico
+    document.querySelectorAll('.tf-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tf-btn').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentTf = btn.getAttribute('data-tf');
+            currentTfSec = parseInt(btn.getAttribute('data-sec'), 10);
+            liveCandle = null;
+            loadKlines(currentTf);
+        });
+    });
+
+    // Bottom Sheet: Raio-X Antes de Assinar
+    document.getElementById('btn-open-xray').addEventListener('click', () => {
+        const feePct = (getPlatformFeeBps() / 100).toFixed(2);
+        document.getElementById('xray-out-val').textContent = formatInSelectedCurrency(sculptedPlan.deployableUsd);
+        document.getElementById('xray-in-val').textContent =
+            `${Math.round(sculptedPlan.targetWpolShare * 100)}% WPOL / ${Math.round(sculptedPlan.targetUsdtShare * 100)}% USDT0`;
+        document.getElementById('xray-range-val').textContent =
+            `${sculptedPlan.pMin.toFixed(5)} ↔ ${sculptedPlan.pMax.toFixed(5)}`;
+        document.getElementById('xray-cost-val').textContent =
+            `~R$ ${(market.dynamicGasReservePol * market.polUsd * market.usdBrl * 0.2).toFixed(2)} gás + ${feePct}% app`;
+        document.getElementById('autopilot-exec-log').textContent = '';
+        document.getElementById('sheet-xray').classList.add('open');
+    });
+
+    document.getElementById('btn-close-xray').addEventListener('click', () => {
+        document.getElementById('sheet-xray').classList.remove('open');
+    });
+
+    document.getElementById('btn-confirm-execute').addEventListener('click', executeAutoPilotStrategy);
+
+    // Ajuda Educativa Contextual (?)
+    document.querySelectorAll('.help-trigger').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const key = btn.getAttribute('data-edu');
+            const info = EDU_TEXTS[key];
+            if (info) {
+                document.getElementById('edu-sheet-title').textContent = info.title;
+                document.getElementById('edu-sheet-body').textContent = info.body;
+                document.getElementById('sheet-edu').classList.add('open');
+            }
+        });
+    });
+
+    document.getElementById('btn-close-edu').addEventListener('click', () => {
+        document.getElementById('sheet-edu').classList.remove('open');
+    });
+
+    // Sub-abas da Tela Caixa
+    document.querySelectorAll('.subtab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.subtab-btn').forEach((b) => b.classList.remove('active'));
+            btn.classList.add('active');
+            const target = btn.getAttribute('data-sub');
+            document.querySelectorAll('.subview').forEach((v) => v.classList.toggle('active', v.id === `sub-${target}`));
+        });
+    });
+
+    // Alternador Bridge Web3 vs BTC/Lightning
+    document.getElementById('bridge-mode-web3').addEventListener('click', () => {
+        document.getElementById('bridge-mode-web3').classList.add('active');
+        document.getElementById('bridge-mode-btc').classList.remove('active');
+        document.getElementById('panel-bridge-web3').style.display = 'flex';
+        document.getElementById('panel-bridge-btc').style.display = 'none';
+    });
+
+    document.getElementById('bridge-mode-btc').addEventListener('click', () => {
+        document.getElementById('bridge-mode-btc').classList.add('active');
+        document.getElementById('bridge-mode-web3').classList.remove('active');
+        document.getElementById('panel-bridge-btc').style.display = 'flex';
+        document.getElementById('panel-bridge-web3').style.display = 'none';
+    });
+
+    // Bridge & Swap Listeners
+    ['bridge-from-asset', 'bridge-to-asset', 'bridge-amount-in'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', refreshBridgeQuote);
+        document.getElementById(id).addEventListener('change', refreshBridgeQuote);
+    });
+
+    document.getElementById('btn-bridge-max').addEventListener('click', () => {
+        const [chainStr, sym] = document.getElementById('bridge-from-asset').value.split(':');
+        const cId = Number(chainStr);
+        const bal = balances[cId]?.[sym] || 0;
+        const usable = sym === 'POL' ? Math.max(0, bal - market.dynamicGasReservePol) : bal;
+        document.getElementById('bridge-amount-in').value = usable.toFixed(4);
+        refreshBridgeQuote();
+    });
+
+    document.getElementById('btn-exec-bridge').addEventListener('click', executeBridgeOrSwap);
+    document.getElementById('btn-create-btc-order').addEventListener('click', createNativeBtcOrLightningOrder);
+    document.getElementById('btn-copy-btc-addr').addEventListener('click', () => {
+        const txt = document.getElementById('btc-deposit-addr').textContent;
+        navigator.clipboard.writeText(txt).catch(() => {});
+        triggerHaptic([20]);
+    });
+
+    // PIX Listeners
+    document.getElementById('pix-target-brl').addEventListener('input', renderPixRoutes);
+    document.getElementById('btn-pix-nokyc').addEventListener('click', (e) => {
+        state.onlyNoKycPix = !state.onlyNoKycPix;
+        e.currentTarget.textContent = state.onlyNoKycPix ? 'FILTRO: SEM KYC' : 'FILTRO: TODAS';
+        renderPixRoutes();
+    });
+    document.getElementById('btn-pix-use-fees').addEventListener('click', () => {
+        const feesBrl = balances.unclaimedFeesUsd * market.usdBrl;
+        document.getElementById('pix-target-brl').value = Math.max(1, feesBrl).toFixed(2);
+        renderPixRoutes();
+    });
+
+    // Pools & Auditoria Listeners
+    document.getElementById('btn-refresh-pools').addEventListener('click', syncAllChainsNow);
+    document.getElementById('btn-run-forensics').addEventListener('click', runDayOneForensics);
+    document.getElementById('btn-save-webhook').addEventListener('click', () => {
+        const url = document.getElementById('input-webhook-url').value.trim();
+        if (url && !url.startsWith('https://')) {
+            alert('Por segurança, o Webhook deve começar com https://');
+            return;
+        }
+        state.webhookUrl = url;
+        saveEncryptedVault();
+        triggerHaptic([20]);
+    });
+
+    // Exportar / Importar Cofre JSON
+    document.getElementById('btn-export-vault').addEventListener('click', () => {
+        const cleanExport = {
+            monthlyGoalBrl: state.monthlyGoalBrl,
+            displayCurrency: state.displayCurrency,
+            riskProfile: state.riskProfile,
+            forensics: state.forensics
+        };
+        const blob = new Blob([JSON.stringify(cleanExport, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `rdesk-cofre-${new Date().toISOString().slice(0, 10)}.rdesk`;
+        a.click();
+    });
+
+    document.getElementById('btn-import-vault').addEventListener('click', () => {
+        document.getElementById('file-import-vault').click();
+    });
+
+    document.getElementById('file-import-vault').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file || file.size > 262144) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
             try {
-                const parsed = iface.parseLog(response.params.result);
-                const amount0 = parseFloat(ethers.utils.formatUnits(parsed.args.amount0.toString(), 18));
-                const amount1 = parseFloat(ethers.utils.formatUnits(parsed.args.amount1.toString(), 6));
-                const isBuy = amount0 < 0;
-                const polVal = Math.abs(amount0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-                const brzVal = (Math.abs(amount1) * getMotherRate()).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-                const time = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+                const imported = JSON.parse(ev.target.result);
+                if (Number.isFinite(imported.monthlyGoalBrl)) state.monthlyGoalBrl = imported.monthlyGoalBrl;
+                if (imported.forensics) state.forensics = imported.forensics;
+                saveEncryptedVault();
+                renderAllViews();
+            } catch (err) {}
+        };
+        reader.readAsText(file);
+    });
 
-                const row = document.createElement('div');
-                row.className = 'tape-row';
-
-                const c1 = document.createElement('div'); c1.textContent = time;
-                const c2 = document.createElement('div'); c2.className = isBuy ? 'type-buy' : 'type-sell'; c2.textContent = isBuy ? 'COMPRA' : 'VENDA';
-                const c3 = document.createElement('div'); c3.textContent = `${brzVal} BRZ`;
-                const c4 = document.createElement('div'); c4.textContent = `${polVal} P`;
-
-                row.append(c1, c2, c3, c4);
-                tapeEl.prepend(row);
-                if (tapeEl.children.length > 30) tapeEl.removeChild(tapeEl.lastChild);
-            } catch (e) {}
-        }
-    };
-    wsPool.onclose = () => setTimeout(initPolygonScanner, 3500);
-}
-
-document.getElementById('btn-audio').addEventListener('click', async () => {
-    const btn = document.getElementById('btn-audio');
-    if (!audioEnabled) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        audioEnabled = true;
-        btn.textContent = 'SOM: ON';
-        btn.classList.add('active-audio');
-        playBeep(1046, 0.12, 'sine');
-    } else {
-        audioEnabled = false;
-        btn.textContent = 'SOM: OFF';
-        btn.classList.remove('active-audio');
+    if (window.ethereum) {
+        window.ethereum.on('accountsChanged', (accs) => {
+            if (accs && accs.length > 0) connectWallet();
+        });
     }
-});
-
-function playBeep(freq, dur, type) {
-    if (!audioEnabled || !audioCtx) return;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + dur);
 }
 
-function setupResizers() {
-    const res1 = document.getElementById('resizer-1');
-    const res2 = document.getElementById('resizer-2');
-    const leftCol = document.getElementById('col-left');
-    const rightCol = document.getElementById('col-right');
-
-    let activeResizer = null;
-    res1.addEventListener('mousedown', () => { activeResizer = 1; res1.classList.add('dragging'); });
-    res2.addEventListener('mousedown', () => { activeResizer = 2; res2.classList.add('dragging'); });
-
-    window.addEventListener('mousemove', (e) => {
-        if (!activeResizer) return;
-        if (activeResizer === 1) {
-            leftCol.style.width = Math.max(110, Math.min(340, e.clientX - 8)) + 'px';
-        } else if (activeResizer === 2) {
-            rightCol.style.width = Math.max(280, Math.min(560, window.innerWidth - e.clientX - 8)) + 'px';
-        }
-    });
-
-    window.addEventListener('mouseup', () => {
-        if (activeResizer) {
-            res1.classList.remove('dragging');
-            res2.classList.remove('dragging');
-            activeResizer = null;
-        }
-    });
-}
-
+// =========================================================================
+// 15. INICIALIZAÇÃO DO PWA & LOOPS EM TEMPO REAL
+// =========================================================================
 window.addEventListener('DOMContentLoaded', async () => {
-    setupResizers();
-    ensureYieldTargetUI();
-    await loadFromTripleBackup();
-
-    if (appState.wallet) {
-        document.getElementById('wallet-address').value = appState.wallet;
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
 
-    syncPnlInputsWithFocused();
-    initTradingViewChart();
-    renderAllPositions();
-    refreshMotherCurrencyOracle();
-    setInterval(refreshMotherCurrencyOracle, 25000);
-    refreshPoolVolumeAndLiquidity();
-    setInterval(refreshPoolVolumeAndLiquidity, 30000);
-    refreshSniperModel15m();
-    setInterval(refreshSniperModel15m, 15000);
-    buildVariationsPanel();
-    setInterval(buildVariationsPanel, 60000);
-    initGlobalTracker();
-    initPolygonScanner();
-    recalculatePixRanking();
-    refreshSwapQuote();
+    const urlParams = new URLSearchParams(window.location.search);
+    const startTab = urlParams.get('tab');
+    if (startTab && ['cofre', 'motor', 'pools', 'caixa'].includes(startTab)) {
+        switchTab(startTab);
+    }
+
+    bindEvents();
+    initChart();
+    await refreshMarketOracles();
+    renderPixRoutes();
+    renderAllViews();
+    startBinanceWebSocket();
+
+    setInterval(refreshMarketOracles, 25000);
     setInterval(() => {
-        if (document.getElementById('view-swap').classList.contains('active')) {
-            refreshSwapQuote();
-        }
-    }, 8000);
-
-    if (appState.wallet) {
-        await runUnstoppableScan();
-    }
-    setInterval(refreshLivePoolFeesAndBalances, 12000);
+        if (state.wallet) syncAllChainsNow();
+    }, 15000);
 });
