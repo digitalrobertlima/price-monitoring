@@ -1,0 +1,26 @@
+{
+  "name": "RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido",
+  "short_name": "RDESK SENTINEL",
+  "description": "Carteira de autocustódia com biometria, rendimento Uniswap V3, comparador PIX líquido e auditoria real.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%23090b10'/%3E%3Ccircle cx='96' cy='96' r='64' fill='none' stroke='%23eab308' stroke-width='10'/%3E%3Cpath d='M68 124V68h32c14 0 22 7 22 18 0 9-5 15-14 17l16 21h-16l-14-19H82v19H68zm14-31h16c6 0 10-3 10-7s-4-7-10-7H82v14z' fill='%2300e676'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='108' fill='%23090b10'/%3E%3Ccircle cx='256' cy='256' r='172' fill='none' stroke='%23eab308' stroke-width='26'/%3E%3Cpath d='M182 330V182h86c36 0 58 18 58 48 0 24-14 40-38 45l42 55h-42l-36-50h-32v50h-38zm38-82h42c16 0 26-7 26-18s-10-18-26-18h-42v36z' fill='%2300e676'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
