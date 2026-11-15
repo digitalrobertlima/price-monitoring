@@ -2,1418 +2,694 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#0A0B0E">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="RDESK DeFi">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; form-action 'self';">
-    <title>RDESK Terminal — Super App DeFi & Patrimônio</title>
-    <link rel="manifest" href="./manifest.json">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#07080b">
+    <meta name="description" content="RDESK SENTINEL V22 — Super App de Autocustódia Multi-Rede, Piloto Automático Uniswap V3, PIX Líquido e Auditoria Histórica.">
+    <title>RDESK SENTINEL V22 — Autocustódia & Liquidez DeFi</title>
+
+    <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js" defer></script>
-    <script src="./app.js" defer></script>
-    <style>
-        :root {
-            --bg-obsidian: #0A0B0E;
-            --bg-surface: #12141B;
-            --bg-elevated: #181B24;
-            --bg-input: #0D0F14;
-            --gold-accent: #CDA434;
-            --gold-soft: rgba(205, 164, 52, 0.14);
-            --gold-border: rgba(205, 164, 52, 0.28);
-            --emerald: #10B981;
-            --emerald-soft: rgba(16, 185, 129, 0.14);
-            --amber: #F59E0B;
-            --amber-soft: rgba(245, 158, 11, 0.14);
-            --coral: #EF4444;
-            --coral-soft: rgba(239, 68, 68, 0.14);
-            --cyan: #38BDF8;
-            --cyan-soft: rgba(56, 189, 248, 0.14);
-            --text-primary: #F3F4F6;
-            --text-secondary: #9CA3AF;
-            --text-muted: #6B7280;
-            --border-subtle: rgba(255, 255, 255, 0.07);
-            --nav-height: 68px;
-            --radius-lg: 16px;
-            --radius-md: 12px;
-            --radius-sm: 8px;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        html, body {
-            height: 100%;
-            background-color: #050608;
-            color: var(--text-primary);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            overflow: hidden;
-            user-select: none;
-        }
-
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
-            font-variant-numeric: tabular-nums;
-        }
-
-        /* Shell Responsivo Centralizado */
-        .app-shell {
-            width: 100%;
-            max-width: 520px;
-            height: 100dvh;
-            margin: 0 auto;
-            background: var(--bg-obsidian);
-            display: flex;
-            flex-direction: column;
-            position: relative;
-            border-left: 1px solid var(--border-subtle);
-            border-right: 1px solid var(--border-subtle);
-            box-shadow: 0 0 60px rgba(0, 0, 0, 0.85);
-        }
-
-        /* Alerta Visual Discreto na Borda Superior */
-        .app-shell.state-warning {
-            box-shadow: inset 0 3px 0 var(--amber), 0 0 60px rgba(0, 0, 0, 0.85);
-        }
-        .app-shell.state-danger {
-            box-shadow: inset 0 3px 0 var(--coral), 0 0 60px rgba(0, 0, 0, 0.85);
-        }
-
-        /* Header Superior Compacto */
-        .top-bar {
-            padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-            background: rgba(10, 11, 14, 0.92);
-            backdrop-filter: blur(14px);
-            border-bottom: 1px solid var(--border-subtle);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            z-index: 20;
-        }
-
-        .brand-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .brand-logo {
-            width: 30px;
-            height: 30px;
-            border-radius: 9px;
-            background: var(--gold-soft);
-            border: 1px solid var(--gold-border);
-            display: grid;
-            place-items: center;
-            color: var(--gold-accent);
-            font-weight: 800;
-            font-size: 0.85rem;
-        }
-
-        .brand-meta {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .brand-title {
-            font-size: 0.82rem;
-            font-weight: 800;
-            letter-spacing: 0.03em;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .live-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--emerald);
-            box-shadow: 0 0 8px var(--emerald);
-        }
-
-        .fee-tier-badge {
-            font-size: 0.62rem;
-            font-weight: 700;
-            color: var(--gold-accent);
-            letter-spacing: 0.02em;
-        }
-
-        .top-actions {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .icon-btn {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-secondary);
-            display: grid;
-            place-items: center;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.15s ease;
-        }
-
-        .icon-btn:active {
-            transform: scale(0.95);
-        }
-
-        .icon-btn.active {
-            border-color: var(--gold-border);
-            color: var(--gold-accent);
-            background: var(--gold-soft);
-        }
-
-        .btn-wallet {
-            height: 34px;
-            padding: 0 11px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, rgba(205, 164, 52, 0.22), rgba(205, 164, 52, 0.08));
-            border: 1px solid var(--gold-border);
-            color: var(--gold-accent);
-            font-size: 0.72rem;
-            font-weight: 700;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-
-        .btn-wallet.connected {
-            background: var(--emerald-soft);
-            border-color: rgba(16, 185, 129, 0.35);
-            color: var(--emerald);
-        }
-
-        /* Barra Tricambial Rápida */
-        .currency-ribbon {
-            padding: 6px 14px;
-            background: var(--bg-surface);
-            border-bottom: 1px solid var(--border-subtle);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
-        }
-
-        .currency-pills {
-            display: flex;
-            background: var(--bg-input);
-            padding: 2px;
-            border-radius: 8px;
-            border: 1px solid var(--border-subtle);
-        }
-
-        .curr-pill {
-            padding: 4px 9px;
-            border: none;
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 0.66rem;
-            font-weight: 700;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        .curr-pill.active {
-            background: var(--bg-elevated);
-            color: var(--gold-accent);
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-        }
-
-        .ticker-mini {
-            font-size: 0.68rem;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* Área Principal Rolável */
-        .screen-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 14px 14px calc(var(--nav-height) + 22px + env(safe-area-inset-bottom));
-            scroll-behavior: smooth;
-        }
-
-        .screen-container::-webkit-scrollbar {
-            width: 4px;
-        }
-        .screen-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-        }
-
-        .screen-view {
-            display: none;
-            flex-direction: column;
-            gap: 12px;
-            animation: fadeIn 0.18s ease;
-        }
-
-        .screen-view.active {
-            display: flex;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Cards Base */
-        .card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 14px;
-        }
-
-        .card-gold {
-            background: linear-gradient(165deg, rgba(205, 164, 52, 0.11) 0%, rgba(18, 20, 27, 0.96) 55%);
-            border: 1px solid var(--gold-border);
-        }
-
-        .card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-
-        .card-title {
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .help-trigger {
-            width: 17px;
-            height: 17px;
-            border-radius: 50%;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text-secondary);
-            font-size: 0.62rem;
-            font-weight: 700;
-            display: inline-grid;
-            place-items: center;
-            cursor: pointer;
-        }
-
-        /* Hero Patrimônio (Tela 1: Cofre) */
-        .hero-balance-box {
-            cursor: pointer;
-        }
-
-        .hero-label-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.72rem;
-            color: var(--text-secondary);
-        }
-
-        .hero-amount {
-            font-size: 1.95rem;
-            font-weight: 800;
-            color: var(--text-primary);
-            letter-spacing: -0.02em;
-            margin: 6px 0 4px;
-        }
-
-        .hero-sub-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 6px;
-            font-size: 0.74rem;
-        }
-
-        .pnl-badge {
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-weight: 700;
-            font-size: 0.7rem;
-        }
-
-        .pnl-badge.pos {
-            background: var(--emerald-soft);
-            color: var(--emerald);
-        }
-
-        .pnl-badge.neg {
-            background: var(--coral-soft);
-            color: var(--coral);
-        }
-
-        /* Mini Gráfico da Verdade */
-        .truth-chart-drawer {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border-subtle);
-            display: none;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .truth-chart-drawer.open {
-            display: flex;
-        }
-
-        .truth-legend {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.64rem;
-            color: var(--text-secondary);
-        }
-
-        #truth-chart-canvas {
-            width: 100%;
-            height: 135px;
-            border-radius: 10px;
-            background: var(--bg-input);
-        }
-
-        /* Grid Multi-Chain */
-        .chain-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-        }
-
-        .chain-chip {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 9px 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-
-        .chain-chip.active-chain {
-            border-color: var(--gold-border);
-        }
-
-        .chain-name {
-            font-size: 0.64rem;
-            font-weight: 700;
-            color: var(--text-secondary);
-        }
-
-        .chain-val {
-            font-size: 0.78rem;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        /* Anel de Meta Real */
-        .goal-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .goal-ring-wrap {
-            position: relative;
-            width: 54px;
-            height: 54px;
-            flex-shrink: 0;
-        }
-
-        .goal-ring-text {
-            position: absolute;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            font-size: 0.68rem;
-            font-weight: 800;
-            color: var(--emerald);
-        }
-
-        .goal-info {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        /* Botão Primário de Ação Única */
-        .btn-primary-action {
-            width: 100%;
-            min-height: 50px;
-            border: none;
-            border-radius: var(--radius-md);
-            background: linear-gradient(135deg, #D9B13B 0%, #B88E22 100%);
-            color: #0A0B0E;
-            font-size: 0.84rem;
-            font-weight: 800;
-            letter-spacing: 0.03em;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 6px 20px rgba(205, 164, 52, 0.25);
-            transition: transform 0.14s ease, opacity 0.14s ease;
-        }
-
-        .btn-primary-action:active {
-            transform: scale(0.98);
-        }
-
-        .btn-primary-action:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary-action {
-            width: 100%;
-            min-height: 44px;
-            border-radius: var(--radius-md);
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-primary);
-            font-size: 0.78rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        /* Tela 2: Motor & Escultor */
-        .chart-card {
-            padding: 10px;
-        }
-
-        .tf-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .tf-group {
-            display: flex;
-            gap: 4px;
-        }
-
-        .tf-btn {
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid var(--border-subtle);
-            background: var(--bg-input);
-            color: var(--text-secondary);
-            font-size: 0.66rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .tf-btn.active {
-            background: var(--gold-soft);
-            border-color: var(--gold-border);
-            color: var(--gold-accent);
-        }
-
-        #tv-chart {
-            width: 100%;
-            height: 190px;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .seg-control {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            background: var(--bg-input);
-            padding: 3px;
-            border-radius: 10px;
-            border: 1px solid var(--border-subtle);
-            gap: 3px;
-        }
-
-        .seg-btn {
-            padding: 8px 6px;
-            border: none;
-            border-radius: 8px;
-            background: transparent;
-            color: var(--text-secondary);
-            font-size: 0.72rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .seg-btn.active {
-            background: var(--bg-elevated);
-            color: var(--gold-accent);
-        }
-
-        .profile-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 6px;
-        }
-
-        .profile-pill {
-            padding: 9px 6px;
-            border-radius: 10px;
-            border: 1px solid var(--border-subtle);
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            text-align: center;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .profile-pill strong {
-            font-size: 0.72rem;
-            color: var(--text-primary);
-        }
-
-        .profile-pill span {
-            font-size: 0.6rem;
-        }
-
-        .profile-pill.active {
-            border-color: var(--gold-border);
-            background: var(--gold-soft);
-        }
-
-        .profile-pill.active strong {
-            color: var(--gold-accent);
-        }
-
-        /* Inputs Limpos */
-        .field-group {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .field-label {
-            font-size: 0.68rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .input-box {
-            display: flex;
-            align-items: center;
-            background: var(--bg-input);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 0 12px;
-            height: 46px;
-            gap: 8px;
-        }
-
-        .input-box:focus-within {
-            border-color: var(--gold-border);
-        }
-
-        .input-box input, .input-box select {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--text-primary);
-            font-size: 0.92rem;
-            font-weight: 700;
-            outline: none;
-            min-width: 0;
-        }
-
-        .input-box select option {
-            background: var(--bg-surface);
-            color: var(--text-primary);
-        }
-
-        .chip-mini {
-            padding: 4px 8px;
-            border-radius: 6px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            color: var(--gold-accent);
-            font-size: 0.64rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        /* Barra Visual de Range (Trilho de Trabalho) */
-        .range-track-wrap {
-            background: var(--bg-input);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .range-endpoints {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.72rem;
-            font-weight: 700;
-        }
-
-        .range-bar-bg {
-            height: 8px;
-            border-radius: 99px;
-            background: rgba(255, 255, 255, 0.08);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .range-bar-fill {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 15%;
-            right: 15%;
-            background: linear-gradient(90deg, var(--emerald), var(--gold-accent));
-            border-radius: 99px;
-        }
-
-        .range-cursor {
-            position: absolute;
-            top: -2px;
-            bottom: -2px;
-            width: 3px;
-            background: #FFFFFF;
-            left: 50%;
-            box-shadow: 0 0 8px #FFFFFF;
-        }
-
-        /* Tela 3: Pools & Segurança */
-        .pos-card {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            border-left: 3px solid var(--emerald);
-            border-radius: var(--radius-md);
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .pos-card.out-range {
-            border-left-color: var(--coral);
-        }
-
-        .pos-card-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .status-badge {
-            font-size: 0.62rem;
-            font-weight: 800;
-            padding: 3px 7px;
-            border-radius: 6px;
-            background: var(--emerald-soft);
-            color: var(--emerald);
-        }
-
-        .status-badge.warn {
-            background: var(--amber-soft);
-            color: var(--amber);
-        }
-
-        .status-badge.danger {
-            background: var(--coral-soft);
-            color: var(--coral);
-        }
-
-        .pos-btn-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 5px;
-        }
-
-        .pos-act-btn {
-            padding: 7px 4px;
-            border-radius: 8px;
-            border: 1px solid var(--border-subtle);
-            background: var(--bg-surface);
-            color: var(--text-primary);
-            font-size: 0.62rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .pos-act-btn.danger {
-            color: var(--coral);
-            border-color: rgba(239, 68, 68, 0.3);
-        }
-
-        /* Tela 4: Caixa (Bridge BTC/LN, PIX & Auditoria) */
-        .subtab-bar {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 5px;
-            background: var(--bg-input);
-            padding: 4px;
-            border-radius: 12px;
-            border: 1px solid var(--border-subtle);
-        }
-
-        .subtab-btn {
-            padding: 8px 4px;
-            border: none;
-            border-radius: 8px;
-            background: transparent;
-            color: var(--text-secondary);
-            font-size: 0.7rem;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .subtab-btn.active {
-            background: var(--bg-elevated);
-            color: var(--gold-accent);
-        }
-
-        .subview {
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .subview.active {
-            display: flex;
-        }
-
-        .qr-deposit-box {
-            background: var(--bg-input);
-            border: 1px dashed var(--gold-border);
-            border-radius: var(--radius-md);
-            padding: 12px;
-            text-align: center;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .qr-deposit-box.visible {
-            display: flex;
-        }
-
-        .qr-deposit-box img {
-            width: 150px;
-            height: 150px;
-            border-radius: 10px;
-            background: #FFFFFF;
-            padding: 6px;
-        }
-
-        .pix-route-item {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 10px 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: pointer;
-        }
-
-        .pix-route-item.winner {
-            border-color: rgba(16, 185, 129, 0.45);
-            background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), var(--bg-elevated));
-        }
-
-        /* Barra de Navegação Inferior Fixa (Thumb-Zone) */
-        .bottom-nav {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: calc(var(--nav-height) + env(safe-area-inset-bottom));
-            padding-bottom: env(safe-area-inset-bottom);
-            background: rgba(12, 14, 19, 0.96);
-            backdrop-filter: blur(16px);
-            border-top: 1px solid var(--border-subtle);
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            z-index: 30;
-        }
-
-        .nav-item {
-            border: none;
-            background: transparent;
-            color: var(--text-muted);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            cursor: pointer;
-            font-size: 0.66rem;
-            font-weight: 700;
-            transition: color 0.15s ease;
-        }
-
-        .nav-item .nav-icon {
-            font-size: 1.15rem;
-            line-height: 1;
-        }
-
-        .nav-item.active {
-            color: var(--gold-accent);
-        }
-
-        /* Bottom Sheets (Raio-X Pré-Assinatura & Ajuda Educativa) */
-        .sheet-backdrop {
-            position: absolute;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.72);
-            backdrop-filter: blur(4px);
-            display: none;
-            align-items: flex-end;
-            z-index: 50;
-        }
-
-        .sheet-backdrop.open {
-            display: flex;
-        }
-
-        .bottom-sheet {
-            width: 100%;
-            background: var(--bg-surface);
-            border-top: 1px solid var(--gold-border);
-            border-radius: 22px 22px 0 0;
-            padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            animation: slideUp 0.2s ease;
-        }
-
-        @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-
-        .sheet-handle {
-            width: 38px;
-            height: 4px;
-            border-radius: 99px;
-            background: rgba(255, 255, 255, 0.2);
-            margin: 0 auto 4px;
-        }
-
-        .xray-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border-subtle);
-            font-size: 0.78rem;
-        }
-
-        .privacy-blur {
-            filter: blur(7px);
-            pointer-events: none;
-        }
-    </style>
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+    <script src="vault-core.js" defer></script>
+    <script src="ledger-advisor.js" defer></script>
+    <script src="gateway-pix.js" defer></script>
+    <script src="sentinel-engine.js" defer></script>
 </head>
-<body>
-    <div class="app-shell" id="app-shell">
-        <!-- HEADER SUPERIOR -->
-        <header class="top-bar">
-            <div class="brand-group">
-                <div class="brand-logo">R</div>
-                <div class="brand-meta">
-                    <div class="brand-title">
-                        <span>RDESK DEFI</span>
-                        <span class="live-dot" id="network-pulse"></span>
-                    </div>
-                    <span class="fee-tier-badge" id="founder-status-badge">CONECTE PARA VERIFICAR TAXA</span>
-                </div>
-            </div>
-            <div class="top-actions">
-                <button type="button" class="icon-btn" id="btn-privacy-eye" title="Ocultar ou mostrar saldos">👁</button>
-                <button type="button" class="icon-btn" id="btn-notif-bell" title="Ativar alertas de borda">🔔</button>
-                <button type="button" class="btn-wallet" id="btn-connect-wallet">CONECTAR</button>
-            </div>
-        </header>
+<body class="mode-sereno">
 
-        <!-- BARRA TRICAMBIAL -->
-        <div class="currency-ribbon">
-            <div class="currency-pills" id="display-currency-pills">
-                <button type="button" class="curr-pill active" data-curr="BRZ">BRZ</button>
-                <button type="button" class="curr-pill" data-curr="BRLA">BRLA</button>
-                <button type="button" class="curr-pill" data-curr="USD">USD</button>
-                <button type="button" class="curr-pill" data-curr="BRL">R$</button>
-            </div>
-            <div class="ticker-mini mono">
-                <span id="top-pol-price">POL $0.0000</span>
-                <span>•</span>
-                <span id="top-fx-rate">1$ = R$5.65</span>
-            </div>
+    <!-- =====================================================================
+         BARRA SUPERIOR UNIVERSAL (MODO SERENO & TERMINAL PRO)
+         ===================================================================== -->
+    <header class="topbar">
+        <div class="brand-title">
+            <span>RDESK SENTINEL V22</span>
+            <span id="alert-status" class="status-pill safe"
+                  data-tip-title="Radar de Segurança da Posição"
+                  data-tip-what="Indica em tempo real se o preço atual está dentro da sua faixa de lucro na Uniswap V3."
+                  data-tip-impact="VERDE (Seguro): rendendo tarifas. AMARELO (Borda): perto do limite. VERMELHO: fora da faixa.">SEGURO</span>
         </div>
 
-        <!-- ÁREA PRINCIPAL (ONE ACTION, ONE SCREEN) -->
-        <main class="screen-container">
-            <!-- ================= TELA 1: COFRE (PATRIMÔNIO & VERDADE) ================= -->
-            <section class="screen-view active" id="view-cofre">
-                <div class="card card-gold hero-balance-box" id="card-hero-balance">
-                    <div class="hero-label-row">
-                        <span>PATRIMÔNIO LÍQUIDO REAL <button type="button" class="help-trigger" data-edu="patrimonio">?</button></span>
-                        <span style="color: var(--gold-accent); font-weight: 700;">TOQUE P/ GRÁFICO ▾</span>
-                    </div>
-                    <div class="hero-amount mono sensitive-val" id="hero-total-wealth">0,00 BRZ</div>
-                    <div class="hero-sub-row">
-                        <span class="pnl-badge pos sensitive-val" id="hero-real-pnl">Lucro Real: +0,00 (0.00%)</span>
-                        <span class="mono" style="color: var(--text-secondary);" id="hero-unclaimed-fees">Taxas livres: +0,00</span>
-                    </div>
+        <div class="mother-currency-bar">
+            <div class="mc-item">DÓLAR: <span id="top-usd-brl">R$ 5,650</span></div>
+            <div class="mc-item">1 USDT = <span id="top-usdt-brz">5,65 BRZ</span></div>
+            <div class="mc-item">1 USDT = <span id="top-usdt-brla">5,65 BRLA</span></div>
+        </div>
 
-                    <!-- Mini Gráfico da Verdade (Patrimônio Real vs Aportes vs HODL) -->
-                    <div class="truth-chart-drawer" id="truth-chart-drawer">
-                        <div class="truth-legend">
-                            <span style="color: var(--emerald);">● Saldo Real</span>
-                            <span style="color: #E5E7EB;">--- Dinheiro Investido</span>
-                            <span style="color: var(--gold-accent);">● Se Só Guardasse (HODL)</span>
-                        </div>
-                        <div id="truth-chart-canvas"></div>
-                        <div style="font-size: 0.68rem; color: var(--text-secondary); line-height: 1.4;" id="truth-verdict-text">
-                            Aguardando leitura da carteira para comparar seu patrimônio real contra os depósitos desde o Dia 1.
-                        </div>
-                    </div>
-                </div>
+        <div class="top-controls">
+            <button id="btn-install-pwa" class="top-btn" style="display:none;">INSTALAR APP</button>
+            <button id="btn-wake-lock" class="top-btn"
+                    data-tip-title="Manter Tela Acesa (Android)"
+                    data-tip-what="Impede que o celular bloqueie a tela enquanto você acompanha o mercado."
+                    data-tip-impact="Ideal para deixar o painel visível na mesa sem interrupções.">TELA: AUTO</button>
+            <button id="btn-audio" class="top-btn">SOM: OFF</button>
+            <button id="btn-toggle-pro" class="top-btn"
+                    data-tip-title="Alternar Modo Sereno / Terminal Pro"
+                    data-tip-what="Modo Sereno mostra apenas o essencial sem poluição visual. Terminal Pro libera gráfico técnico e controles avançados."
+                    data-tip-impact="Seus dados e sua carteira permanecem os mesmos nos dois modos.">TERMINAL PRO</button>
+            <button id="btn-wallet-status" class="top-btn btn-cta-copper">CRIAR / CONECTAR CARTEIRA</button>
+        </div>
+    </header>
 
-                <!-- Visão Multi-Chain Instantânea (Multicall3) -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">SALDO POR REDE (MULTICALL3)</span>
-                        <span class="mono" style="font-size: 0.65rem; color: var(--emerald);" id="rpc-latency-tag">PRONTO</span>
-                    </div>
-                    <div class="chain-grid mono sensitive-val" id="multichain-grid">
-                        <div class="chain-chip active-chain">
-                            <span class="chain-name">POLYGON</span>
-                            <span class="chain-val" id="chain-val-137">0,00</span>
-                        </div>
-                        <div class="chain-chip">
-                            <span class="chain-name">BASE</span>
-                            <span class="chain-val" id="chain-val-8453">0,00</span>
-                        </div>
-                        <div class="chain-chip">
-                            <span class="chain-name">ARBITRUM</span>
-                            <span class="chain-val" id="chain-val-42161">0,00</span>
-                        </div>
-                        <div class="chain-chip">
-                            <span class="chain-name">CELO</span>
-                            <span class="chain-val" id="chain-val-42220">0,00</span>
-                        </div>
-                        <div class="chain-chip">
-                            <span class="chain-name">OP MAINNET</span>
-                            <span class="chain-val" id="chain-val-10">0,00</span>
-                        </div>
-                        <div class="chain-chip">
-                            <span class="chain-name">EM POOLS</span>
-                            <span class="chain-val" style="color: var(--emerald);" id="chain-val-pools">0,00</span>
-                        </div>
-                    </div>
-                </div>
+    <div id="vault-lock-banner" class="vault-lock-banner">
+        <span>🔒 Seu Cofre Local está bloqueado por senha. Desbloqueie para assinar transações ou rebalancear.</span>
+        <button class="btn-gold" onclick="document.getElementById('btn-wallet-status').click()">DESBLOQUEAR AGORA</button>
+    </div>
 
-                <!-- Planejador de Meta Real ("Conta Paga") -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">META DE RENDA MENSAL <button type="button" class="help-trigger" data-edu="meta">?</button></span>
-                        <button type="button" class="chip-mini" id="btn-edit-goal">DEFINIR META</button>
-                    </div>
-                    <div class="goal-row">
-                        <div class="goal-ring-wrap">
-                            <svg width="54" height="54" viewBox="0 0 54 54">
-                                <circle cx="27" cy="27" r="22" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5"/>
-                                <circle id="goal-ring-circle" cx="27" cy="27" r="22" fill="none" stroke="#10B981" stroke-width="5" stroke-dasharray="138.2" stroke-dashoffset="138.2" stroke-linecap="round" transform="rotate(-90 27 27)"/>
-                            </svg>
-                            <div class="goal-ring-text mono" id="goal-ring-pct">0%</div>
-                        </div>
-                        <div class="goal-info">
-                            <div style="font-size: 0.8rem; font-weight: 700;" id="goal-title-display">Meta: R$ 150,00 / mês</div>
-                            <div style="font-size: 0.7rem; color: var(--text-secondary);" id="goal-progress-sub">
-                                Ritmo atual: R$ 0,00/dia • Faltam R$ 150,00
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <!-- BALÃO FLUTUANTE DO MICRO-MENTOR EDUCATIVO -->
+    <div id="micro-mentor-balloon" class="micro-mentor-balloon" role="tooltip">
+        <div id="mm-title" class="mm-title">Informação</div>
+        <div id="mm-what" class="mm-what"></div>
+        <div id="mm-impact" class="mm-impact"></div>
+    </div>
 
-                <!-- Ação Única Principal da Tela -->
-                <button type="button" class="btn-primary-action" id="btn-goto-motor">
-                    COLOCAR DINHEIRO PARA RENDER ➔
-                </button>
-            </section>
-
-            <!-- ================= TELA 2: MOTOR (ESCULTOR DE RENDIMENTO) ================= -->
-            <section class="screen-view" id="view-motor">
-                <div class="card chart-card">
-                    <div class="tf-bar">
-                        <div class="tf-group">
-                            <button type="button" class="tf-btn" data-tf="5m" data-sec="300">5M</button>
-                            <button type="button" class="tf-btn active" data-tf="15m" data-sec="900">15M</button>
-                            <button type="button" class="tf-btn" data-tf="1h" data-sec="3600">1H</button>
-                            <button type="button" class="tf-btn" data-tf="4h" data-sec="14400">4H</button>
-                        </div>
-                        <span class="mono" style="font-size: 0.66rem; color: var(--emerald);" id="motor-regime-badge">SNIPER 50/50</span>
-                    </div>
-                    <div id="tv-chart"></div>
-                </div>
-
-                <div class="card" style="display: flex; flex-direction: column; gap: 11px;">
-                    <!-- Seletor do Simulador Duplo -->
-                    <div class="seg-control">
-                        <button type="button" class="seg-btn active" id="mode-my-balance">USAR MEU SALDO</button>
-                        <button type="button" class="seg-btn" id="mode-sim-capital">SIMULAR QUANTO PRECISO</button>
-                    </div>
-
-                    <!-- Perfis de Risco em 1 Toque -->
-                    <div class="profile-grid">
-                        <div class="profile-pill" data-profile="escudo">
-                            <strong>ESCUDO</strong>
-                            <span>Largo • Dormir tranquilo</span>
-                        </div>
-                        <div class="profile-pill active" data-profile="sniper">
-                            <strong>SNIPER</strong>
-                            <span>Equilibrado • 2.5x ATR</span>
-                        </div>
-                        <div class="profile-pill" data-profile="turbo">
-                            <strong>META / TURBO</strong>
-                            <span>Estreito • Máx R$/min</span>
-                        </div>
-                    </div>
-
-                    <!-- Campo Meta R$/minuto -->
-                    <div class="field-group">
-                        <label class="field-label" for="input-target-brl-min">
-                            <span>QUANTO QUER GANHAR POR MINUTO? <button type="button" class="help-trigger" data-edu="escultor">?</button></span>
-                            <span class="mono" style="color: var(--emerald);" id="lbl-baseline-rate">Base: R$ 0,0000/min</span>
-                        </label>
-                        <div class="input-box">
-                            <span style="font-size: 0.78rem; font-weight: 700; color: var(--gold-accent);">R$</span>
-                            <input type="number" id="input-target-brl-min" step="0.001" min="0" placeholder="Ex: 0.030">
-                            <span style="font-size: 0.72rem; color: var(--text-secondary);">/min</span>
-                            <button type="button" class="chip-mini" id="btn-reset-target">AUTO</button>
-                        </div>
-                    </div>
-
-                    <!-- Trilho Visual do Range -->
-                    <div class="range-track-wrap">
-                        <div class="range-endpoints mono">
-                            <span style="color: var(--cyan);" id="sculpt-piso">PISO: 0.00000</span>
-                            <span style="color: var(--text-secondary);" id="sculpt-width">Largura 0.0%</span>
-                            <span style="color: var(--gold-accent);" id="sculpt-teto">TETO: 0.00000</span>
-                        </div>
-                        <div class="range-bar-bg">
-                            <div class="range-bar-fill" id="sculpt-bar-fill"></div>
-                            <div class="range-cursor" id="sculpt-cursor"></div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.68rem;" id="sculpt-verdict-row">
-                            <span style="color: var(--emerald); font-weight: 700;" id="sculpt-survival">Duração est.: ~12h dentro</span>
-                            <span class="mono" style="color: var(--text-primary); font-weight: 700;" id="sculpt-projected-hour">~R$ 0,00 / hora</span>
-                        </div>
-                    </div>
-
-                    <!-- Resultado do Modo Reverso (Quanto capital precisa) -->
-                    <div id="reverse-capital-banner" style="display: none; padding: 10px; border-radius: 10px; background: var(--cyan-soft); border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.74rem; line-height: 1.4;">
-                        Para ganhar essa meta com segurança neste range, você precisa de <strong class="mono" id="reverse-req-capital">0,00 BRZ</strong>.
-                    </div>
-                </div>
-
-                <button type="button" class="btn-primary-action" id="btn-open-xray">
-                    REVISAR & COMEÇAR A GANHAR
-                </button>
-            </section>
-
-            <!-- ================= TELA 3: POOLS ATIVAS & SEGURANÇA ================= -->
-            <section class="screen-view" id="view-pools">
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">SUAS POSIÇÕES ATIVAS (UNISWAP V3)</span>
-                        <button type="button" class="chip-mini" id="btn-refresh-pools">ATUALIZAR</button>
-                    </div>
-                    <div id="active-pools-container" style="display: flex; flex-direction: column; gap: 10px;">
-                        <div style="text-align: center; padding: 16px; color: var(--text-muted); font-size: 0.76rem;">
-                            Nenhuma posição ativa encontrada ainda. Use a aba Motor para abrir sua primeira faixa.
-                        </div>
-                    </div>
-                    <div id="pool-action-feedback" style="margin-top: 8px; font-size: 0.72rem; color: var(--cyan); text-align: center;"></div>
-                </div>
-
-                <!-- Radar de Segurança (Allowance Guard) -->
-                <div class="card">
-                    <div class="card-header">
-                        <span class="card-title">ESCUDO DE PERMISSÕES <button type="button" class="help-trigger" data-edu="allowance">?</button></span>
-                        <span style="font-size: 0.65rem; color: var(--emerald); font-weight: 700;">ANTI-DRENO</span>
-                    </div>
-                    <div id="allowance-list" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.74rem; color: var(--text-secondary);">
-                        Conecte sua carteira para auditar aprovações abertas nos contratos.
-                    </div>
-                </div>
-            </section>
-
-            <!-- ================= TELA 4: CAIXA (BRIDGE BTC/LN, PIX & AUDITORIA) ================= -->
-            <section class="screen-view" id="view-caixa">
-                <div class="subtab-bar">
-                    <button type="button" class="subtab-btn active" data-sub="bridge">BRIDGE & BTC</button>
-                    <button type="button" class="subtab-btn" data-sub="pix">SAQUE PIX</button>
-                    <button type="button" class="subtab-btn" data-sub="auditoria">AUDITORIA</button>
-                </div>
-
-                <!-- Sub-tela 4A: Bridge Multi-Chain + FixedFloat Nativo (BTC & Lightning) -->
-                <div class="subview active" id="sub-bridge">
-                    <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
-                        <div class="seg-control">
-                            <button type="button" class="seg-btn active" id="bridge-mode-web3">MULTI-CHAIN WEB3</button>
-                            <button type="button" class="seg-btn" id="bridge-mode-btc">BTC & LIGHTNING (SEM KYC)</button>
-                        </div>
-
-                        <!-- Modo Web3 (LI.FI + Uniswap V3) -->
-                        <div id="panel-bridge-web3" style="display: flex; flex-direction: column; gap: 9px;">
-                            <div class="field-group">
-                                <label class="field-label"><span>VOCÊ ENVIA</span><span class="mono" id="swap-bal-hint">Saldo: 0.00</span></label>
-                                <div class="input-box">
-                                    <select id="bridge-from-asset">
-                                        <option value="137:USDT0">USDT0 (Polygon)</option>
-                                        <option value="137:POL">POL (Polygon)</option>
-                                        <option value="137:BRZ">BRZ (Polygon)</option>
-                                        <option value="137:BRLA">BRLA (Polygon)</option>
-                                        <option value="42220:cREAL">cREAL (Celo)</option>
-                                        <option value="42220:USDT">USDT (Celo)</option>
-                                        <option value="8453:USDC">USDC (Base)</option>
-                                        <option value="42161:USDT">USDT (Arbitrum)</option>
-                                    </select>
-                                    <input type="number" id="bridge-amount-in" placeholder="0.00" step="0.01">
-                                    <button type="button" class="chip-mini" id="btn-bridge-max">MAX</button>
-                                </div>
-                            </div>
-
-                            <div class="field-group">
-                                <label class="field-label"><span>VOCÊ RECEBE (MELHOR ROTA)</span><span class="mono" style="color: var(--emerald);" id="bridge-eta-tag">~15 seg</span></label>
-                                <div class="input-box">
-                                    <select id="bridge-to-asset">
-                                        <option value="137:WPOL">WPOL (Polygon)</option>
-                                        <option value="137:USDT0">USDT0 (Polygon)</option>
-                                        <option value="137:BRZ">BRZ (Polygon)</option>
-                                        <option value="42220:cREAL">cREAL (Celo)</option>
-                                        <option value="8453:ETH">ETH (Base)</option>
-                                        <option value="42161:WBTC">WBTC (Arbitrum)</option>
-                                    </select>
-                                    <input type="text" id="bridge-amount-out" readonly placeholder="0.0000">
-                                </div>
-                            </div>
-
-                            <div style="font-size: 0.68rem; color: var(--text-secondary); display: flex; justify-content: space-between;" id="bridge-route-meta">
-                                <span>Roteador: Uniswap V3 / LI.FI</span>
-                                <span id="bridge-fee-display">Taxa App: 0.00%</span>
-                            </div>
-
-                            <button type="button" class="btn-primary-action" id="btn-exec-bridge">
-                                CONVERTER AGORA
-                            </button>
-                        </div>
-
-                        <!-- Modo FixedFloat Nativo (BTC On-Chain & Lightning Network via THORChain/SideShift) -->
-                        <div id="panel-bridge-btc" style="display: none; flex-direction: column; gap: 9px;">
-                            <div style="font-size: 0.7rem; color: var(--text-secondary); line-height: 1.4;">
-                                Troque <strong>Bitcoin Nativo</strong> ou <strong>Lightning Network</strong> direto para sua carteira sem cadastro e sem KYC.
-                            </div>
-
-                            <div class="field-group">
-                                <label class="field-label"><span>DIREÇÃO DA CONVERSÃO</span></label>
-                                <div class="input-box">
-                                    <select id="btc-pair-select">
-                                        <option value="BTC_TO_USDT_POLY">BTC Nativo ➔ USDT (Polygon)</option>
-                                        <option value="LN_TO_USDT_POLY">Lightning (lnbc) ➔ USDT (Polygon)</option>
-                                        <option value="USDT_POLY_TO_LN">USDT (Polygon) ➔ Pagar Fatura Lightning</option>
-                                        <option value="USDT_POLY_TO_BTC">USDT (Polygon) ➔ Sacar BTC Nativo</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="field-group">
-                                <label class="field-label"><span id="btc-amount-label">VALOR A ENVIAR (BTC)</span></label>
-                                <div class="input-box">
-                                    <input type="number" id="btc-swap-amount" step="0.0001" placeholder="Ex: 0.002">
-                                </div>
-                            </div>
-
-                            <div class="field-group">
-                                <label class="field-label"><span id="btc-dest-label">CARTEIRA DE DESTINO (OU FATURA LNBC)</span></label>
-                                <div class="input-box">
-                                    <input type="text" id="btc-dest-address" placeholder="Cole endereço 0x..., bc1... ou invoice lnbc...">
-                                </div>
-                            </div>
-
-                            <button type="button" class="btn-primary-action" id="btn-create-btc-order">
-                                GERAR ORDEM INSTANTÂNEA
-                            </button>
-
-                            <div class="qr-deposit-box" id="btc-qr-box">
-                                <span style="font-size: 0.7rem; font-weight: 700; color: var(--gold-accent);" id="btc-order-title">ENVIE EXATAMENTE O VALOR ABAIXO:</span>
-                                <img id="btc-qr-img" alt="QR Code Depósito">
-                                <div class="mono" style="font-size: 0.68rem; word-break: break-all; color: var(--text-primary); background: var(--bg-surface); padding: 8px; border-radius: 8px; width: 100%;" id="btc-deposit-addr"></div>
-                                <button type="button" class="chip-mini" id="btn-copy-btc-addr">COPIAR ENDEREÇO / FATURA</button>
-                                <span style="font-size: 0.66rem; color: var(--emerald);" id="btc-order-status">Aguardando envio na rede...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Sub-tela 4B: Calculadora Bidirecional de Saque PIX -->
-                <div class="subview" id="sub-pix">
-                    <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
-                        <div class="card-header" style="margin-bottom: 0;">
-                            <span class="card-title">SAQUE PIX LÍQUIDO</span>
-                            <button type="button" class="chip-mini" id="btn-pix-nokyc">FILTRO: TODAS</button>
-                        </div>
-
-                        <div class="field-group">
-                            <label class="field-label"><span>QUANTO VOCÊ QUER QUE CAIA NO PIX (R$)</span></label>
-                            <div class="input-box">
-                                <span style="font-weight: 700; color: var(--emerald);">R$</span>
-                                <input type="number" id="pix-target-brl" value="100" step="10">
-                                <button type="button" class="chip-mini" id="btn-pix-use-fees">USAR TAXAS</button>
-                            </div>
-                        </div>
-
-                        <div id="pix-routes-container" style="display: flex; flex-direction: column; gap: 7px;"></div>
-                    </div>
-                </div>
-
-                <!-- Sub-tela 4C: Auditoria Forense Dia 1 & Alertas Webhook -->
-                <div class="subview" id="sub-auditoria">
-                    <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
-                        <div class="card-header" style="margin-bottom: 0;">
-                            <span class="card-title">RAIO-X DESDE O DIA 1</span>
-                            <button type="button" class="chip-mini" id="btn-run-forensics">RECALCULAR</button>
-                        </div>
-
-                        <div class="xray-row">
-                            <span style="color: var(--text-secondary);">Total Aportado (Bolso)</span>
-                            <span class="mono sensitive-val" id="forensic-deposited">0,00 BRZ</span>
-                        </div>
-                        <div class="xray-row">
-                            <span style="color: var(--text-secondary);">Total Sacado</span>
-                            <span class="mono sensitive-val" id="forensic-withdrawn">0,00 BRZ</span>
-                        </div>
-                        <div class="xray-row">
-                            <span style="color: var(--text-secondary);">Patrimônio Atual Total</span>
-                            <span class="mono sensitive-val" id="forensic-current">0,00 BRZ</span>
-                        </div>
-                        <div class="xray-row" style="border-bottom: none;">
-                            <span style="font-weight: 700;">Resultado Líquido Real</span>
-                            <span class="mono sensitive-val" style="font-weight: 800; color: var(--emerald);" id="forensic-net-result">+0,00 BRZ</span>
-                        </div>
-
-                        <div class="field-group">
-                            <label class="field-label"><span>ALERTA WHATSAPP / TELEGRAM (WEBHOOK N8N)</span></label>
-                            <div class="input-box">
-                                <input type="url" id="input-webhook-url" placeholder="https://seu-n8n.com/webhook/alerta">
-                                <button type="button" class="chip-mini" id="btn-save-webhook">SALVAR</button>
-                            </div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                            <button type="button" class="btn-secondary-action" id="btn-export-vault">EXPORTAR COFRE</button>
-                            <button type="button" class="btn-secondary-action" id="btn-import-vault">IMPORTAR COFRE</button>
-                            <input type="file" id="file-import-vault" accept=".json,.rdesk" style="display: none;">
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <!-- BARRA DE NAVEGAÇÃO INFERIOR (THUMB-ZONE) -->
-        <nav class="bottom-nav">
-            <button type="button" class="nav-item active" data-tab="cofre">
-                <span class="nav-icon">◈</span>
-                <span>Cofre</span>
-            </button>
-            <button type="button" class="nav-item" data-tab="motor">
-                <span class="nav-icon">⚡</span>
-                <span>Motor</span>
-            </button>
-            <button type="button" class="nav-item" data-tab="pools">
-                <span class="nav-icon">◎</span>
-                <span>Pools</span>
-            </button>
-            <button type="button" class="nav-item" data-tab="caixa">
-                <span class="nav-icon">⇄</span>
-                <span>Caixa</span>
-            </button>
+    <!-- =====================================================================
+         1. MODO SERENO ("ONE SCREEN, ONE ACTION" — CLAREZA & CALMA)
+         ===================================================================== -->
+    <main class="sereno-shell">
+        <nav class="sereno-nav" aria-label="Navegação Principal">
+            <button class="sereno-nav-btn active" data-target="home">1. Início</button>
+            <button class="sereno-nav-btn" data-target="earn">2. Render V3</button>
+            <button class="sereno-nav-btn" data-target="swap">3. Trocar / Ponte</button>
+            <button class="sereno-nav-btn" data-target="pix">4. PIX Líquido</button>
+            <button class="sereno-nav-btn" data-target="audit">5. Auditoria 1ª TX</button>
         </nav>
 
-        <!-- BOTTOM SHEET: RAIO-X ANTES DE ASSINAR -->
-        <div class="sheet-backdrop" id="sheet-xray">
-            <div class="bottom-sheet">
-                <div class="sheet-handle"></div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.92rem; color: var(--gold-accent);">RAIO-X ANTES DE ASSINAR</strong>
-                    <button type="button" class="icon-btn" id="btn-close-xray">✕</button>
+        <!-- ABA SERENO 1: PATRIMÔNIO CONSOLIDADO & CARTEIRA MULTI-REDE -->
+        <section id="sview-home" class="sereno-view active">
+            <div class="sereno-hero-card">
+                <div class="sereno-hero-top">
+                    <span id="sereno-wallet-pill" class="sereno-pill">Autocustódia Inativa</span>
+                    <button id="btn-sereno-open-wallet" class="btn-gold">GERENCIAR COFRE / ENVIAR</button>
                 </div>
-                <div id="xray-summary-content" style="display: flex; flex-direction: column; gap: 4px;">
-                    <div class="xray-row">
-                        <span style="color: var(--text-secondary);">Sai da sua carteira:</span>
-                        <strong class="mono" id="xray-out-val">0,00 BRZ</strong>
-                    </div>
-                    <div class="xray-row">
-                        <span style="color: var(--text-secondary);">Fica trabalhando na pool:</span>
-                        <strong class="mono" id="xray-in-val">50% WPOL / 50% USDT0</strong>
-                    </div>
-                    <div class="xray-row">
-                        <span style="color: var(--text-secondary);">Faixa de Trabalho:</span>
-                        <strong class="mono" id="xray-range-val">0.0000 ↔ 0.0000</strong>
-                    </div>
-                    <div class="xray-row">
-                        <span style="color: var(--text-secondary);">Custo de Rede + Taxa App:</span>
-                        <strong class="mono" id="xray-cost-val">~R$ 0,05 + 0.00%</strong>
-                    </div>
+                <div id="sereno-wallet-address" class="sereno-address-line">
+                    Crie seu cofre em 30 segundos (12 ou 24 palavras) ou conecte sua Rabby Wallet
                 </div>
-                <div style="padding: 10px; border-radius: 10px; background: var(--gold-soft); font-size: 0.72rem; color: var(--text-primary); line-height: 1.4;">
-                    <strong>Regra de Ouro:</strong> Enquanto o preço estiver entre o Piso e o Teto, você ganha tarifas a cada troca na rede. Se sair da faixa, seu saldo fica protegido esperando o preço voltar ou você ajustar.
+                <div id="sereno-total-brl" class="sereno-balance-huge">R$ 0,00</div>
+                <div id="sereno-total-usd" class="sereno-balance-sub">$ 0.00 • Dólar: R$ 5,650</div>
+                <div id="sereno-equity-split" class="sereno-split-line">
+                    Carteira Livre: R$ 0,00  |  Rendendo em Pools: R$ 0,00
                 </div>
-                <button type="button" class="btn-primary-action" id="btn-confirm-execute">
-                    ASSINAR NA CARTEIRA & ATIVAR
-                </button>
-                <div id="autopilot-exec-log" style="font-size: 0.72rem; text-align: center; color: var(--cyan);"></div>
-            </div>
-        </div>
 
-        <!-- BOTTOM SHEET: AJUDA EDUCATIVA CONTEXTUAL (?) -->
-        <div class="sheet-backdrop" id="sheet-edu">
-            <div class="bottom-sheet">
-                <div class="sheet-handle"></div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.9rem; color: var(--gold-accent);" id="edu-sheet-title">Entenda este indicador</strong>
-                    <button type="button" class="icon-btn" id="btn-close-edu">✕</button>
+                <div class="sereno-quick-actions">
+                    <button class="sereno-action-btn primary sereno-nav-btn" data-target="earn">⚡ Render na Uniswap</button>
+                    <button class="sereno-action-btn sereno-nav-btn" data-target="pix">🇧🇷 Comprar / Sacar PIX</button>
+                    <button class="sereno-action-btn sereno-nav-btn" data-target="swap">⇄ Trocar / Pontes</button>
+                    <button class="sereno-action-btn sereno-nav-btn" data-target="audit">📊 Lucro Real (1ª TX)</button>
                 </div>
-                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.55;" id="edu-sheet-body"></p>
+            </div>
+
+            <div class="sereno-card">
+                <div class="sereno-card-title">
+                    <span>Portfólio Consolidado (8 Moedas • 5 Redes)</span>
+                    <span class="tip-help-badge"
+                          data-tip-title="Saldos Multi-Rede em Tempo Real"
+                          data-tip-what="Soma automaticamente seus ativos nas redes Polygon, Ethereum, Arbitrum, Base e Optimism."
+                          data-tip-impact="Toque em qualquer moeda para abrir o Swap já preenchido.">?</span>
+                </div>
+                <div id="multi-asset-grid" class="multi-asset-grid"></div>
+            </div>
+        </section>
+
+        <!-- ABA SERENO 2: PILOTO AUTOMÁTICO UNISWAP V3 & POSIÇÕES ATIVAS -->
+        <section id="sview-earn" class="sereno-view">
+            <div class="sereno-card">
+                <div class="sereno-card-title">
+                    <span>⚡ Piloto Automático Uniswap V3 (POL/USDT0)</span>
+                    <span class="tip-help-badge"
+                          data-tip-title="Como Funciona o Piloto Automático"
+                          data-tip-what="Reserva 3.0 POL para taxas de rede, equilibra seu saldo livre entre WPOL e USDT0 e abre sua posição na faixa ideal."
+                          data-tip-impact="Você ganha tarifas de cada troca que acontece na pool, 24h por dia.">?</span>
+                </div>
+                <p id="sereno-earn-estimate" class="muted-hint">
+                    Conecte ou crie sua carteira para calcular quanto seu saldo pode render por dia.
+                </p>
+                <button id="btn-sereno-autopilot" class="btn-autopilot">
+                    COMEÇAR A GANHAR (AUTO-SETUP)
+                </button>
+                <div id="sereno-autopilot-log" class="ap-log"></div>
+            </div>
+
+            <div class="sereno-card">
+                <div class="sereno-card-title">
+                    <span>Suas Posições Ativas & Ponto de Equilíbrio (Break-Even)</span>
+                </div>
+                <div id="sereno-positions-list" class="positions-list"></div>
+            </div>
+        </section>
+
+        <!-- ABA SERENO 3: ATALHO RÁPIDO PARA SWAP & PONTES -->
+        <section id="sview-swap" class="sereno-view">
+            <div class="sereno-card">
+                <div class="sereno-card-title">
+                    <span>⇄ Trocas DEX & Pontes Cross-Chain (5 Redes)</span>
+                </div>
+                <p class="muted-hint">
+                    Converta entre POL, WPOL, USDT, USDC, BRZ, BRLA, ETH e WBTC na mesma rede (Uniswap V3) ou envie entre Polygon, Arbitrum, Base, Optimism e Ethereum via LI.FI.
+                </p>
+                <button class="btn-autopilot" onclick="document.getElementById('btn-toggle-pro').click(); document.getElementById('tab-swap').click();">
+                    ABRIR ROTEADOR DE TROCAS & PONTES
+                </button>
+            </div>
+        </section>
+
+        <!-- ABA SERENO 4: ATALHO RÁPIDO PARA PIX LÍQUIDO -->
+        <section id="sview-pix" class="sereno-view">
+            <div class="sereno-card">
+                <div class="sereno-card-title">
+                    <span>🇧🇷 Comprar com PIX ou Sacar Líquido para o Banco</span>
+                </div>
+                <p class="muted-hint">
+                    Compare em tempo real quanto cai líquido na sua carteira ou na sua conta bancária via NakPix, DePix/Liquid, PagFinance, Bipa e Binance já descontando taxas e spread.
+                </p>
+                <button class="btn-autopilot" onclick="document.getElementById('btn-toggle-pro').click(); document.getElementById('tab-pix').click();">
+                    ABRIR COMPARADOR PIX LÍQUIDO
+                </button>
+            </div>
+        </section>
+
+        <!-- ABA SERENO 5: AUDITORIA HISTÓRICA DESDE A 1ª TRANSAÇÃO -->
+        <section id="sview-audit" class="sereno-view">
+            <div class="audit-panel">
+                <div class="sereno-card-title">
+                    <span>📊 Auditoria Contábil Real (Desde a 1ª Transação)</span>
+                    <span id="equity-trend-badge" class="trend-pill">AGUARDANDO HISTÓRICO</span>
+                </div>
+
+                <div class="input-row" style="justify-content:space-between; flex-wrap:wrap;">
+                    <span id="ledger-progress-text" class="muted-hint">Conecte sua carteira para auditar desde a 1ª TX</span>
+                    <div class="input-row">
+                        <button id="btn-ledger-currency" class="btn-gold">MOEDA: BRL</button>
+                        <button id="btn-rescan-history" class="btn-gold">ATUALIZAR 1ª TX</button>
+                    </div>
+                </div>
+
+                <div id="ledger-progress-bar" class="muted-hint" style="display:none; color:var(--cyan-accent);">
+                    Varrendo transações históricas na blockchain...
+                </div>
+
+                <div class="ledger-kpis">
+                    <div class="ledger-kpi-card">
+                        <span>Total Aportado (Entradas)</span>
+                        <strong id="ld-total-in">R$ 0,00</strong>
+                    </div>
+                    <div class="ledger-kpi-card">
+                        <span>Total Sacado (Saídas)</span>
+                        <strong id="ld-total-out">R$ 0,00</strong>
+                    </div>
+                    <div class="ledger-kpi-card">
+                        <span>Patrimônio Atual (Livre + Pools)</span>
+                        <strong id="ld-current-eq">R$ 0,00</strong>
+                    </div>
+                    <div class="ledger-kpi-card">
+                        <span>Lucro / Prejuízo Líquido Real</span>
+                        <strong id="ld-real-pnl">R$ 0,00</strong>
+                    </div>
+                </div>
+
+                <div id="equity-curve-chart" class="equity-chart-box"></div>
+
+                <div class="sereno-card-title" style="font-size:0.92rem;">
+                    <span>Extrato Classificado (Toque na etiqueta para reclassificar)</span>
+                </div>
+                <div id="ledger-events-list" class="positions-list"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- =====================================================================
+         2. TERMINAL PRO (3 COLUNAS TÁTICAS DE ALTA DENSIDADE)
+         ===================================================================== -->
+    <div class="pro-only-workspace">
+        <div class="terminal-grid" id="workspace">
+
+            <!-- COLUNA 1: VARIAÇÕES OHLC MULTI-TIMEFRAME -->
+            <aside class="panel variations-col" id="col-left">
+                <div class="panel-header">
+                    <span><span class="pulse-dot" style="background:#fff"></span> OHLC POL/USDT</span>
+                </div>
+                <div class="var-grid" id="variations-grid">
+                    <div class="muted-hint">Carregando...</div>
+                </div>
+            </aside>
+
+            <div class="resizer" id="resizer-1"></div>
+
+            <!-- COLUNA 2: GRÁFICO TRADINGVIEW + PATRIMÔNIO FOCADO + P&L -->
+            <section class="panel tactical-col" id="col-center">
+                <div class="chart-header">
+                    <div class="tf-group" id="tf-buttons">
+                        <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
+                        <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
+                        <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
+                        <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
+                        <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
+                    </div>
+                    <span id="focused-label" class="focused-tag">FOCO: NENHUMA POSIÇÃO</span>
+                </div>
+
+                <div class="chart-wrapper" id="tv-chart"></div>
+
+                <div class="wallet-panel">
+                    <div class="wallet-card">
+                        <div class="wallet-title">Patrimônio Focado</div>
+                        <div class="wallet-value" id="wallet-total-brz">0.00 BRZ</div>
+                        <div class="wallet-sub" id="wallet-total-usd">$ 0.00 | R$ 0,00</div>
+                    </div>
+                    <div class="wallet-card border-left">
+                        <div class="wallet-title">Tarifas Acumuladas (Live)</div>
+                        <div class="wallet-value fees-live-val" id="fees-total-brz">0.0000 BRZ</div>
+                        <div class="wallet-sub" id="fees-total-usd">$ 0.0000 | R$ 0,0000</div>
+                    </div>
+                    <div class="wallet-card border-left">
+                        <div class="wallet-title">Proporção no Range</div>
+                        <div class="distribution-bar">
+                            <div class="dist-marker" id="dist-marker" style="left: 50%;"></div>
+                            <div class="dist-pol" id="bar-pol" style="width: 50%;"></div>
+                            <div class="dist-usdt" id="bar-usdt" style="width: 50%;"></div>
+                        </div>
+                        <div class="dist-labels">
+                            <span id="lbl-pol" style="color: var(--pol-color);">50% POL</span>
+                            <span id="lbl-usdt" style="color: var(--usdt-color);">50% USDT</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pnl-strip">
+                    <div class="pnl-inputs">
+                        <div class="pnl-mini-row">
+                            <span class="pnl-lbl-fixed">Aporte (BRZ):</span>
+                            <input type="number" id="pnl-init-brz" placeholder="Ex: 500.00" step="0.01">
+                        </div>
+                        <div class="pnl-mini-row">
+                            <span class="pnl-lbl-fixed">Gás Ab. (POL):</span>
+                            <input type="number" id="pnl-open-gas-pol" placeholder="0.05" step="0.001" value="0.05">
+                        </div>
+                    </div>
+                    <div class="pnl-metric">
+                        <span class="pnl-metric-lbl">Tarifas Pós-Gás</span>
+                        <span class="pnl-metric-val" id="pnl-net-fees-brz" style="color:var(--success-green);">+0.0000 BRZ</span>
+                        <span class="pnl-metric-sub" id="pnl-gas-cost-sub">Gás Total: -0.00 BRZ</span>
+                    </div>
+                    <div class="pnl-metric">
+                        <span class="pnl-metric-lbl">Resultado Líquido Posição</span>
+                        <span class="pnl-metric-val" id="pnl-real-total-brz">0.00 BRZ</span>
+                        <span class="pnl-metric-sub" id="pnl-real-total-brl">R$ 0,00 líquido real</span>
+                    </div>
+                </div>
+            </section>
+
+            <div class="resizer" id="resizer-2"></div>
+
+            <!-- COLUNA 3: COMANDO TÁTICO (PILOTO V3 + SWAP MULTI-REDE + PIX) -->
+            <aside class="cmd-col" id="col-right">
+                <div class="mode-tabs">
+                    <button class="mode-tab active" id="tab-radar">1. PILOTO & NFT</button>
+                    <button class="mode-tab" id="tab-swap">2. SWAP & PONTE</button>
+                    <button class="mode-tab" id="tab-pix">3. PIX LÍQUIDO</button>
+                </div>
+
+                <div id="price-global" class="price-huge">0.000000</div>
+
+                <div class="macro-strip">
+                    <div class="macro-cell">
+                        <span class="macro-label">POL / BRZ</span>
+                        <span class="macro-val" id="macro-pol-brz" style="color:var(--dekton-copper);">0.0000 BRZ</span>
+                    </div>
+                    <div class="macro-cell">
+                        <span class="macro-label">POL / BRL REAL</span>
+                        <span class="macro-val" id="macro-pol-brl">R$ 0,0000</span>
+                    </div>
+                </div>
+
+                <div class="tokens-strip">
+                    <div class="tok-badge"><span class="tok-sym">POL</span><span class="tok-amt" id="bal-pol">0.00</span></div>
+                    <div class="tok-badge"><span class="tok-sym">WPOL</span><span class="tok-amt" id="bal-wpol">0.00</span></div>
+                    <div class="tok-badge"><span class="tok-sym">USDT0</span><span class="tok-amt" id="bal-usdt0">0.00</span></div>
+                    <div class="tok-badge"><span class="tok-sym">BRZ</span><span class="tok-amt" id="bal-brz">0.00</span></div>
+                    <div class="tok-badge"><span class="tok-sym">BRLA</span><span class="tok-amt" id="bal-brla">0.00</span></div>
+                </div>
+
+                <!-- ABA 1: PILOTO AUTOMÁTICO V3 + ESCULTOR R$/MIN + NFTs -->
+                <div id="view-radar" class="view-pane active">
+                    <div class="autopilot-card">
+                        <div class="autopilot-header">
+                            <span class="ap-badge">⚡ PILOTO AUTOMÁTICO V3</span>
+                            <span class="ap-capital" id="ap-available-capital">Capital Livre: R$ 0,00</span>
+                        </div>
+                        <div id="gas-shield-status" class="muted-hint" style="font-size:0.68rem;">
+                            Escudo de Gás: 3.0 POL protegidos
+                        </div>
+                        <div id="ap-plan-summary" class="ap-plan-summary">
+                            Crie seu Cofre ou conecte sua carteira para ativar o Piloto Automático.
+                        </div>
+                        <button id="btn-start-earning" class="btn-autopilot">
+                            COMEÇAR A GANHAR (AUTO-SETUP)
+                        </button>
+                        <div id="ap-status-log" class="ap-log"></div>
+                    </div>
+
+                    <div class="yield-target-box">
+                        <div id="yt-diagnosis-text" class="muted-hint">Calculando rendimento por minuto...</div>
+                        <div class="input-row">
+                            <input type="number" id="yt-target-input" placeholder="Meta R$/min (opcional)" step="0.001">
+                            <button id="yt-clear-btn" class="btn-gold">SNIPER</button>
+                        </div>
+                        <div id="yt-sculpt-feedback" class="muted-hint"></div>
+                    </div>
+
+                    <div class="strategy-box">
+                        <div class="strat-row">
+                            <span><span class="sniper-badge">SNIPER 15M</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
+                            <span id="sniper-efficiency" style="color:var(--cyan-accent);">--</span>
+                        </div>
+                        <div class="strat-row">
+                            <strong style="color:var(--success-green);" id="strat-sniper">...</strong>
+                            <span id="route-status" style="color:var(--dekton-copper);">PRONTO</span>
+                        </div>
+                    </div>
+
+                    <div id="nft-tx-feedback" class="tx-feedback-line"></div>
+
+                    <div>
+                        <div class="section-tag"><span>Simular Range Manual (Offline)</span></div>
+                        <div class="manual-grid">
+                            <input type="number" id="manual-min" placeholder="Mín" step="0.00001">
+                            <input type="number" id="manual-max" placeholder="Máx" step="0.00001">
+                            <input type="text" id="manual-tag" placeholder="Nome">
+                            <button id="btn-add-manual" class="btn-gold">+ADD</button>
+                        </div>
+                    </div>
+
+                    <div id="positions-list" class="positions-list"></div>
+                </div>
+
+                <!-- ABA 2: SWAP INTRA-CHAIN & PONTES CROSS-CHAIN -->
+                <div id="view-swap" class="view-pane">
+                    <div class="section-tag">
+                        <span style="color:var(--cyan-accent);">Swap DEX & Ponte Multi-Rede</span>
+                        <span id="swap-router-tag">UNISWAP V3 / LI.FI</span>
+                    </div>
+
+                    <div class="swap-leg">
+                        <div class="swap-leg-top">
+                            <span>ORIGEM</span>
+                            <span>SALDO: <strong id="swap-in-bal">0.00</strong> <span class="max-pill" id="btn-swap-max">MAX</span></span>
+                        </div>
+                        <div class="input-row">
+                            <select id="swap-from-chain">
+                                <option value="137">Polygon</option>
+                                <option value="42161">Arbitrum</option>
+                                <option value="8453">Base</option>
+                                <option value="10">Optimism</option>
+                                <option value="1">Ethereum</option>
+                            </select>
+                            <select id="swap-token-in">
+                                <option value="POL">POL</option>
+                                <option value="WPOL">WPOL</option>
+                                <option value="USDT">USDT</option>
+                                <option value="USDC">USDC</option>
+                                <option value="BRZ">BRZ</option>
+                                <option value="BRLA">BRLA</option>
+                                <option value="ETH">ETH</option>
+                                <option value="WBTC">WBTC</option>
+                            </select>
+                        </div>
+                        <input type="number" id="swap-amount-in" placeholder="0.00" step="0.01" value="50">
+                    </div>
+
+                    <div class="flip-row">
+                        <button class="flip-btn" id="btn-flip-tokens" title="Inverter moedas e redes">⇅</button>
+                    </div>
+
+                    <div class="swap-leg">
+                        <div class="swap-leg-top">
+                            <span>DESTINO (ESTIMADO)</span>
+                            <span>SALDO: <strong id="swap-out-bal">0.00</strong></span>
+                        </div>
+                        <div class="input-row">
+                            <select id="swap-to-chain">
+                                <option value="137">Polygon</option>
+                                <option value="42161">Arbitrum</option>
+                                <option value="8453">Base</option>
+                                <option value="10">Optimism</option>
+                                <option value="1">Ethereum</option>
+                            </select>
+                            <select id="swap-token-out">
+                                <option value="USDT">USDT</option>
+                                <option value="BRZ">BRZ</option>
+                                <option value="BRLA">BRLA</option>
+                                <option value="USDC">USDC</option>
+                                <option value="POL">POL</option>
+                                <option value="WPOL">WPOL</option>
+                                <option value="ETH">ETH</option>
+                                <option value="WBTC">WBTC</option>
+                            </select>
+                        </div>
+                        <input type="text" id="swap-amount-out" readonly value="0.00" style="color:var(--success-green); font-weight:700;">
+                    </div>
+
+                    <div class="swap-telemetry">
+                        <div class="swap-tel-row">
+                            <span>Valor Estimado em Reais:</span>
+                            <span id="swap-brl-eq" style="color:#fff;">R$ 0,00</span>
+                        </div>
+                    </div>
+
+                    <button class="btn-swap-action" id="btn-exec-swap">TROCAR AGORA</button>
+                    <div id="swap-tx-status" class="tx-feedback-line"></div>
+                </div>
+
+                <!-- ABA 3: COMPRAR VIA PIX & SAQUE PIX LÍQUIDO -->
+                <div id="view-pix" class="view-pane">
+                    <div class="section-tag">
+                        <span style="color:var(--cyan-accent);">1. Comprar Cripto via PIX (On-Ramp)</span>
+                    </div>
+                    <div class="input-row">
+                        <input type="number" id="pix-buy-brl" placeholder="Valor em R$" value="120" step="10">
+                        <select id="pix-buy-asset" style="width:42%;">
+                            <option value="USDT">USDT</option>
+                            <option value="POL">POL</option>
+                            <option value="BRZ">BRZ</option>
+                            <option value="BRLA">BRLA</option>
+                            <option value="USDC">USDC</option>
+                        </select>
+                    </div>
+                    <div id="pix-buy-routes-list" class="pix-ranking-list"></div>
+
+                    <div class="section-tag" style="margin-top:6px;">
+                        <span style="color:var(--success-green);">2. Sacar Cripto via PIX Líquido</span>
+                        <button id="btn-filter-nokyc" class="pix-chip">FILTRO: TODAS</button>
+                    </div>
+                    <div class="input-row">
+                        <select id="pix-asset" style="width:40%;">
+                            <option value="USDT">USDT</option>
+                            <option value="POL">POL</option>
+                            <option value="WPOL">WPOL</option>
+                            <option value="BRZ">BRZ</option>
+                            <option value="BRLA">BRLA</option>
+                        </select>
+                        <input type="number" id="pix-amount" placeholder="Qtd" value="50" step="0.01">
+                    </div>
+                    <div id="pix-ranking-list" class="pix-ranking-list"></div>
+                </div>
+
+                <!-- FLUXO AO VIVO DA POOL -->
+                <div class="tape-container">
+                    <div class="panel-header">
+                        <span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Fluxo Pool (0.05%)</span>
+                    </div>
+                    <div class="tape-header">
+                        <div>Hora</div><div>Tipo</div><div>Reais</div><div>POL</div>
+                    </div>
+                    <div id="tape"></div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         3. MODAL DO COFRE AUTOCUSTÓDIA BIP-39 (12/24 PALAVRAS) & ENVIO
+         ===================================================================== -->
+    <div id="wallet-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span>🔐 Cofre de Autocustódia & Carteiras</span>
+                <button id="btn-close-wallet-modal" class="btn-gold">FECHAR</button>
+            </div>
+
+            <div class="wm-tabs">
+                <button class="wm-tab-btn active" data-wmtab="connect">Conectar / Cofre</button>
+                <button class="wm-tab-btn" data-wmtab="create">Criar Nova</button>
+                <button class="wm-tab-btn" data-wmtab="import">Importar Seed</button>
+                <button class="wm-tab-btn" data-wmtab="send">Enviar Cripto</button>
+            </div>
+
+            <!-- SUB-ABA 1: DESBLOQUEAR COFRE / RABBY / MODO LEITURA -->
+            <div id="wmpane-connect" class="wm-pane active">
+                <div class="section-tag"><span>Cofre Local Criptografado (AES-256-GCM)</span></div>
+                <div class="input-row">
+                    <input type="password" id="vault-unlock-pass" placeholder="Senha do Cofre Local">
+                    <button id="btn-vault-unlock" class="btn-gold">DESBLOQUEAR</button>
+                    <button id="btn-vault-lock" class="btn-gold">BLOQUEAR</button>
+                </div>
+                <div id="unlock-vault-error" class="tx-feedback-line" style="color:var(--danger-red);"></div>
+
+                <div class="section-tag"><span>Carteiras Externas (Rabby / MetaMask)</span></div>
+                <div id="eip6963-providers-list" class="positions-list"></div>
+                <div class="input-row">
+                    <button id="btn-connect-injected" class="btn-gold" style="flex:1;">CONECTAR EXTENSÃO</button>
+                    <button id="btn-handoff-rabby" class="btn-gold">ABRIR NA RABBY</button>
+                    <button id="btn-handoff-metamask" class="btn-gold">METAMASK</button>
+                </div>
+
+                <div class="section-tag"><span>Modo Observação (Somente Leitura)</span></div>
+                <div class="input-row">
+                    <input type="text" id="watch-only-input" placeholder="Cole qualquer endereço 0x...">
+                    <button id="btn-set-watch-only" class="btn-gold">OBSERVAR</button>
+                </div>
+
+                <div class="section-tag"><span>Backup de Emergência (Revelar Palavras)</span></div>
+                <div class="input-row">
+                    <input type="password" id="reveal-seed-pass" placeholder="Digite sua senha para ver as palavras">
+                    <button id="btn-reveal-seed" class="btn-gold">REVELAR</button>
+                </div>
+                <div id="revealed-seed-box" class="revealed-seed-box"></div>
+            </div>
+
+            <!-- SUB-ABA 2: CRIAR CARTEIRA (12 OU 24 PALAVRAS + DESAFIO 3 PALAVRAS) -->
+            <div id="wmpane-create" class="wm-pane">
+                <div id="create-step-1" class="create-step active">
+                    <div class="input-row">
+                        <select id="create-word-count">
+                            <option value="12">12 Palavras (Padrão)</option>
+                            <option value="24">24 Palavras (Máxima Entropia)</option>
+                        </select>
+                        <button id="btn-regenerate-seed" class="btn-gold">GERAR OUTRA</button>
+                    </div>
+                    <p class="muted-hint">
+                        Anote estas palavras na ordem exata em papel. Elas nunca saem do seu dispositivo e funcionam na Rabby, MetaMask e Trust Wallet.
+                    </p>
+                    <div id="draft-words-grid" class="seed-words-grid"></div>
+                    <div class="input-row">
+                        <button id="btn-copy-draft-seed" class="btn-gold" style="flex:1;">COPIAR FRASES (LIMPA EM 45S)</button>
+                        <button id="btn-go-verify-words" class="btn-autopilot" style="flex:1.2;">JÁ ANOTEI → VERIFICAR</button>
+                    </div>
+                </div>
+
+                <div id="create-step-2" class="create-step">
+                    <p class="muted-hint">Confirme as 3 palavras solicitadas abaixo e defina uma senha forte para criptografar seu cofre neste dispositivo:</p>
+                    <div id="challenge-inputs-box" class="positions-list"></div>
+                    <input type="password" id="create-vault-pass" placeholder="Crie uma senha forte (mín. 8 caracteres)">
+                    <input type="password" id="create-vault-pass-confirm" placeholder="Repita a senha">
+                    <div id="create-vault-error" class="tx-feedback-line" style="color:var(--danger-red);"></div>
+                    <div class="input-row">
+                        <button id="btn-back-to-words" class="btn-gold">← VOLTAR</button>
+                        <button id="btn-finalize-create-vault" class="btn-autopilot">ATIVAR MEU COFRE</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-ABA 3: IMPORTAR FRASE DE 12 OU 24 PALAVRAS -->
+            <div id="wmpane-import" class="wm-pane">
+                <p class="muted-hint">Cole suas 12 ou 24 palavras separadas por espaço para importar sua carteira com criptografia local:</p>
+                <textarea id="import-seed-input" rows="3" placeholder="palavra1 palavra2 palavra3 ..."></textarea>
+                <input type="password" id="import-vault-pass" placeholder="Crie uma senha para proteger neste aparelho (mín. 8 caracteres)">
+                <div id="import-vault-error" class="tx-feedback-line" style="color:var(--danger-red);"></div>
+                <button id="btn-finalize-import-vault" class="btn-autopilot">IMPORTAR E CRIPTOGRAFAR</button>
+            </div>
+
+            <!-- SUB-ABA 4: ENVIAR CRIPTO MULTI-REDE (8 MOEDAS / 5 REDES) -->
+            <div id="wmpane-send" class="wm-pane">
+                <div class="input-row">
+                    <select id="send-chain-id">
+                        <option value="137">Polygon</option>
+                        <option value="42161">Arbitrum</option>
+                        <option value="8453">Base</option>
+                        <option value="10">Optimism</option>
+                        <option value="1">Ethereum</option>
+                    </select>
+                    <select id="send-asset-symbol">
+                        <option value="POL">POL</option>
+                        <option value="USDT">USDT</option>
+                        <option value="USDC">USDC</option>
+                        <option value="BRZ">BRZ</option>
+                        <option value="BRLA">BRLA</option>
+                        <option value="ETH">ETH</option>
+                        <option value="WBTC">WBTC</option>
+                        <option value="WETH">WETH</option>
+                    </select>
+                </div>
+                <input type="text" id="send-to-address" placeholder="Endereço de destino (0x...)">
+                <div class="input-row">
+                    <input type="number" id="send-amount" placeholder="Quantidade" step="0.0001">
+                    <button id="btn-send-max" class="btn-gold">MÁXIMO</button>
+                </div>
+                <button id="btn-preview-send" class="btn-autopilot">REVISAR ENVIO EM REAIS (R$)</button>
+                <div id="send-tx-feedback" class="tx-feedback-line"></div>
             </div>
         </div>
     </div>
+
+    <!-- =====================================================================
+         4. RECIBO HUMANO PRÉ-ASSINATURA EM REAIS (R$)
+         ===================================================================== -->
+    <div id="receipt-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span id="receipt-title">Revisar Operação</span>
+            </div>
+            <div class="receipt-grid">
+                <div class="receipt-row">
+                    <span>Você envia:</span>
+                    <div style="text-align:right;">
+                        <strong id="receipt-out-val">--</strong><br>
+                        <small id="receipt-out-brl" style="color:var(--text-secondary);">R$ 0,00</small>
+                    </div>
+                </div>
+                <div class="receipt-row">
+                    <span>Você recebe (estimado):</span>
+                    <div style="text-align:right;">
+                        <strong id="receipt-in-val" style="color:var(--success-green);">--</strong><br>
+                        <small id="receipt-in-brl" style="color:var(--success-green);">R$ 0,00</small>
+                    </div>
+                </div>
+                <div class="receipt-row">
+                    <span>Contrato / Rota:</span>
+                    <strong id="receipt-route">--</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Taxa do Aplicativo:</span>
+                    <strong id="receipt-app-fee" style="color:var(--success-green);">R$ 0,00</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Gás de Rede Estimado:</span>
+                    <strong id="receipt-gas">--</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Escudo de Reserva:</span>
+                    <strong id="receipt-shield" style="color:var(--cyan-accent);">3.0 POL protegidos</strong>
+                </div>
+            </div>
+            <div class="receipt-actions">
+                <button id="btn-receipt-cancel" class="btn-gold">CANCELAR</button>
+                <button id="btn-receipt-confirm" class="btn-autopilot">CONFIRMAR E ASSINAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BARRA DE NAVEGAÇÃO INFERIOR ANDROID / MOBILE -->
+    <nav class="mobile-bottom-nav" aria-label="Menu Mobile">
+        <button class="mb-nav-btn active" data-target="home">Início</button>
+        <button class="mb-nav-btn" data-target="earn">Render</button>
+        <button class="mb-nav-btn" data-target="swap">Swap</button>
+        <button class="mb-nav-btn" data-target="pix">PIX</button>
+        <button class="mb-nav-btn" data-target="audit">1ª TX</button>
+    </nav>
+
 </body>
 </html>
