@@ -1,0 +1,114 @@
+/* =========================================================================
+   MODAL SLIDE-TO-CONFIRM + BIOMETRIA WEBAUTHN
+   ========================================================================= */
+.rdesk-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 16px;
+}
+.rdesk-modal-backdrop.open { display: flex; }
+
+.rdesk-modal-card {
+    background: #0d0f12;
+    border: 1px solid var(--dekton-copper);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 390px;
+    padding: 16px;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.95);
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rdesk-modal-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--cyan-accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.rdesk-modal-body {
+    font-size: 0.68rem;
+    color: #ccc;
+    line-height: 1.5;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 5px;
+    padding: 10px;
+    white-space: pre-line;
+}
+
+.slide-track {
+    position: relative;
+    height: 44px;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid var(--cyan-accent);
+    border-radius: 22px;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.slide-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(0, 212, 255, 0.2), rgba(0, 255, 136, 0.35));
+    pointer-events: none;
+}
+
+.slide-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.8px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.slide-thumb {
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--success-green);
+    color: #000;
+    font-weight: 700;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    z-index: 2;
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.6);
+}
+.slide-thumb:active { cursor: grabbing; }
+
+.rdesk-modal-cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #888;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.rdesk-modal-cancel:hover { color: #fff; border-color: #fff; }
