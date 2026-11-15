@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="styles.css">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
     <script src="vault-core.js" defer></script>
     <script src="ledger-advisor.js" defer></script>
@@ -332,6 +333,16 @@
                     <div class="tok-badge"><span class="tok-sym">USDT0</span><span class="tok-amt" id="bal-usdt0">0.00</span></div>
                     <div class="tok-badge"><span class="tok-sym">BRZ</span><span class="tok-amt" id="bal-brz">0.00</span></div>
                     <div class="tok-badge"><span class="tok-sym">BRLA</span><span class="tok-amt" id="bal-brla">0.00</span></div>
+                </div>
+
+                <!-- BARRA PRINCIPAL DE TRANSFERÊNCIA (ENVIAR & RECEBER) -->
+                <div class="wallet-quick-actions">
+                    <button type="button" id="btn-open-receive" class="wqa-btn wqa-receive">
+                        ↓ RECEBER
+                    </button>
+                    <button type="button" id="btn-open-send" class="wqa-btn wqa-send">
+                        ↑ ENVIAR
+                    </button>
                 </div>
 
                 <!-- ABA 1: PILOTO AUTOMÁTICO V3 + ESCULTOR R$/MIN + NFTs -->
@@ -690,6 +701,112 @@
         <button class="mb-nav-btn" data-target="pix">PIX</button>
         <button class="mb-nav-btn" data-target="audit">1ª TX</button>
     </nav>
+
+    <!-- MODAL 1: RECEBER CRIPTO (POLYGON) -->
+<div id="modal-receive" class="rdesk-modal-backdrop" style="display:none;">
+    <div class="rdesk-modal-card">
+        <div class="rdesk-modal-header">
+            <span style="color:var(--success-green);">↓ RECEBER MOEDAS (REDE POLYGON)</span>
+            <button type="button" class="rdesk-modal-close" data-close-modal="modal-receive">✕</button>
+        </div>
+        <p class="rdesk-modal-hint">
+            Envie apenas ativos na rede <strong>Polygon Mainnet (Chain ID 137)</strong>: POL, WPOL, USDT0, BRZ ou BRLA.
+        </p>
+        <div id="receive-qr-box" class="qr-container"></div>
+        <div id="receive-address-text" class="address-pill">Conecte ou cole uma carteira primeiro</div>
+        <div class="modal-btn-row">
+            <button type="button" id="btn-copy-receive-addr" class="btn-modal-primary">COPIAR ENDEREÇO 0x...</button>
+            <button type="button" id="btn-share-receive-addr" class="btn-modal-secondary">COMPARTILHAR</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL 2: ENVIAR CRIPTO (POLYGON) -->
+<div id="modal-send" class="rdesk-modal-backdrop" style="display:none;">
+    <div class="rdesk-modal-card">
+        <div class="rdesk-modal-header">
+            <span style="color:var(--dekton-copper);">↑ ENVIAR MOEDAS (POLYGON)</span>
+            <button type="button" class="rdesk-modal-close" data-close-modal="modal-send">✕</button>
+        </div>
+
+        <div class="send-field">
+            <div class="send-field-top">
+                <span>MOEDA</span>
+                <span>SALDO: <strong id="send-avail-bal" style="color:#fff;">0.0000</strong></span>
+            </div>
+            <select id="send-token-select" class="rdesk-input">
+                <option value="USDT0">USDT0 (Dólar Tether Polygon)</option>
+                <option value="BRZ">BRZ (Real Digital)</option>
+                <option value="BRLA">BRLA (Real Digital)</option>
+                <option value="POL">POL (Nativo / Gás)</option>
+                <option value="WPOL">WPOL (Wrapped POL)</option>
+            </select>
+        </div>
+
+        <div class="send-field">
+            <div class="send-field-top">
+                <span>ENDEREÇO DE DESTINO (0x...)</span>
+                <button type="button" id="btn-paste-send-addr" class="mini-chip-btn">COLAR</button>
+            </div>
+            <input type="text" id="send-to-address" class="rdesk-input" placeholder="Cole o endereço 0x... da carteira destino">
+        </div>
+
+        <div class="send-field">
+            <div class="send-field-top">
+                <span>QUANTIDADE</span>
+                <div class="pct-chips">
+                    <button type="button" class="mini-chip-btn" data-send-pct="0.25">25%</button>
+                    <button type="button" class="mini-chip-btn" data-send-pct="0.50">50%</button>
+                    <button type="button" class="mini-chip-btn" data-send-pct="1.00">MÁX</button>
+                </div>
+            </div>
+            <input type="number" id="send-amount-input" class="rdesk-input" placeholder="0.00" step="0.0001" min="0">
+            <div id="send-fiat-preview" class="send-preview-line">Equivalente: R$ 0,00 ($ 0.00) • Gás ~R$ 0,02</div>
+        </div>
+
+        <button type="button" id="btn-confirm-send" class="btn-modal-primary" style="width:100%; margin-top:6px;">
+            ENVIAR AGORA
+        </button>
+        <div id="send-tx-feedback" class="tx-feedback-line center" style="margin-top:6px;"></div>
+    </div>
+</div>
+
+<!-- MODAL 3: CONEXÃO RABBY MOBILE & DESKTOP -->
+<div id="modal-rabby-connect" class="rdesk-modal-backdrop" style="display:none;">
+    <div class="rdesk-modal-card">
+        <div class="rdesk-modal-header">
+            <span style="color:var(--cyan-accent);">🦊 CONECTAR RABBY WALLET</span>
+            <button type="button" class="rdesk-modal-close" data-close-modal="modal-rabby-connect">✕</button>
+        </div>
+
+        <p class="rdesk-modal-hint">
+            No celular, o Chrome/Brave não injeta extensões e a Rabby Android não abre por link externo (evitando ida à Play Store).
+        </p>
+
+        <div class="rabby-step-box">
+            <strong>Como conectar em 10 segundos no celular:</strong>
+            <ol style="margin:6px 0 0 16px; padding:0; color:#ddd; font-size:0.72rem; line-height:1.45;">
+                <li>Clique no botão abaixo para <strong>copiar o link</strong> deste app.</li>
+                <li>Abra o aplicativo <strong>Rabby Wallet</strong> no seu celular.</li>
+                <li>Toque na aba <strong>DApps / Navegador</strong> (ícone de globo) dentro da Rabby e cole o link.</li>
+            </ol>
+        </div>
+
+        <button type="button" id="btn-copy-dapp-url" class="btn-modal-primary" style="width:100%; margin-top:8px;">
+            COPIAR LINK PARA ABRIR NA RABBY
+        </button>
+
+        <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px;">
+            <span style="font-size:0.62rem; color:#888; display:block; margin-bottom:4px;">
+                Ou cole seu endereço público (0x...) apenas para acompanhar saldos e posições:
+            </span>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="modal-readonly-addr" class="rdesk-input" placeholder="0x...">
+                <button type="button" id="btn-modal-readonly-scan" class="btn-modal-secondary">VER</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
