@@ -50,6 +50,8 @@
         prices: {
             usdBrl: 5.65,
             polUsd: 0.088,
+            ethUsd: 0,
+            btcUsd: 0,
             updatedAt: 0
         }
     };
@@ -145,6 +147,9 @@
             brzBrl: 1.0,
             brlaUsd: brlToUsd,
             brlaBrl: 1.0,
+            USD_BRL: usdBrl,
+            ETH: Number(state.prices.ethUsd) || 0,
+            BTC: Number(state.prices.btcUsd) || 0,
             POL: polUsd,
             MATIC: polUsd,
             WPOL: polUsd,
@@ -160,10 +165,15 @@
 
     async function refreshLiveMarketPrices() {
         try {
-            const [fxRes, polRes] = await Promise.all([
+            const [fxRes, polRes, majorsRes] = await Promise.all([
                 fetch('https://economia.awesomeapi.com.br/last/USD-BRL').then((r) => r.json()).catch(() => null),
-                fetch('https://coins.llama.fi/prices/current/polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270').then((r) => r.json()).catch(() => null)
+                fetch('https://coins.llama.fi/prices/current/polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270').then((r) => r.json()).catch(() => null),
+                fetch('https://coins.llama.fi/prices/current/coingecko:ethereum,coingecko:bitcoin').then((r) => r.json()).catch(() => null)
             ]);
+            const ethPrice = parseFloat(majorsRes?.coins?.['coingecko:ethereum']?.price);
+            const btcPrice = parseFloat(majorsRes?.coins?.['coingecko:bitcoin']?.price);
+            if (Number.isFinite(ethPrice) && ethPrice > 0) state.prices.ethUsd = ethPrice;
+            if (Number.isFinite(btcPrice) && btcPrice > 0) state.prices.btcUsd = btcPrice;
             if (fxRes?.USDBRL?.bid) {
                 const parsedFx = parseFloat(fxRes.USDBRL.bid);
                 if (Number.isFinite(parsedFx) && parsedFx > 0) state.prices.usdBrl = parsedFx;
@@ -941,10 +951,11 @@
         if (legacyInput) legacyInput.value = addr;
 
         syncMainDashboardDom(fromBalanceLoad);
+        renderHeroAndAssets();
 
         const events = fromBalanceLoad
-            ? ['rdesk:balancesUpdated', 'rdesk:walletChanged', 'wallet:changed']
-            : ['rdesk:walletChanged', 'rdesk:wallet-changed', 'rdesk-wallet-changed', 'wallet:changed', 'walletChanged'];
+            ? ['rdesk:balancesUpdated', 'rdesk:walletChanged', 'wallet:changed', 'rdesk:wallet-updated']
+            : ['rdesk:walletChanged', 'rdesk:wallet-changed', 'rdesk-wallet-changed', 'wallet:changed', 'walletChanged', 'rdesk:wallet-updated'];
 
         events.forEach((evName) => {
             try {
@@ -2102,11 +2113,291 @@
             openWalletModal('unlock');
         });
 
+        bindCompatUi();
         bindHeroActionFallbacks();
         await refreshLiveMarketPrices();
         notifyAccountChanged(false);
-        await refreshAllAccountsBalances();
+        await refreshBalancesCompat();
     }
+
+    // =========================================================================
+    // 11. CAMADA DE COMPATIBILIDADE v23 (CONTRATO COM defi-pix-service.js)
+    //     Recibo em R$, constantes, formatadores, saldos multi-rede (array),
+    //     tela "Suas Moedas", hero card, barra de bloqueio e evento de sync.
+    // =========================================================================
+    const GAS_RESERVE_POL = 3.0;
+
+    const CHAIN_NAMES = { 137: 'Polygon', 42161: 'Arbitrum', 8453: 'Base', 10: 'Optimism', 1: 'Ethereum' };
+
+    // priceKey: 'USD' = 1 dólar | 'BRL' = 1 real | demais = chave em getPrices()
+    const CHAIN_TOKENS = {
+        137: [
+            { symbol: 'POL',  address: null, decimals: 18, isNative: true, priceKey: 'POL' },
+            { symbol: 'WPOL', address: TOKENS_META.WPOL.address, decimals: 18, priceKey: 'POL' },
+            { symbol: 'USDT', address: TOKENS_META.USDT0.address, decimals: 6, priceKey: 'USD' },
+            { symbol: 'USDC', address: TOKENS_META.USDC.address, decimals: 6, priceKey: 'USD' },
+            { symbol: 'BRZ',  address: TOKENS_META.BRZ.address, decimals: 18, priceKey: 'BRL' },
+            { symbol: 'BRLA', address: TOKENS_META.BRLA.address, decimals: 18, priceKey: 'BRL' },
+            { symbol: 'WBTC', address: '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6', decimals: 8, priceKey: 'BTC' }
+        ],
+        42161: [
+            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
+            { symbol: 'USDT', address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', decimals: 6, priceKey: 'USD' },
+            { symbol: 'USDC', address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831', decimals: 6, priceKey: 'USD' },
+            { symbol: 'WBTC', address: '0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f', decimals: 8, priceKey: 'BTC' }
+        ],
+        8453: [
+            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
+            { symbol: 'USDC', address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', decimals: 6, priceKey: 'USD' }
+        ],
+        10: [
+            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
+            { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', decimals: 6, priceKey: 'USD' },
+            { symbol: 'USDC', address: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6, priceKey: 'USD' }
+        ],
+        1: [
+            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
+            { symbol: 'USDT', address: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6, priceKey: 'USD' },
+            { symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, priceKey: 'USD' },
+            { symbol: 'WBTC', address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', decimals: 8, priceKey: 'BTC' }
+        ]
+    };
+
+    state.lpUsd = 0;
+    state.chainBalances = {}; // { [addrLower]: [{ chainId, symbol, amount }] }
+
+    function formatBRL(value) {
+        const n = Number(value);
+        return (Number.isFinite(n) ? n : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function formatUSD(value) {
+        const n = Number(value);
+        return (Number.isFinite(n) ? n : 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    }
+
+    function unitUsdFor(priceKey) {
+        const p = getNormalizedPricesObject();
+        if (priceKey === 'USD') return 1;
+        if (priceKey === 'BRL') return 1 / p.usdBrl;
+        return Number(p[priceKey]) || 0;
+    }
+
+    function getBalancesArray() {
+        const acc = getActiveAccount();
+        let list = acc ? state.chainBalances[acc.address.toLowerCase()] : null;
+
+        // Fallback: enquanto os saldos multi-rede não chegam, usa o cache da Polygon
+        if (!list && acc) {
+            const cached = state.balancesCache[acc.address.toLowerCase()];
+            if (cached?.tokens) {
+                const t = cached.tokens;
+                list = [
+                    { chainId: 137, symbol: 'POL',  amount: t.POL || 0 },
+                    { chainId: 137, symbol: 'WPOL', amount: t.WPOL || 0 },
+                    { chainId: 137, symbol: 'USDT', amount: t.USDT0 || 0 },
+                    { chainId: 137, symbol: 'USDC', amount: t.USDC || 0 },
+                    { chainId: 137, symbol: 'BRZ',  amount: t.BRZ || 0 },
+                    { chainId: 137, symbol: 'BRLA', amount: t.BRLA || 0 }
+                ];
+            }
+        }
+
+        const usdBrl = getNormalizedPricesObject().usdBrl;
+        const arr = (list || []).map((b) => {
+            const meta = (CHAIN_TOKENS[b.chainId] || []).find((t) => t.symbol === b.symbol);
+            const usdValue = b.amount * unitUsdFor(meta ? meta.priceKey : 'USD');
+            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl };
+        });
+
+        // Mantém as propriedades antigas (pol, wpol, usdt0, totalUsd...) por compatibilidade
+        return Object.assign(arr, getActiveAccountBalances());
+    }
+
+    async function refreshChainBalancesForActive() {
+        const acc = getActiveAccount();
+        if (!acc || typeof ethers === 'undefined') return;
+
+        const addr = acc.address;
+        const jobs = [];
+
+        Object.keys(CHAIN_TOKENS).forEach((cid) => {
+            const chainId = Number(cid);
+            const provider = getReadProvider(chainId);
+            CHAIN_TOKENS[chainId].forEach((tk) => {
+                jobs.push((async () => {
+                    try {
+                        let raw;
+                        if (tk.isNative) {
+                            raw = await provider.getBalance(addr);
+                        } else {
+                            const c = new ethers.Contract(tk.address, ERC20_ABI, provider);
+                            raw = await c.balanceOf(addr);
+                        }
+                        return { chainId, symbol: tk.symbol, amount: parseFloat(ethers.utils.formatUnits(raw, tk.decimals)) || 0, ok: true };
+                    } catch (e) {
+                        return { chainId, symbol: tk.symbol, amount: 0, ok: false };
+                    }
+                })());
+            });
+        });
+
+        const results = await Promise.all(jobs);
+        const previous = state.chainBalances[addr.toLowerCase()] || [];
+
+        // Se uma consulta falhar (RPC fora do ar), mantém o último saldo conhecido em vez de zerar
+        state.chainBalances[addr.toLowerCase()] = results.map((r) => {
+            if (r.ok) return { chainId: r.chainId, symbol: r.symbol, amount: r.amount };
+            const old = previous.find((p) => p.chainId === r.chainId && p.symbol === r.symbol);
+            return { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0 };
+        });
+    }
+
+    async function refreshBalancesCompat() {
+        await refreshAllAccountsBalances();
+        try { await refreshChainBalancesForActive(); } catch (e) {}
+        notifyAccountChanged(true);
+        return getBalancesArray();
+    }
+
+    function setLpUsdTotal(usd) {
+        const n = Number(usd);
+        state.lpUsd = Number.isFinite(n) && n > 0 ? n : 0;
+        renderHeroAndAssets();
+    }
+
+    function renderHeroAndAssets() {
+        const acc = getActiveAccount();
+        const prices = getNormalizedPricesObject();
+        const balances = getBalancesArray();
+        const freeUsd = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+        const lpUsd = state.lpUsd || 0;
+        const totalUsd = freeUsd + lpUsd;
+        const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+        set('hero-total-brl', formatBRL(totalUsd * prices.usdBrl));
+        set('hero-total-usd', `${formatUSD(totalUsd)} • Cotação Dólar: R$ ${prices.usdBrl.toFixed(3)}`);
+        set('hero-breakdown', `Livre na Carteira: ${formatBRL(freeUsd * prices.usdBrl)}  •  Rendendo em Pools: ${formatBRL(lpUsd * prices.usdBrl)}`);
+        set('top-oracle-pill', `Dólar: R$ ${prices.usdBrl.toFixed(2).replace('.', ',')}`);
+
+        const badge = document.getElementById('wallet-mode-badge');
+        const shortAddr = document.getElementById('wallet-short-addr');
+        const copyBtn = document.getElementById('btn-copy-header-addr');
+        if (!acc) {
+            if (badge) badge.textContent = 'Nenhuma carteira ativa';
+            if (copyBtn) copyBtn.style.display = 'none';
+        } else {
+            if (badge) {
+                badge.textContent = acc.type === 'rabby' ? '🦊 Rabby Conectada'
+                    : acc.type === 'watch' ? '👁️ Modo Observação'
+                    : (state.isLocked ? '🔒 Cofre Local (Leitura)' : '🔓 Cofre Desbloqueado');
+            }
+            if (shortAddr) shortAddr.textContent = `${acc.address.slice(0, 6)}...${acc.address.slice(-4)}`;
+            if (copyBtn) copyBtn.style.display = 'inline-flex';
+        }
+
+        // Botão "Bloquear" e barra de desbloqueio rápido
+        const isVault = acc && (acc.type === 'seed' || acc.type === 'pk');
+        const lockBtn = document.getElementById('btn-lock-vault');
+        if (lockBtn) lockBtn.style.display = isVault && !state.isLocked ? 'inline-block' : 'none';
+        const lockBar = document.getElementById('locked-vault-bar');
+        if (lockBar) lockBar.style.display = isVault && state.isLocked ? 'flex' : 'none';
+
+        // Lista "Suas Moedas"
+        const listEl = document.getElementById('wallet-assets-list');
+        if (listEl) {
+            if (!acc) {
+                listEl.innerHTML = '<div class="empty-state">Conecte ou crie sua carteira para visualizar seus saldos em Reais.</div>';
+                return;
+            }
+            const filter = document.getElementById('wallet-chain-filter')?.value || 'ALL';
+            const rows = balances
+                .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && b.amount > 0)
+                .sort((a, b) => b.usdValue - a.usdValue);
+            if (!rows.length) {
+                listEl.innerHTML = '<div class="empty-state">Nenhum saldo encontrado nesta seleção. Toque em Receber para depositar.</div>';
+            } else {
+                listEl.innerHTML = rows.map((b) => `
+                    <div class="asset-row">
+                        <div class="asset-left"><strong>${b.symbol}</strong><small class="muted-sm"> ${CHAIN_NAMES[b.chainId] || b.chainId}</small></div>
+                        <div class="asset-right" style="text-align:right;">
+                            <strong>${formatBRL(b.brlValue)}</strong><br>
+                            <small class="muted-sm">${b.amount.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${b.symbol}</small>
+                        </div>
+                    </div>`).join('');
+            }
+        }
+    }
+
+    function bindCompatUi() {
+        document.getElementById('btn-lock-vault')?.addEventListener('click', () => lockVaultNow());
+        document.getElementById('btn-quick-bio-unlock')?.addEventListener('click', async () => {
+            try { await unlockWithBiometry(); }
+            catch (err) { openWalletModal('unlock'); }
+        });
+        document.getElementById('btn-quick-pass-unlock')?.addEventListener('click', () => openWalletModal('unlock'));
+        document.getElementById('wallet-chain-filter')?.addEventListener('change', renderHeroAndAssets);
+        document.getElementById('btn-copy-header-addr')?.addEventListener('click', async () => {
+            const acc = getActiveAccount();
+            if (!acc) return;
+            await copyToClipboardSafe(acc.address);
+            const el = document.getElementById('wallet-short-addr');
+            if (el) {
+                const prev = el.textContent;
+                el.textContent = '✅ Copiado!';
+                setTimeout(() => { el.textContent = prev; }, 1500);
+            }
+        });
+    }
+
+    // Recibo em R$ antes de qualquer assinatura (usa o #modal-receipt do index.html)
+    const receiptApi = {
+        confirm(spec) {
+            spec = spec || {};
+            const overlay = document.getElementById('modal-receipt');
+            if (!overlay) {
+                return Promise.resolve(window.confirm(`${spec.title || 'Confirmar operação'}\n\nVocê envia: ${spec.sendVal || '--'} (${spec.sendBrl || ''})\nVocê recebe: ${spec.recvVal || '--'}\nRota: ${spec.route || '--'}\nGás: ${spec.gas || '--'}`));
+            }
+            const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text == null ? '--' : String(text); };
+            set('rcp-title', spec.title || 'Confirmar Operação');
+            set('rcp-send-val', spec.sendVal);
+            set('rcp-send-brl', spec.sendBrl);
+            set('rcp-recv-val', spec.recvVal);
+            set('rcp-recv-brl', spec.recvBrl);
+            set('rcp-route', spec.route);
+            set('rcp-fee', spec.fee || 'R$ 0,00');
+            set('rcp-gas', spec.gas);
+            set('rcp-shield', spec.shield || `${GAS_RESERVE_POL.toFixed(1)} POL protegidos`);
+
+            return new Promise((resolve) => {
+                const okBtn = document.getElementById('btn-rcp-confirm');
+                const noBtn = document.getElementById('btn-rcp-cancel');
+                let done = false;
+
+                const finish = (result) => {
+                    if (done) return;
+                    done = true;
+                    overlay.style.display = 'none';
+                    okBtn?.removeEventListener('click', onOk);
+                    noBtn?.removeEventListener('click', onNo);
+                    overlay.removeEventListener('click', onBackdrop);
+                    document.removeEventListener('keydown', onKey);
+                    resolve(result);
+                };
+                const onOk = () => finish(true);
+                const onNo = () => finish(false);
+                const onBackdrop = (e) => { if (e.target === overlay) finish(false); };
+                const onKey = (e) => { if (e.key === 'Escape') finish(false); };
+
+                okBtn?.addEventListener('click', onOk);
+                noBtn?.addEventListener('click', onNo);
+                overlay.addEventListener('click', onBackdrop);
+                document.addEventListener('keydown', onKey);
+                overlay.style.display = 'flex';
+            });
+        }
+    };
+    window.RdeskReceipt = receiptApi;
 
     const walletApi = {
         getAddress: () => getActiveAccount()?.address || '',
@@ -2115,10 +2406,16 @@
         getState: getPublicWalletState,
         getPrices: getPricesSyncOrRefresh,
         refreshPrices: refreshLiveMarketPrices,
-        getBalances: getActiveAccountBalances,
+        getBalances: getBalancesArray,
         getBalance: getSingleTokenBalance,
         getTokenBalance: getSingleTokenBalance,
-        refreshBalances: refreshAllAccountsBalances,
+        refreshBalances: refreshBalancesCompat,
+        setLpUsdTotal,
+        formatBRL,
+        formatUSD,
+        GAS_RESERVE_POL,
+        CHAIN_TOKENS,
+        CHAIN_NAMES,
         getSigner: getActiveSigner,
         getProvider: getReadProvider,
         getReadProvider,
@@ -2146,7 +2443,7 @@
 
     Object.defineProperties(walletApi, {
         address:  { get: () => getActiveAccount()?.address || '', enumerable: true },
-        balances: { get: getActiveAccountBalances, enumerable: true },
+        balances: { get: getBalancesArray, enumerable: true },
         prices:   { get: getPricesSyncOrRefresh, enumerable: true }
     });
 
