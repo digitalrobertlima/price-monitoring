@@ -42,7 +42,7 @@
         },
         8453: {
             swapRouter02: '0x2626664c2603336E57B271c5C0b26F421741e481',
-            quoterV2: '0x3d4e44Eb1374240CE5F1B136041212E6B3B8Df87',
+            quoterV2: '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a',
             nfpm: '0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1',
             wrappedNativeSymbol: 'WETH',
             wrappedNativeAddress: '0x4200000000000000000000000000000000000006'
