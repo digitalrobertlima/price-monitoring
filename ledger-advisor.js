@@ -677,8 +677,18 @@
     }
 
     function renderEquityChart(canvasId = 'equity-curve-chart') {
-        const canvasEl = document.getElementById(canvasId);
-        if (!canvasEl || typeof Chart === 'undefined') return;
+        const hostEl = document.getElementById(canvasId);
+        if (!hostEl || typeof Chart === 'undefined') return;
+
+        // O contêiner no HTML é um <div>; o Chart.js precisa de um <canvas> dentro dele.
+        let canvasEl = hostEl;
+        if (!(hostEl instanceof HTMLCanvasElement)) {
+            canvasEl = hostEl.querySelector('canvas');
+            if (!canvasEl) {
+                canvasEl = document.createElement('canvas');
+                hostEl.appendChild(canvasEl);
+            }
+        }
 
         const isBrl = _ledgerState.displayCurrency === 'BRL';
         const series = _ledgerState.dailySeries;

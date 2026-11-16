@@ -1274,13 +1274,20 @@
             const calls = [];
 
             if (onChainPos.liquidity.gt(0)) {
+                // Simula a retirada e exige no mínimo 98,5% do simulado (proteção anti-sandwich)
+                const decParams = {
+                    tokenId: ethers.BigNumber.from(tokenId),
+                    liquidity: onChainPos.liquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: Math.floor(Date.now() / 1000) + 1200
+                };
+                const simDec = await nfpm.callStatic.decreaseLiquidity(decParams);
                 calls.push(
                     nfpm.interface.encodeFunctionData('decreaseLiquidity', [{
-                        tokenId: ethers.BigNumber.from(tokenId),
-                        liquidity: onChainPos.liquidity,
-                        amount0Min: 0,
-                        amount1Min: 0,
-                        deadline: Math.floor(Date.now() / 1000) + 1200
+                        ...decParams,
+                        amount0Min: simDec[0].mul(985).div(1000),
+                        amount1Min: simDec[1].mul(985).div(1000)
                     }])
                 );
             }
@@ -1494,13 +1501,20 @@
             const pos = await nfpm.positions(ethers.BigNumber.from(tokenId));
             const calls = [];
             if (pos.liquidity.gt(0)) {
+                // Simula a retirada e exige no mínimo 98,5% do simulado (proteção anti-sandwich)
+                const decParams = {
+                    tokenId: ethers.BigNumber.from(tokenId),
+                    liquidity: pos.liquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: Math.floor(Date.now() / 1000) + 1200
+                };
+                const simDec = await nfpm.callStatic.decreaseLiquidity(decParams);
                 calls.push(
                     nfpm.interface.encodeFunctionData('decreaseLiquidity', [{
-                        tokenId: ethers.BigNumber.from(tokenId),
-                        liquidity: pos.liquidity,
-                        amount0Min: 0,
-                        amount1Min: 0,
-                        deadline: Math.floor(Date.now() / 1000) + 1200
+                        ...decParams,
+                        amount0Min: simDec[0].mul(985).div(1000),
+                        amount1Min: simDec[1].mul(985).div(1000)
                     }])
                 );
             }
