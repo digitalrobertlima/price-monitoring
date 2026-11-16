@@ -1,5 +1,5 @@
 /* =========================================================================
-   RDESK SENTINEL — GERENCIADOR MULTI-CARTEIRA, DESAFIO 3 PALAVRAS & SYNC V3
+   RDESK SENTINEL — GERENCIADOR MULTI-CARTEIRA, ORÁCULO DE PREÇOS & RECEIVE V4
    Substitui: wallet-service.js
    ========================================================================= */
 
@@ -17,7 +17,11 @@
         'https://polygon-rpc.com'
     ];
 
-    const ERC20_MIN_ABI = ['function balanceOf(address) view returns (uint256)'];
+    const ERC20_ABI = [
+        'function balanceOf(address) view returns (uint256)',
+        'function transfer(address to, uint256 amount) returns (bool)'
+    ];
+
     const TOKENS_META = {
         POL:   { symbol: 'POL',   name: 'Polygon Ecosystem Token • Rede Polygon', address: null, decimals: 18 },
         WPOL:  { symbol: 'WPOL',  name: 'Wrapped POL • Rede Polygon',             address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18 },
@@ -34,18 +38,49 @@
         hasLegacyCorrupted: false,
         rabbyProvider: null,
         balancesCache: {},     // { [addrLower]: { brl, usd, summary, tokens: { POL, WPOL, USDT0, BRZ, BRLA }, polUsd, usdBrl } }
-        prices: { usdBrl: 5.65, polUsd: 0.088 }
+        prices: {
+            usdBrl: 5.65,
+            polUsd: 0.088,
+            updatedAt: 0
+        }
     };
 
-    let currentView = 'list'; // 'list' | 'unlock' | 'add' | 'form' | 'detail'
+    let currentView = 'list'; // 'list' | 'unlock' | 'add' | 'form' | 'detail' | 'receive' | 'send'
     let activeFormMode = 'create-seed';
     let inspectingAccountId = null;
-    let createSeedDraft = null; // { mnemonic, wordCount, step: 'show'|'verify', challengeIndices: [], name, password, enableBio }
+    let createSeedDraft = null;
     const changeListeners = [];
 
     // =========================================================================
-    // 1. CODIFICAÇÃO BASE64 / BASE64URL BLINDADA
+    // 1. UTILITÁRIOS SEGUROS (CLIPBOARD WEBVIEW & BASE64URL)
     // =========================================================================
+    async function copyToClipboardSafe(text) {
+        const str = String(text || '');
+        if (!str) return false;
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(str);
+                return true;
+            }
+        } catch (e) {}
+
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = str;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, str.length);
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function bytesToBase64(bytes) {
         const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         let binary = '';
@@ -72,7 +107,84 @@
     }
 
     // =========================================================================
-    // 2. CRIPTOGRAFIA AES-256-GCM + PBKDF2
+    // 2. ORÁCULO DE PREÇOS & SALDOS (COMPATÍVEL COM defi-pix-service.js)
+    // =========================================================================
+    function getNormalizedPricesObject() {
+        const usdBrl = state.prices.usdBrl > 0 ? state.prices.usdBrl : 5.65;
+        const polUsd = state.prices.polUsd > 0 ? state.prices.polUsd : 0.088;
+        const polBrl = polUsd * usdBrl;
+        const brlToUsd = 1 / usdBrl;
+
+        return {
+            usdBrl,
+            brlPerUsd: usdBrl,
+            usdToBrl: usdBrl,
+            polUsd,
+            polToUsd: polUsd,
+            polBrl,
+            polToBrl: polBrl,
+            wpolUsd: polUsd,
+            wpolBrl: polBrl,
+            usdtUsd: 1.0,
+            usdt0Usd: 1.0,
+            usdtBrl: usdBrl,
+            usdt0Brl: usdBrl,
+            brzUsd: brlToUsd,
+            brzBrl: 1.0,
+            brlaUsd: brlToUsd,
+            brlaBrl: 1.0,
+            POL: polUsd,
+            WPOL: polUsd,
+            USDT0: 1.0,
+            BRZ: brlToUsd,
+            BRLA: brlToUsd,
+            updatedAt: state.prices.updatedAt || Date.now()
+        };
+    }
+
+    async function refreshLiveMarketPrices() {
+        try {
+            const [fxRes, polRes] = await Promise.all([
+                fetch('https://economia.awesomeapi.com.br/last/USD-BRL').then((r) => r.json()).catch(() => null),
+                fetch('https://coins.llama.fi/prices/current/polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270').then((r) => r.json()).catch(() => null)
+            ]);
+            if (fxRes?.USDBRL?.bid) {
+                const parsedFx = parseFloat(fxRes.USDBRL.bid);
+                if (Number.isFinite(parsedFx) && parsedFx > 0) state.prices.usdBrl = parsedFx;
+            }
+            const polPrice = polRes?.coins?.['polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270']?.price;
+            if (polPrice && Number.isFinite(parseFloat(polPrice))) {
+                state.prices.polUsd = parseFloat(polPrice);
+            }
+            state.prices.updatedAt = Date.now();
+        } catch (e) {}
+        return getNormalizedPricesObject();
+    }
+
+    function getPricesSyncOrRefresh() {
+        if (Date.now() - (state.prices.updatedAt || 0) > 25000) {
+            refreshLiveMarketPrices().catch(() => {});
+        }
+        return getNormalizedPricesObject();
+    }
+
+    function getActiveAccountBalances() {
+        const acc = getActiveAccount();
+        const cached = acc ? state.balancesCache[acc.address.toLowerCase()] : null;
+        return {
+            pol: cached?.tokens?.POL || 0,
+            wpol: cached?.tokens?.WPOL || 0,
+            usdt0: cached?.tokens?.USDT0 || 0,
+            usdt: cached?.tokens?.USDT0 || 0,
+            brz: cached?.tokens?.BRZ || 0,
+            brla: cached?.tokens?.BRLA || 0,
+            totalUsd: cached?.usd || 0,
+            totalBrl: cached?.brl || 0
+        };
+    }
+
+    // =========================================================================
+    // 3. CRIPTOGRAFIA AES-256-GCM + PBKDF2
     // =========================================================================
     async function deriveAesKey(password, saltBytes, usages) {
         const keyMaterial = await crypto.subtle.importKey(
@@ -180,7 +292,7 @@
     }
 
     // =========================================================================
-    // 3. BIOMETRIA / WINDOWS HELLO
+    // 4. BIOMETRIA / WINDOWS HELLO
     // =========================================================================
     function isBiometryRegistered() {
         try {
@@ -296,7 +408,7 @@
     }
 
     // =========================================================================
-    // 4. OPERAÇÕES MULTI-CARTEIRA
+    // 5. OPERAÇÕES MULTI-CARTEIRA
     // =========================================================================
     function getActiveAccount() {
         if (!state.accounts.length) return null;
@@ -466,7 +578,7 @@
         refreshAllAccountsBalances();
     }
 
-    async function upsertRabbyAccount(rawAddress, providerObj) {
+    async function upsertRabbyAccount(rawAddress, providerObj, makeActive = true) {
         if (!rawAddress || !ethers.utils.isAddress(rawAddress)) return;
         const checksumAddr = ethers.utils.getAddress(rawAddress);
         let acc = state.accounts.find((a) => a.address.toLowerCase() === checksumAddr.toLowerCase());
@@ -480,17 +592,36 @@
             };
             state.accounts.push(acc);
         }
-        state.activeAccountId = acc.id;
+        if (makeActive || !state.activeAccountId) {
+            state.activeAccountId = acc.id;
+        }
         await persistVaultToStorage();
         notifyAccountChanged();
         refreshAllAccountsBalances();
     }
 
+    function resolveInjectedWeb3Provider() {
+        if (state.rabbyProvider) return state.rabbyProvider;
+        if (window.rabby) return window.rabby;
+        if (window.ethereum) {
+            if (Array.isArray(window.ethereum.providers)) {
+                const rabby = window.ethereum.providers.find((p) => p.isRabby);
+                if (rabby) return rabby;
+            }
+            return window.ethereum;
+        }
+        return null;
+    }
+
     async function connectRabbyExtension() {
-        const eth = state.rabbyProvider || window.ethereum;
+        window.dispatchEvent(new Event('eip6963:requestProvider'));
+        await new Promise((r) => setTimeout(r, 80));
+
+        const eth = resolveInjectedWeb3Provider();
         if (!eth) {
             throw new Error('Extensão Rabby/Web3 não detectada neste navegador. No celular, abra o site dentro do navegador interno da Rabby Wallet ou importe sua Seed/Chave Privada.');
         }
+
         const accounts = await eth.request({ method: 'eth_requestAccounts' });
         if (!accounts || !accounts.length) {
             throw new Error('Nenhuma conta autorizada na Rabby Wallet.');
@@ -499,7 +630,7 @@
         try {
             await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x89' }] });
         } catch (switchErr) {
-            if (switchErr.code === 4902) {
+            if (switchErr && switchErr.code === 4902) {
                 await eth.request({
                     method: 'wallet_addEthereumChain',
                     params: [{
@@ -513,7 +644,7 @@
             }
         }
 
-        await upsertRabbyAccount(accounts[0], eth);
+        await upsertRabbyAccount(accounts[0], eth, true);
     }
 
     async function switchActiveAccount(accountId) {
@@ -564,7 +695,7 @@
     }
 
     // =========================================================================
-    // 5. PROVIDER, SIGNER & LEITURA DE SALDOS REAIS
+    // 6. PROVIDER, SIGNER & LEITURA DE SALDOS REAIS
     // =========================================================================
     function getReadProvider() {
         return new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
@@ -580,7 +711,7 @@
             throw new Error(`A carteira "${acc.name}" está em Modo Observação (apenas leitura). Importe a Seed ou Chave Privada para assinar.`);
         }
         if (acc.type === 'rabby') {
-            const eth = state.rabbyProvider || window.ethereum;
+            const eth = resolveInjectedWeb3Provider();
             if (!eth) throw new Error('Extensão Rabby não encontrada.');
             await eth.request({ method: 'eth_requestAccounts' });
             return new ethers.providers.Web3Provider(eth).getSigner();
@@ -593,28 +724,16 @@
         return new ethers.Wallet(privateKey, getReadProvider());
     }
 
-    async function refreshLiveMarketPrices() {
-        try {
-            const [fxRes, polRes] = await Promise.all([
-                fetch('https://economia.awesomeapi.com.br/last/USD-BRL').then((r) => r.json()).catch(() => null),
-                fetch('https://coins.llama.fi/prices/current/polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270').then((r) => r.json()).catch(() => null)
-            ]);
-            if (fxRes?.USDBRL?.bid) state.prices.usdBrl = parseFloat(fxRes.USDBRL.bid);
-            const polPrice = polRes?.coins?.['polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270']?.price;
-            if (polPrice) state.prices.polUsd = parseFloat(polPrice);
-        } catch (e) {}
-    }
-
     async function refreshAllAccountsBalances() {
-        if (!state.accounts.length) return;
+        if (!state.accounts.length) return getActiveAccountBalances();
         await refreshLiveMarketPrices();
 
         try {
             const provider = getReadProvider();
-            const wpol = new ethers.Contract(TOKENS_META.WPOL.address, ERC20_MIN_ABI, provider);
-            const usdt = new ethers.Contract(TOKENS_META.USDT0.address, ERC20_MIN_ABI, provider);
-            const brz = new ethers.Contract(TOKENS_META.BRZ.address, ERC20_MIN_ABI, provider);
-            const brla = new ethers.Contract(TOKENS_META.BRLA.address, ERC20_MIN_ABI, provider);
+            const wpol = new ethers.Contract(TOKENS_META.WPOL.address, ERC20_ABI, provider);
+            const usdt = new ethers.Contract(TOKENS_META.USDT0.address, ERC20_ABI, provider);
+            const brz = new ethers.Contract(TOKENS_META.BRZ.address, ERC20_ABI, provider);
+            const brla = new ethers.Contract(TOKENS_META.BRLA.address, ERC20_ABI, provider);
 
             await Promise.all(state.accounts.map(async (acc) => {
                 try {
@@ -649,10 +768,12 @@
             syncMainDashboardDom();
             if (currentView === 'list') renderModal();
         } catch (e) {}
+
+        return getActiveAccountBalances();
     }
 
     // =========================================================================
-    // 6. SINCRONIZAÇÃO TOTAL COM O PAINEL PRINCIPAL (INTEROPERABILIDADE)
+    // 7. SINCRONIZAÇÃO COM O PAINEL PRINCIPAL (SEM QUEBRAR SE HOUVER ERRO)
     // =========================================================================
     function syncMainDashboardDom() {
         const acc = getActiveAccount();
@@ -674,7 +795,6 @@
             banner.style.display = needsUnlock ? 'flex' : 'none';
         }
 
-        // Atualiza selo "Nenhuma carteira ativa" na Hero Card
         const walletPanel = document.getElementById('tab-panel-wallet') || document.body;
         const explicitBadge = document.getElementById('hero-wallet-badge') || document.getElementById('active-wallet-badge');
         let badgeTarget = explicitBadge;
@@ -698,8 +818,8 @@
                 badgeTarget.textContent = `${modeLabel} • ${acc.address.slice(0, 6)}...${acc.address.slice(-4)}`;
                 badgeTarget.style.cursor = 'pointer';
                 badgeTarget.title = 'Toque para copiar o endereço completo';
-                badgeTarget.onclick = () => {
-                    navigator.clipboard.writeText(acc.address);
+                badgeTarget.onclick = async () => {
+                    await copyToClipboardSafe(acc.address);
                     const prev = badgeTarget.textContent;
                     badgeTarget.textContent = '✅ Endereço copiado!';
                     setTimeout(() => { badgeTarget.textContent = prev; }, 1500);
@@ -707,24 +827,22 @@
             }
         }
 
-        // Atualiza saldos na tela Carteira caso o módulo DeFi ainda não tenha preenchido
         const cached = acc ? state.balancesCache[acc.address.toLowerCase()] : null;
         if (acc && cached) {
             const totalBrlEl = document.getElementById('hero-total-brl') || document.getElementById('total-patrimonio-brl');
             const totalUsdEl = document.getElementById('hero-total-usd') || document.getElementById('total-patrimonio-usd');
             const freeBrlEl = document.getElementById('hero-free-brl') || document.getElementById('livre-carteira-brl');
 
-            if (totalBrlEl && totalBrlEl.textContent.trim() === 'R$ 0,00' && cached.brl > 0) {
+            if (totalBrlEl && /0,00/.test(totalBrlEl.textContent) && cached.brl > 0) {
                 totalBrlEl.textContent = cached.brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             }
-            if (totalUsdEl && totalUsdEl.textContent.includes('$ 0.00') && cached.usd > 0) {
+            if (totalUsdEl && /0\.00/.test(totalUsdEl.textContent) && cached.usd > 0) {
                 totalUsdEl.textContent = `$ ${cached.usd.toFixed(2)} • Cotação Dólar: R$ ${cached.usdBrl.toFixed(3)}`;
             }
-            if (freeBrlEl && freeBrlEl.textContent.includes('R$ 0,00') && cached.brl > 0) {
+            if (freeBrlEl && /0,00/.test(freeBrlEl.textContent) && cached.brl > 0) {
                 freeBrlEl.textContent = `Livre na Carteira: ${cached.brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
             }
 
-            // Substitui o placeholder "Conecte ou crie sua carteira para visualizar seus saldos em Reais."
             walletPanel.querySelectorAll('div, p').forEach((el) => {
                 if (el.children.length === 0 && el.textContent.includes('Conecte ou crie sua carteira para visualizar seus saldos')) {
                     const container = el.parentElement || el;
@@ -767,39 +885,40 @@
 
         syncMainDashboardDom();
 
-        // Dispara todos os formatos de evento usados pelos módulos do app
-        const eventNames = [
-            'rdesk:walletChanged',
-            'rdesk:wallet-changed',
-            'rdesk-wallet-changed',
-            'wallet:changed',
-            'walletChanged'
-        ];
-        eventNames.forEach((evName) => {
-            window.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
-            document.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
+        ['rdesk:walletChanged', 'rdesk:wallet-changed', 'rdesk-wallet-changed', 'wallet:changed', 'walletChanged'].forEach((evName) => {
+            try {
+                window.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
+                document.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
+            } catch (e) {}
         });
 
         changeListeners.forEach((fn) => {
             try { fn(addr, acc, pubState); } catch (e) {}
         });
 
-        // Aciona todos os hooks disponíveis em window.RdeskDefi
         const defi = window.RdeskDefi;
         if (defi) {
-            if (typeof defi.onWalletChanged === 'function') defi.onWalletChanged(addr, pubState);
-            if (typeof defi.setWallet === 'function') defi.setWallet(addr);
-            if (typeof defi.refreshAll === 'function') defi.refreshAll();
-            if (typeof defi.refreshWallet === 'function') defi.refreshWallet();
-            if (typeof defi.refreshBalances === 'function') defi.refreshBalances();
-            if (typeof defi.refreshPoolAndPositions === 'function') defi.refreshPoolAndPositions();
-            if (typeof defi.refreshPixAndSwap === 'function') defi.refreshPixAndSwap();
-            if (typeof defi.runAudit === 'function') defi.runAudit(false);
+            const safeCall = (fnName, ...args) => {
+                try {
+                    if (typeof defi[fnName] === 'function') {
+                        const res = defi[fnName](...args);
+                        if (res && typeof res.catch === 'function') res.catch(() => {});
+                    }
+                } catch (e) {}
+            };
+            safeCall('onWalletChanged', addr, pubState);
+            safeCall('setWallet', addr);
+            safeCall('refreshAll');
+            safeCall('refreshWallet');
+            safeCall('refreshBalances');
+            safeCall('refreshPoolAndPositions');
+            safeCall('refreshPixAndSwap');
+            safeCall('runAudit', false);
         }
     }
 
     // =========================================================================
-    // 7. INTERFACE DO MODAL MULTI-CARTEIRA + DESAFIO DE 3 PALAVRAS
+    // 8. MODAL MULTI-CARTEIRA, DESAFIO 3 PALAVRAS, RECEBER & ENVIAR NATIVOS
     // =========================================================================
     function injectMultiWalletStyles() {
         if (document.getElementById('rdesk-multiwallet-styles')) return;
@@ -808,7 +927,7 @@
         style.textContent = `
             #rdesk-mw-overlay {
                 position: fixed; inset: 0; background: rgba(4, 6, 10, 0.88);
-                backdrop-filter: blur(8px); z-index: 9999; display: none;
+                backdrop-filter: blur(8px); z-index: 99999; display: none;
                 align-items: flex-end; justify-content: center; padding: 12px;
             }
             #rdesk-mw-overlay.open { display: flex; }
@@ -817,7 +936,7 @@
                 width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
                 background: #11151f; border: 1px solid rgba(234, 179, 8, 0.3);
                 border-radius: 20px; padding: 18px; color: #f1f5f9;
-                box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+                box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             .rmw-header {
@@ -955,6 +1074,24 @@
         refreshAllAccountsBalances();
     }
 
+    function openReceiveModal() {
+        const acc = getActiveAccount();
+        if (!acc) {
+            openWalletModal('add');
+            return;
+        }
+        openWalletModal('receive');
+    }
+
+    function openSendModal() {
+        const acc = getActiveAccount();
+        if (!acc) {
+            openWalletModal('add');
+            return;
+        }
+        openWalletModal('send');
+    }
+
     function closeWalletModal() {
         const overlay = document.getElementById('rdesk-mw-overlay');
         if (overlay) overlay.classList.remove('open');
@@ -968,7 +1105,142 @@
         else if (currentView === 'add') renderAddMethodView(sheet);
         else if (currentView === 'form') renderFormView(sheet);
         else if (currentView === 'detail') renderDetailView(sheet);
+        else if (currentView === 'receive') renderReceiveView(sheet);
+        else if (currentView === 'send') renderSendView(sheet);
         else renderListView(sheet);
+    }
+
+    // -------------------------------------------------------------------------
+    // TELA RECEBER (QR CODE + COPIAR ENDEREÇO — 100% COMPATÍVEL COM RABBY MOBILE)
+    // -------------------------------------------------------------------------
+    function renderReceiveView(sheet) {
+        const acc = getActiveAccount();
+        if (!acc) { currentView = 'add'; renderModal(); return; }
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=210x210&bgcolor=0b0e14&color=ffffff&data=${encodeURIComponent(acc.address)}`;
+
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">
+                    <button class="rmw-icon-btn" id="rmw-rec-list" title="Trocar carteira">👛</button>
+                    ↓ Receber Cripto (Polygon)
+                </div>
+                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+            </div>
+
+            <div style="text-align:center;padding:8px 0 12px;">
+                <div style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(130,71,229,0.2);color:#c4b5fd;font-size:0.75rem;font-weight:700;margin-bottom:8px;">
+                    Rede Polygon Mainnet (Chain ID 137)
+                </div>
+                <div style="font-weight:800;font-size:1.05rem;color:#fff;margin-bottom:10px;">
+                    ${acc.name}
+                </div>
+                <div style="background:#0b0e14;border:1px solid rgba(234,179,8,0.35);border-radius:16px;padding:14px;display:inline-block;">
+                    <img src="${qrUrl}" alt="QR Code Receber" style="width:190px;height:190px;display:block;border-radius:8px;">
+                </div>
+            </div>
+
+            <div class="rmw-secret-box" style="text-align:center;font-size:0.84rem;color:#f8fafc;">
+                ${acc.address}
+            </div>
+
+            <div style="font-size:0.76rem;color:#94a3b8;text-align:center;margin:8px 0 10px;">
+                Envie apenas ativos da rede <strong style="color:#fff;">Polygon</strong> (POL, WPOL, USDT0, BRZ ou BRLA) para este endereço.
+            </div>
+
+            <button class="rmw-btn-primary" id="rmw-rec-copy-btn">📋 Copiar Endereço Completo</button>
+            ${navigator.share ? `<button class="rmw-btn-secondary" id="rmw-rec-share-btn">📤 Compartilhar Endereço</button>` : ''}
+        `;
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-rec-list').onclick = () => { currentView = 'list'; renderModal(); };
+
+        sheet.querySelector('#rmw-rec-copy-btn').onclick = async () => {
+            await copyToClipboardSafe(acc.address);
+            const btn = sheet.querySelector('#rmw-rec-copy-btn');
+            btn.textContent = '✅ Endereço Copiado!';
+            setTimeout(() => { btn.textContent = '📋 Copiar Endereço Completo'; }, 2000);
+        };
+
+        sheet.querySelector('#rmw-rec-share-btn')?.addEventListener('click', () => {
+            navigator.share({ title: `Carteira ${acc.name} (Polygon)`, text: acc.address }).catch(() => {});
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // TELA ENVIAR (TRANSFERÊNCIA DIRETA NA POLYGON)
+    // -------------------------------------------------------------------------
+    function renderSendView(sheet) {
+        const acc = getActiveAccount();
+        if (!acc) { currentView = 'add'; renderModal(); return; }
+        const bal = getActiveAccountBalances();
+
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">
+                    <button class="rmw-icon-btn" id="rmw-snd-list">👛</button>
+                    ↑ Enviar Ativos (Polygon)
+                </div>
+                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+            </div>
+
+            <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">
+                De: <strong style="color:#fff;">${acc.name}</strong> (${acc.address.slice(0, 6)}...${acc.address.slice(-4)})
+            </div>
+
+            <label class="rmw-label">Moeda</label>
+            <select class="rmw-select" id="rmw-snd-token">
+                <option value="USDT0">USDT0 (Saldo: ${bal.usdt0.toFixed(4)})</option>
+                <option value="POL">POL Nativo (Saldo: ${bal.pol.toFixed(4)})</option>
+                <option value="WPOL">WPOL (Saldo: ${bal.wpol.toFixed(4)})</option>
+                <option value="BRZ">BRZ (Saldo: ${bal.brz.toFixed(2)})</option>
+                <option value="BRLA">BRLA (Saldo: ${bal.brla.toFixed(2)})</option>
+            </select>
+
+            <label class="rmw-label">Endereço de Destino (0x...)</label>
+            <input type="text" class="rmw-input" id="rmw-snd-to" placeholder="0x...">
+
+            <label class="rmw-label">Quantidade</label>
+            <input type="number" class="rmw-input" id="rmw-snd-amt" step="any" placeholder="0.00">
+
+            <div id="rmw-snd-msg"></div>
+            <button class="rmw-btn-primary" id="rmw-snd-exec">Assinar e Enviar na Polygon</button>
+        `;
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-snd-list').onclick = () => { currentView = 'list'; renderModal(); };
+
+        sheet.querySelector('#rmw-snd-exec').onclick = async () => {
+            const msgBox = sheet.querySelector('#rmw-snd-msg');
+            msgBox.innerHTML = '';
+            const sym = sheet.querySelector('#rmw-snd-token').value;
+            const to = sheet.querySelector('#rmw-snd-to').value.trim();
+            const amtStr = sheet.querySelector('#rmw-snd-amt').value.trim();
+
+            try {
+                if (!ethers.utils.isAddress(to)) throw new Error('Endereço de destino inválido.');
+                if (!amtStr || parseFloat(amtStr) <= 0) throw new Error('Informe uma quantidade válida.');
+
+                const signer = await getActiveSigner();
+                const meta = TOKENS_META[sym];
+                const amountWei = ethers.utils.parseUnits(amtStr, meta.decimals);
+
+                msgBox.innerHTML = `<div class="rmw-alert-ok">Aguardando assinatura na carteira...</div>`;
+                let tx;
+                if (!meta.address) {
+                    tx = await signer.sendTransaction({ to, value: amountWei });
+                } else {
+                    const contract = new ethers.Contract(meta.address, ERC20_ABI, signer);
+                    tx = await contract.transfer(to, amountWei);
+                }
+
+                msgBox.innerHTML = `<div class="rmw-alert-ok">Transação enviada (${tx.hash.slice(0, 10)}...) Confirmando...</div>`;
+                await tx.wait();
+                msgBox.innerHTML = `<div class="rmw-alert-ok">✅ Envio confirmado na Polygon!</div>`;
+                refreshAllAccountsBalances();
+            } catch (err) {
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err?.reason || err?.message || 'Envio cancelado.'}</div>`;
+            }
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -1241,6 +1513,7 @@
 
         sheet.querySelector('#rmw-opt-rabby').onclick = async () => {
             const msgBox = sheet.querySelector('#rmw-add-msg');
+            msgBox.innerHTML = '';
             try {
                 await connectRabbyExtension();
                 currentView = 'list';
@@ -1267,7 +1540,6 @@
         const needsPassword = requiresVaultPasswordSetup();
         const isLockedExisting = !state.unlockedSecrets && Boolean(readVaultMetaFromStorage()?.encryptedSecrets);
 
-        // FLUXO DE 2 ETAPAS PARA CRIAR CARTEIRA (ANOTAR -> CONFIRMAR 3 PALAVRAS)
         if (activeFormMode === 'create-seed') {
             if (!createSeedDraft) {
                 createSeedDraft = {
@@ -1357,7 +1629,6 @@
                 return;
             }
 
-            // ETAPA 1 DA CRIAÇÃO: MOSTRAR PALAVRAS NUMERADAS + SENHA
             const numberedGridHtml = wordsArr.map((w, i) => `
                 <div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}.</span>${w}</div>
             `).join('');
@@ -1414,8 +1685,8 @@
                 renderModal();
             };
 
-            sheet.querySelector('#rmw-f-copy-gen').onclick = () => {
-                navigator.clipboard.writeText(createSeedDraft.mnemonic);
+            sheet.querySelector('#rmw-f-copy-gen').onclick = async () => {
+                await copyToClipboardSafe(createSeedDraft.mnemonic);
                 sheet.querySelector('#rmw-f-copy-gen').textContent = '✅ Palavras Copiadas!';
             };
 
@@ -1436,7 +1707,6 @@
             return;
         }
 
-        // OUTROS FORMULÁRIOS (IMPORTAR SEED, CHAVE PRIVADA, WATCH-ONLY)
         const titles = {
             'import-seed': '📝 Importar Frase-Semente',
             'import-pk': '🔑 Importar Chave Privada',
@@ -1611,8 +1881,8 @@
             }
         };
 
-        sheet.querySelector('#rmw-det-copy-addr').onclick = () => {
-            navigator.clipboard.writeText(acc.address);
+        sheet.querySelector('#rmw-det-copy-addr').onclick = async () => {
+            await copyToClipboardSafe(acc.address);
             sheet.querySelector('#rmw-det-copy-addr').textContent = '✅ Endereço Copiado!';
         };
 
@@ -1650,8 +1920,8 @@
                         <button class="rmw-btn-secondary" id="rmw-copy-secret-val" style="margin-top:8px;padding:7px;">📋 Copiar ${title}</button>
                     </div>
                 `;
-                secretArea.querySelector('#rmw-copy-secret-val').onclick = () => {
-                    navigator.clipboard.writeText(value);
+                secretArea.querySelector('#rmw-copy-secret-val').onclick = async () => {
+                    await copyToClipboardSafe(value);
                     secretArea.querySelector('#rmw-copy-secret-val').textContent = '✅ Copiado para área de transferência!';
                 };
             } catch (err) {
@@ -1672,7 +1942,42 @@
     }
 
     // =========================================================================
-    // 8. INICIALIZAÇÃO E API PÚBLICA COMPATÍVEL COM TODO O ECOSSISTEMA
+    // 9. GARANTIA UNIVERSAL DOS BOTÕES "RECEBER" E "ENVIAR" (RABBY & PC)
+    // =========================================================================
+    function bindHeroActionFallbacks() {
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('button, [role="button"]');
+            if (!btn) return;
+            if (btn.closest('#rdesk-mw-overlay')) return;
+
+            const id = (btn.id || '').toLowerCase();
+            const label = (btn.textContent || '').trim().toLowerCase();
+
+            const isReceiveBtn = id === 'btn-action-receive' || id === 'btn-receive' || btn.getAttribute('data-action') === 'receive' || /^↓?\s*receber$/i.test(label);
+            const isSendBtn = id === 'btn-action-send' || id === 'btn-send' || btn.getAttribute('data-action') === 'send' || /^↑?\s*enviar$/i.test(label);
+
+            if (isReceiveBtn) {
+                setTimeout(() => {
+                    const anyExternalModalOpen = Array.from(document.querySelectorAll('[id*="receive"], [class*="receive-modal"]'))
+                        .some((el) => el.id !== 'rdesk-mw-overlay' && (el.classList.contains('open') || el.classList.contains('active') || el.style.display === 'flex' || el.style.display === 'block'));
+                    if (!anyExternalModalOpen) {
+                        openReceiveModal();
+                    }
+                }, 60);
+            } else if (isSendBtn) {
+                setTimeout(() => {
+                    const anyExternalModalOpen = Array.from(document.querySelectorAll('[id*="send"], [class*="send-modal"]'))
+                        .some((el) => el.id !== 'rdesk-mw-overlay' && (el.classList.contains('open') || el.classList.contains('active') || el.style.display === 'flex' || el.style.display === 'block'));
+                    if (!anyExternalModalOpen) {
+                        openSendModal();
+                    }
+                }, 60);
+            }
+        });
+    }
+
+    // =========================================================================
+    // 10. INICIALIZAÇÃO E API PÚBLICA COMPLETA (window.RdeskWallet)
     // =========================================================================
     function registerChangeListener(cb) {
         if (typeof cb !== 'function') return;
@@ -1683,7 +1988,7 @@
         }
     }
 
-    function initWalletEngine() {
+    async function initWalletEngine() {
         const meta = readVaultMetaFromStorage();
         if (meta && Array.isArray(meta.accounts)) {
             state.accounts = meta.accounts;
@@ -1691,7 +1996,7 @@
             state.isLocked = Boolean(meta.encryptedSecrets);
         }
 
-        // Descoberta EIP-6963 (Rabby Wallet)
+        // Descoberta EIP-6963 (Rabby Wallet PC & Mobile)
         window.addEventListener('eip6963:announceProvider', (event) => {
             const info = event.detail?.info;
             if (info && (info.rdns?.includes('rabby') || info.name?.toLowerCase().includes('rabby'))) {
@@ -1700,13 +2005,24 @@
         });
         window.dispatchEvent(new Event('eip6963:requestProvider'));
 
-        // Sincroniza automaticamente se o usuário trocar de conta dentro da Rabby
-        if (window.ethereum && typeof window.ethereum.on === 'function') {
-            window.ethereum.on('accountsChanged', (accs) => {
-                if (accs && accs[0]) {
-                    upsertRabbyAccount(accs[0], window.ethereum);
-                }
-            });
+        // Se aberto dentro do navegador da Rabby Mobile ou com permissão já concedida
+        const injected = resolveInjectedWeb3Provider();
+        if (injected && typeof injected.request === 'function') {
+            injected.request({ method: 'eth_accounts' })
+                .then((accs) => {
+                    if (accs && accs[0]) {
+                        upsertRabbyAccount(accs[0], injected, state.accounts.length === 0);
+                    }
+                })
+                .catch(() => {});
+
+            if (typeof injected.on === 'function') {
+                injected.on('accountsChanged', (accs) => {
+                    if (accs && accs[0]) {
+                        upsertRabbyAccount(accs[0], injected, true);
+                    }
+                });
+            }
         }
 
         document.querySelectorAll('#btn-wallet-trigger, #wallet-chip-btn, #btn-connect-wallet, [data-wallet-open]').forEach((btn) => {
@@ -1725,9 +2041,10 @@
             openWalletModal('unlock');
         });
 
+        bindHeroActionFallbacks();
+        await refreshLiveMarketPrices();
         notifyAccountChanged();
         refreshAllAccountsBalances();
-        // Re-sincroniza logo após todos os scripts defer terminarem de carregar
         setTimeout(() => { notifyAccountChanged(); refreshAllAccountsBalances(); }, 400);
     }
 
@@ -1736,17 +2053,27 @@
         getActiveAccount,
         getAccounts: () => [...state.accounts],
         getState: getPublicWalletState,
+        getPrices: getPricesSyncOrRefresh,
+        refreshPrices: refreshLiveMarketPrices,
+        getBalances: getActiveAccountBalances,
+        refreshBalances: refreshAllAccountsBalances,
         getSigner: getActiveSigner,
         getProvider: getReadProvider,
+        getReadProvider,
+        connectRabby: connectRabbyExtension,
         isConnected: () => Boolean(getActiveAccount()?.address),
         isUnlocked: () => !state.isLocked,
         isLocked: () => state.isLocked,
         isWatchOnly: () => getActiveAccount()?.type === 'watch',
         openModal: openWalletModal,
+        openReceiveModal,
+        openSendModal,
         closeModal: closeWalletModal,
         switchAccount: switchActiveAccount,
         lockVault: lockVaultNow,
         unlockWithBiometrics: unlockWithBiometry,
+        copyText: copyToClipboardSafe,
+        shortAddress: (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '',
         onChange: registerChangeListener,
         onAccountChange: registerChangeListener,
         subscribe: registerChangeListener
