@@ -1,9 +1,9 @@
 /* =========================================================================
    RDESK SENTINEL — SERVICE WORKER (CACHE INTELIGENTE NETWORK-FIRST)
-   Arquivo 7 de 7: sw.js
+   Arquivo 7 de 7: sw.js (v23)
    ========================================================================= */
 
-const CACHE_NAME = 'rdesk-sentinel-v22-shell';
+const CACHE_NAME = 'rdesk-sentinel-v23-shell';
 const CORE_ASSETS = [
     './',
     './index.html',
