@@ -1,341 +1,262 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RDESK Command | Auto-Pilot Liquidity & PIX Sentinel V16</title>
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="styles.css">
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
-    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
-    <script src="sentinel-engine.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#090d16" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://polygon-bor-rpc.publicnode.com https://1rpc.io https://polygon.drpc.org https://polygon-rpc.com https://economia.awesomeapi.com.br https://coins.llama.fi https://polygon.blockscout.com https://olinda.bcb.gov.br; object-src 'none'; base-uri 'self'; form-action 'none';" />
+  <title>RDESK SENTINEL — Autocustódia Web3</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-
-    <div class="topbar">
-        <div class="brand-title">
-            <span>RDESK SENTINEL V16</span>
-            <span id="alert-status" class="status-pill safe">SEGURO</span>
-        </div>
-
-        <div class="mother-currency-bar" title="Paridade real on-chain na Polygon vs Dólar Comercial">
-            <div class="mc-item">BRL REAL: <span id="top-usd-brl">R$ 5.650</span></div>
-            <div class="mc-item">1 USDT0 = <span id="top-usdt-brz">5.65 BRZ</span></div>
-            <div class="mc-item">1 USDT0 = <span id="top-usdt-brla">5.65 BRLA</span></div>
-        </div>
-
-        <div class="top-controls">
-            <button id="btn-connect-wallet" class="top-btn" title="Conectar Rabby Wallet / MetaMask na Polygon">CONECTAR RABBY</button>
-            <button id="btn-audio" class="top-btn">SOM: OFF</button>
-            <button id="btn-copy-link" class="top-btn">LINK</button>
-            <button id="btn-export-json" class="top-btn">JSON ↓</button>
-            <button id="btn-import-json" class="top-btn">JSON ↑</button>
-            <input type="file" id="file-import" accept=".json" style="display:none;">
-        </div>
+  <header class="app-header">
+    <div class="brand"><span class="brand-dot"></span><span>RDESK SENTINEL</span></div>
+    <div class="header-right">
+      <span id="rpcBadge" class="rpc-badge">Polygon</span>
+      <button id="walletSelectorBtn" class="wallet-pill" type="button">
+        <span id="activeWalletLabel">Sem Carteira</span><span>▾</span>
+      </button>
     </div>
+  </header>
 
-    <div class="terminal-grid" id="workspace">
-        
-        <!-- COLUNA 1: OHLC MULTI-TIMEFRAME -->
-        <div class="panel variations-col" id="col-left">
-            <div class="panel-header"><span><span class="pulse-dot" style="background:#fff"></span> OHLC</span></div>
-            <div class="var-grid" id="variations-grid">
-                <div class="loading-placeholder">Carregando...</div>
-            </div>
+  <div id="lockBanner" class="lock-banner hidden">
+    <span>Cofre bloqueado. Desbloqueie para assinar transações.</span>
+    <button id="unlockBannerBtn" class="btn btn-primary btn-sm" type="button">Desbloquear</button>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <main class="main-content">
+    <section id="tab-wallet" class="tab-view active">
+      <div class="card hero-card">
+        <div class="card-title"><span>Patrimônio Líquido</span><span id="ptaxBadge" class="mono">USD/BRL --</span></div>
+        <div id="totalBrl" class="hero-brl">R$ 0,00</div>
+        <div id="totalUsd" class="hero-usd">US$ 0,00</div>
+        <div id="gasShieldPill" class="shield-pill">🛡️ Escudo de Gás: 3,00 POL</div>
+        <div class="hero-actions">
+          <button id="btnOpenReceive" class="btn btn-outline" type="button">Receber</button>
+          <button id="btnOpenSend" class="btn btn-primary" type="button">Enviar</button>
+          <button id="btnRefreshBalances" class="btn btn-outline" type="button">Atualizar</button>
         </div>
+      </div>
 
-        <div class="resizer" id="resizer-1" title="Arraste para redimensionar"></div>
+      <div class="card">
+        <div class="card-title"><span>Ativos Auditados (Polygon)</span><span class="badge badge-ok">Whitelist</span></div>
+        <div id="tokenList" class="list-stack"></div>
+      </div>
+    </section>
 
-        <!-- COLUNA 2: GRÁFICO + PATRIMÔNIO + LUCRO LÍQUIDO REAL -->
-        <div class="panel tactical-col" id="col-center">
-            <div class="chart-header">
-                <div class="tf-group" id="tf-buttons">
-                    <button class="tf-btn" data-interval="1m" data-seconds="60">1m</button>
-                    <button class="tf-btn" data-interval="5m" data-seconds="300">5m</button>
-                    <button class="tf-btn active" data-interval="15m" data-seconds="900">15m</button>
-                    <button class="tf-btn" data-interval="1h" data-seconds="3600">1H</button>
-                    <button class="tf-btn" data-interval="4h" data-seconds="14400">4H</button>
-                </div>
-                <span id="focused-label" class="focused-tag">FOCO: NENHUMA POSIÇÃO</span>
-            </div>
-            
-            <div class="chart-wrapper" id="tv-chart"></div>
-
-            <div class="wallet-panel">
-                <div class="wallet-card">
-                    <div class="wallet-title">Patrimônio Focado (Moeda Mãe)</div>
-                    <div class="wallet-value" id="wallet-total-brz">0.00 BRZ</div>
-                    <div class="wallet-sub" id="wallet-total-usd">$ 0.00 | R$ 0,00</div>
-                </div>
-                <div class="wallet-card border-left">
-                    <div class="wallet-title">Tarifas Acumuladas (Live)</div>
-                    <div class="wallet-value fees-live-val" id="fees-total-brz">0.0000 BRZ</div>
-                    <div class="wallet-sub" id="fees-total-usd">$ 0.0000 | R$ 0,0000</div>
-                </div>
-                <div class="wallet-card border-left">
-                    <div class="wallet-title">Distribuição no Intervalo</div>
-                    <div class="distribution-bar">
-                        <div class="dist-marker" id="dist-marker" style="left: 50%;"></div>
-                        <div class="dist-pol" id="bar-pol" style="width: 50%;"></div>
-                        <div class="dist-usdt" id="bar-usdt" style="width: 50%;"></div>
-                    </div>
-                    <div class="dist-labels">
-                        <span id="lbl-pol" style="color: var(--pol-color);">50% POL</span>
-                        <span id="lbl-usdt" style="color: var(--usdt-color);">50% USDT</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pnl-strip">
-                <div class="pnl-inputs">
-                    <div class="pnl-mini-row">
-                        <span class="pnl-lbl-fixed">Aporte (BRZ):</span>
-                        <input type="number" id="pnl-init-brz" placeholder="Ex: 500.00" step="0.01" title="Capital inicial aportado em BRZ/BRL">
-                    </div>
-                    <div class="pnl-mini-row">
-                        <span class="pnl-lbl-fixed">Gás Ab. (POL):</span>
-                        <input type="number" id="pnl-open-gas-pol" placeholder="Ex: 0.05" step="0.001" value="0.05" title="Taxa de gás paga na Polygon para abrir a pool">
-                    </div>
-                </div>
-                <div class="pnl-metric">
-                    <span class="pnl-metric-lbl">Tarifas Líquidas (Pós-Gás)</span>
-                    <span class="pnl-metric-val" id="pnl-net-fees-brz" style="color:var(--success-green);">+0.0000 BRZ</span>
-                    <span class="pnl-metric-sub" id="pnl-gas-cost-sub">Gás Total (Ab+Fech): -0.00 BRZ</span>
-                </div>
-                <div class="pnl-metric">
-                    <span class="pnl-metric-lbl">Lucro Líquido Real (Posição)</span>
-                    <span class="pnl-metric-val" id="pnl-real-total-brz">0.00 BRZ</span>
-                    <span class="pnl-metric-sub" id="pnl-real-total-brl">R$ 0,00 real líquido</span>
-                </div>
-            </div>
+    <section id="tab-pools" class="tab-view">
+      <div class="card">
+        <div class="card-title"><span>Abrir Liquidez Uniswap V3 (0,05%)</span><span id="poolSpotPrice" class="mono">WPOL --</span></div>
+        <div class="field">
+          <label for="poolAmountUsd">Aporte Total Estimado (USD)</label>
+          <input id="poolAmountUsd" class="input" type="number" min="5" step="1" value="100" />
         </div>
-
-        <div class="resizer" id="resizer-2" title="Arraste para redimensionar"></div>
-
-        <!-- COLUNA 3: PILOTO AUTOMÁTICO + RADAR + SWAP + PIX -->
-        <div class="cmd-col" id="col-right">
-            <div class="panel" id="panel-radar" style="flex-shrink:0;">
-                <div class="mode-tabs">
-                    <button class="mode-tab active" id="tab-radar">1. PILOTO & NFT</button>
-                    <button class="mode-tab swap-tab" id="tab-swap">2. SWAP DEX</button>
-                    <button class="mode-tab pix-tab" id="tab-pix">3. PIX INTELIGENTE</button>
-                </div>
-                
-                <div id="price-global" class="price-huge">0.000000</div>
-                
-                <div class="macro-strip">
-                    <div class="macro-cell">
-                        <span class="macro-label">POL / BRZ (MOEDA MÃE)</span>
-                        <span class="macro-val" id="macro-pol-brz" style="color:var(--dekton-copper);">0.0000 BRZ</span>
-                    </div>
-                    <div class="macro-cell">
-                        <span class="macro-label">POL / BRL REAL</span>
-                        <span class="macro-val" id="macro-pol-brl">R$ 0.0000</span>
-                    </div>
-                </div>
-
-                <!-- SALDOS LIVRES NA CARTEIRA POLYGON -->
-                <div class="tokens-strip">
-                    <div class="tok-badge" data-tok="POL" title="Clique para usar POL no Swap">
-                        <span class="tok-sym">POL</span>
-                        <span class="tok-amt" id="bal-pol">0.00</span>
-                    </div>
-                    <div class="tok-badge" data-tok="WPOL" title="Clique para usar WPOL no Swap">
-                        <span class="tok-sym">WPOL</span>
-                        <span class="tok-amt" id="bal-wpol">0.00</span>
-                    </div>
-                    <div class="tok-badge" data-tok="USDT0" title="Clique para usar USDT0 no Swap">
-                        <span class="tok-sym">USDT0</span>
-                        <span class="tok-amt" id="bal-usdt0">0.00</span>
-                    </div>
-                    <div class="tok-badge" data-tok="BRZ" title="Clique para usar BRZ no Swap">
-                        <span class="tok-sym">BRZ</span>
-                        <span class="tok-amt" id="bal-brz">0.00</span>
-                    </div>
-                    <div class="tok-badge" data-tok="BRLA" title="Clique para usar BRLA no Swap">
-                        <span class="tok-sym">BRLA</span>
-                        <span class="tok-amt" id="bal-brla">0.00</span>
-                    </div>
-                </div>
-
-                <!-- ABA 1: PILOTO AUTOMÁTICO + RADAR SNIPER + GESTÃO NFT -->
-                <div id="view-radar" class="view-pane active">
-                    
-                    <!-- CENTRAL DO PILOTO AUTOMÁTICO (1-CLIQUE) -->
-                    <div class="autopilot-card" id="autopilot-panel">
-                        <div class="autopilot-header">
-                            <span class="ap-badge">⚡ PILOTO AUTOMÁTICO V3</span>
-                            <span class="ap-capital" id="ap-available-capital">Capital Livre: 0.00 BRZ</span>
-                        </div>
-                        
-                        <div class="ap-plan-summary" id="ap-plan-summary">
-                            Conecte sua Rabby Wallet para calcular o plano de liquidez ideal com reserva de gás (1.5 POL).
-                        </div>
-
-                        <div class="ap-stepper" id="ap-stepper" style="display:none;">
-                            <div class="ap-step" id="ap-step-1">1. Aprovar</div>
-                            <div class="ap-step" id="ap-step-2">2. Balancear</div>
-                            <div class="ap-step" id="ap-step-3">3. Abrir Pool</div>
-                        </div>
-
-                        <button id="btn-start-earning" class="btn-autopilot">
-                            COMEÇAR A GANHAR (AUTO-SETUP)
-                        </button>
-                        <div id="ap-status-log" class="ap-log"></div>
-                    </div>
-
-                    <div class="strategy-box">
-                        <div class="strat-row">
-                            <span>Âncora (24h)</span>
-                            <span style="color:#fff;" id="strat-macro">...</span>
-                        </div>
-                        <div class="strat-row">
-                            <span><span class="sniper-badge">SNIPER PRO</span> <span class="regime-pill" id="sniper-regime">CALIBRANDO</span></span>
-                            <span id="sniper-efficiency" style="color:var(--cyan-accent); font-size:0.59rem;">--</span>
-                        </div>
-                        <div class="strat-row">
-                            <strong style="color:var(--success-green); font-size:0.71rem;" id="strat-sniper">...</strong>
-                            <button id="btn-use-sniper" class="apply-sniper-btn" title="Plotar faixa Sniper no gráfico">+PLOTAR</button>
-                        </div>
-                    </div>
-
-                    <div class="scanner-box">
-                        <div class="section-tag">
-                            <span>Scanner Web3 + Ações Rabby</span>
-                            <span class="route-status" id="route-status">PRONTO</span>
-                        </div>
-                        <div class="input-row">
-                            <input type="text" id="wallet-address" placeholder="Carteira Polygon (0x...)">
-                            <button id="btn-scan" class="btn-gold">SCAN</button>
-                        </div>
-
-                        <div id="nft-tx-feedback" class="tx-feedback-line"></div>
-
-                        <div class="manual-box">
-                            <div class="section-tag">
-                                <span style="color:var(--dekton-copper);">Range Manual (Offline)</span>
-                            </div>
-                            <div class="manual-grid">
-                                <input type="number" id="manual-min" placeholder="Mín" step="0.00001">
-                                <input type="number" id="manual-max" placeholder="Máx" step="0.00001">
-                                <input type="text" id="manual-tag" placeholder="Nome">
-                                <button id="btn-add-manual" class="btn-gold">+ADD</button>
-                            </div>
-                        </div>
-
-                        <div id="positions-list" class="positions-list"></div>
-                    </div>
-                </div>
-
-                <!-- ABA 2: ROTEADOR DEX NATIVO (ODOS / PARASWAP) -->
-                <div id="view-swap" class="view-pane swap-box">
-                    <div class="section-tag">
-                        <span style="color:var(--cyan-accent);">Roteador DEX Direto (Moeda Mãe BRZ/BRLA)</span>
-                        <span id="swap-router-tag" style="color:#777;">ODOS SOR</span>
-                    </div>
-
-                    <div class="swap-leg">
-                        <div class="swap-leg-top">
-                            <span>VOCÊ ENVIA</span>
-                            <span>SALDO: <strong id="swap-in-bal" style="color:#ccc;">0.00</strong> <span class="max-pill" id="btn-swap-max">MAX</span></span>
-                        </div>
-                        <div class="input-row">
-                            <select id="swap-token-in" style="width: 38%;">
-                                <option value="WPOL">WPOL</option>
-                                <option value="POL">POL</option>
-                                <option value="USDT0">USDT0</option>
-                                <option value="BRZ">BRZ</option>
-                                <option value="BRLA">BRLA</option>
-                            </select>
-                            <input type="number" id="swap-amount-in" placeholder="0.00" step="0.01" value="100">
-                        </div>
-                    </div>
-
-                    <div class="flip-row">
-                        <button class="flip-btn" id="btn-flip-tokens" title="Inverter par">⇅</button>
-                    </div>
-
-                    <div class="swap-leg">
-                        <div class="swap-leg-top">
-                            <span>VOCÊ RECEBE (ESTIMADO)</span>
-                            <span>SALDO: <strong id="swap-out-bal" style="color:#ccc;">0.00</strong></span>
-                        </div>
-                        <div class="input-row">
-                            <select id="swap-token-out" style="width: 38%;">
-                                <option value="BRZ">BRZ</option>
-                                <option value="BRLA">BRLA</option>
-                                <option value="USDT0">USDT0</option>
-                                <option value="WPOL">WPOL</option>
-                                <option value="POL">POL</option>
-                            </select>
-                            <input type="text" id="swap-amount-out" readonly value="Cotando..." style="color:var(--success-green); font-weight:700;">
-                        </div>
-                    </div>
-
-                    <div class="swap-telemetry">
-                        <div class="swap-tel-row">
-                            <span>Equivalente Moeda Mãe:</span>
-                            <span id="swap-brl-eq" style="color:#fff;">0.00 BRZ | R$ 0,00</span>
-                        </div>
-                        <div class="swap-tel-row">
-                            <span>Impacto / Slippage Máx:</span>
-                            <span id="swap-impact">-- / 0.50%</span>
-                        </div>
-                        <div class="swap-tel-row">
-                            <span>Gás Estimado (Polygon):</span>
-                            <span id="swap-gas" style="color:var(--success-green);">~0.03 BRZ</span>
-                        </div>
-                    </div>
-
-                    <button class="btn-swap-action" id="btn-exec-swap">CONECTAR RABBY PARA TROCAR</button>
-                    <div id="swap-tx-status" class="tx-feedback-line center"></div>
-                </div>
-
-                <!-- ABA 3: RANKER INTELIGENTE DE SAQUE PIX -->
-                <div id="view-pix" class="view-pane pix-box">
-                    <div class="section-tag">
-                        <span style="color:var(--success-green);">Ranker PIX Líquido (Desconta Spread)</span>
-                        <button id="btn-filter-nokyc" class="pix-chip" style="padding:2px 6px;">FILTRO: TODAS</button>
-                    </div>
-
-                    <div class="input-row">
-                        <select id="pix-asset" style="width: 36%;">
-                            <option value="USDT0">USDT0</option>
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="BRZ">BRZ</option>
-                            <option value="BRLA">BRLA</option>
-                        </select>
-                        <input type="number" id="pix-amount" placeholder="Qtd (ex: 50)" step="0.01" value="50">
-                    </div>
-
-                    <div class="pix-quick-row">
-                        <button class="pix-chip" id="chip-use-usdt">USDT0</button>
-                        <button class="pix-chip" id="chip-use-wpol">WPOL</button>
-                        <button class="pix-chip" id="chip-use-brz">BRZ/BRLA</button>
-                        <button class="pix-chip" id="chip-use-fees">TARIFAS</button>
-                    </div>
-
-                    <div id="pix-ranking-list" class="pix-ranking-list"></div>
-
-                    <div id="pix-hint" class="pix-hint-line">
-                        Clique na plataforma vencedora acima para copiar a quantidade exata e abrir a ponte.
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel tape-container">
-                <div class="panel-header"><span><span class="pulse-dot" id="polygon-dot" style="background:#fff"></span> Fluxo DEX (0.05%)</span></div>
-                <div class="tape-header"><div>Hora</div><div>Tipo</div><div>BRZ/BRL</div><div>Qtd (POL)</div></div>
-                <div id="tape"></div>
-            </div>
+        <div class="field">
+          <label for="poolRangePct">Largura do Range (±% do preço atual)</label>
+          <select id="poolRangePct" class="select">
+            <option value="5">±5% (Concentrado / Alta Taxa)</option>
+            <option value="10" selected>±10% (Equilibrado)</option>
+            <option value="20">±20% (Conservador)</option>
+          </select>
         </div>
+        <div id="poolCalcSummary" class="receipt-box text-muted">Calculando par WPOL / USDT0...</div>
+        <div class="input-row">
+          <button id="btnBreakEven" class="btn btn-outline btn-block" type="button">Consultor Break-Even</button>
+          <button id="btnOpenPool" class="btn btn-primary btn-block" type="button">Abrir Pool</button>
+        </div>
+        <div id="breakEvenBox" class="receipt-box hidden"></div>
+      </div>
 
+      <div class="card">
+        <div class="card-title"><span>Minhas Posições NFT V3</span><button id="btnReloadPools" class="btn btn-outline btn-sm" type="button">Sincronizar</button></div>
+        <div id="positionsList" class="list-stack"></div>
+      </div>
+    </section>
+
+    <section id="tab-swap" class="tab-view">
+      <div class="card">
+        <div class="card-title"><span>Comparador PIX Líquido (R$ → USDT0)</span><span class="badge badge-ok">On-Ramp</span></div>
+        <div class="field">
+          <label for="pixBrlAmount">Valor em Reais (R$)</label>
+          <input id="pixBrlAmount" class="input" type="number" min="10" step="10" value="500" />
+        </div>
+        <div id="pixComparisonBox" class="list-stack"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>Swap Direto (Uniswap V3 Router02)</span><span class="badge badge-warn">Aprovação Exata</span></div>
+        <div class="field">
+          <label for="swapFromToken">De (Origem)</label>
+          <select id="swapFromToken" class="select">
+            <option value="POL">POL (Nativo)</option>
+            <option value="WPOL">WPOL</option>
+            <option value="USDT0">USDT0</option>
+            <option value="USDC">USDC</option>
+            <option value="BRZ">BRZ</option>
+            <option value="BRLA">BRLA</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="swapToToken">Para (Destino)</label>
+          <select id="swapToToken" class="select">
+            <option value="USDT0" selected>USDT0</option>
+            <option value="POL">POL (Unwrap)</option>
+            <option value="WPOL">WPOL</option>
+            <option value="USDC">USDC</option>
+            <option value="BRZ">BRZ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="swapAmountIn">Quantidade</label>
+          <div class="input-row">
+            <input id="swapAmountIn" class="input" type="number" min="0" step="any" placeholder="0.00" />
+            <button id="btnSwapMax" class="btn btn-outline" type="button">MÁX</button>
+          </div>
+        </div>
+        <div id="swapQuoteOut" class="text-muted">Cotação estimada: --</div>
+        <button id="btnExecuteSwap" class="btn btn-primary btn-block" type="button">Revisar Swap</button>
+      </div>
+    </section>
+
+    <section id="tab-audit" class="tab-view">
+      <div class="card">
+        <div class="card-title"><span>Auditoria Contábil &amp; Lucro Real</span><button id="btnRunAudit" class="btn btn-primary btn-sm" type="button">Auditar 1ª TX</button></div>
+        <div id="auditStatus" class="text-muted">Varredura histórica via Blockscout v2 + PTAX Banco Central.</div>
+        <div class="receipt-box">
+          <div class="receipt-line"><span>Aporte Externo Líquido (EOA)</span><strong id="auditNetInvestedBrl">R$ 0,00</strong></div>
+          <div class="receipt-line"><span>Patrimônio Atual + Pools</span><strong id="auditCurrentValueBrl">R$ 0,00</strong></div>
+          <div class="receipt-line"><span>Gás Histórico Acumulado</span><span id="auditGasSpentBrl">R$ 0,00</span></div>
+          <div class="receipt-line"><span>Lucro / Prejuízo Real</span><strong id="auditRealizedPnlBrl" class="text-ok">R$ 0,00</strong></div>
+        </div>
+        <div class="chart-wrap"><canvas id="patrimonyChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span>Livro-Razão Auditado</span><span class="badge badge-ok">DeFi Filtrado</span></div>
+        <div id="auditLedgerList" class="list-stack"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <button class="nav-item active" data-tab="wallet" type="button">Carteira</button>
+    <button class="nav-item" data-tab="pools" type="button">Pools V3</button>
+    <button class="nav-item" data-tab="swap" type="button">PIX &amp; Swap</button>
+    <button class="nav-item" data-tab="audit" type="button">Lucro Real</button>
+  </nav>
+
+  <div id="walletModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-top"><strong>Cofre Multi-Carteira</strong><button id="btnCloseWalletModal" class="btn btn-outline btn-sm" type="button">Fechar</button></div>
+      <div id="savedWalletsList" class="list-stack"></div>
+      <hr />
+      <div class="input-row">
+        <button class="btn btn-outline btn-sm vault-mode-btn" data-mode="create" type="button">Criar Seed</button>
+        <button class="btn btn-outline btn-sm vault-mode-btn" data-mode="import" type="button">Importar</button>
+        <button class="btn btn-outline btn-sm vault-mode-btn" data-mode="rabby" type="button">Rabby</button>
+        <button class="btn btn-outline btn-sm vault-mode-btn" data-mode="watch" type="button">Watch-Only</button>
+      </div>
+
+      <div id="vaultModeCreate" class="field">
+        <div class="input-row">
+          <select id="seedWordCount" class="select"><option value="12">12 Palavras</option><option value="24">24 Palavras</option></select>
+          <button id="btnGenSeed" class="btn btn-primary" type="button">Gerar Frase</button>
+        </div>
+        <div id="seedDisplayBox" class="hidden">
+          <div id="seedGrid" class="seed-grid mono"></div>
+          <button id="btnCopySeed" class="btn btn-outline btn-sm btn-block" type="button">Copiar Frase (Limpa em 45s)</button>
+          <label>Prova de Backup — Digite as 3 palavras sorteadas:</label>
+          <div id="challengeBoxes" class="challenge-boxes"></div>
+          <input id="newWalletPin" class="input" type="password" inputmode="numeric" minlength="6" placeholder="PIN do Cofre (mín. 6 dígitos)" />
+          <div class="input-row">
+            <button id="btnEnableBio" class="btn btn-outline btn-block" type="button">Ativar Biometria</button>
+            <button id="btnConfirmNewWallet" class="btn btn-primary btn-block" type="button">Ativar Carteira</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="vaultModeImport" class="field hidden">
+        <textarea id="importSecretInput" class="textarea mono" rows="2" placeholder="Frase-semente (12/24 palavras) ou Chave Privada 0x..."></textarea>
+        <input id="importPinInput" class="input" type="password" inputmode="numeric" minlength="6" placeholder="PIN do Cofre (mín. 6 dígitos)" />
+        <button id="btnImportWallet" class="btn btn-primary btn-block" type="button">Criptografar &amp; Importar</button>
+      </div>
+
+      <div id="vaultModeRabby" class="field hidden">
+        <p id="rabbyStatus" class="text-muted">Detectando extensão ou WebView Rabby...</p>
+        <button id="btnConnectRabby" class="btn btn-primary btn-block" type="button">Conectar Rabby Wallet</button>
+      </div>
+
+      <div id="vaultModeWatch" class="field hidden">
+        <input id="watchLabelInput" class="input" type="text" placeholder="Apelido (ex: Cold Storage)" />
+        <input id="watchAddressInput" class="input mono" type="text" placeholder="Endereço 0x..." />
+        <button id="btnAddWatchWallet" class="btn btn-primary btn-block" type="button">Monitorar Endereço</button>
+      </div>
     </div>
+  </div>
+
+  <div id="receiveModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-top"><strong>Receber na Rede Polygon</strong><button id="btnCloseReceiveModal" class="btn btn-outline btn-sm" type="button">Fechar</button></div>
+      <div class="qr-box"><canvas id="qrCanvas" width="180" height="180"></canvas></div>
+      <div id="receiveAddressText" class="mono text-muted">0x...</div>
+      <button id="btnCopyAddress" class="btn btn-primary btn-block" type="button">Copiar Endereço</button>
+    </div>
+  </div>
+
+  <div id="sendModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-top"><strong>Enviar Ativo</strong><button id="btnCloseSendModal" class="btn btn-outline btn-sm" type="button">Fechar</button></div>
+      <div class="field">
+        <label for="sendTokenSelect">Ativo</label>
+        <select id="sendTokenSelect" class="select">
+          <option value="POL">POL (Nativo)</option>
+          <option value="WPOL">WPOL</option>
+          <option value="USDT0">USDT0</option>
+          <option value="USDC">USDC</option>
+          <option value="BRZ">BRZ</option>
+          <option value="BRLA">BRLA</option>
+        </select>
+      </div>
+      <div class="field"><label for="sendToInput">Endereço Destino (Polygon)</label><input id="sendToInput" class="input mono" type="text" placeholder="0x..." /></div>
+      <div class="field">
+        <label for="sendAmountInput">Quantidade</label>
+        <div class="input-row">
+          <input id="sendAmountInput" class="input" type="number" min="0" step="any" placeholder="0.00" />
+          <button id="btnSendMax" class="btn btn-outline" type="button">MÁX</button>
+        </div>
+      </div>
+      <div id="sendShieldWarning" class="text-warn"></div>
+      <button id="btnReviewSend" class="btn btn-primary btn-block" type="button">Revisar Envio</button>
+    </div>
+  </div>
+
+  <div id="receiptModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-top"><strong id="receiptTitle">Recibo Humano de Assinatura</strong><button id="btnCloseReceiptModal" class="btn btn-outline btn-sm" type="button">Cancelar</button></div>
+      <div id="receiptLines" class="receipt-box"></div>
+      <div id="receiptAuthBox" class="field">
+        <div class="input-row">
+          <input id="receiptPinInput" class="input" type="password" inputmode="numeric" placeholder="Digite seu PIN do Cofre" />
+          <button id="btnReceiptBio" class="btn btn-outline hidden" type="button">Biometria</button>
+        </div>
+      </div>
+      <div id="sliderTrack" class="slider-track">
+        <div id="sliderProgress" class="slider-progress"></div>
+        <span id="sliderText" class="slider-text">Arraste para Confirmar →</span>
+        <div id="sliderThumb" class="slider-thumb">»</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="./crypto-vault.js"></script>
+  <script src="./oracle-rpc.js"></script>
+  <script src="./wallet-ui.js"></script>
+  <script src="./defi-pools.js"></script>
+  <script src="./forensic-audit.js"></script>
 </body>
 </html>
