@@ -1,13 +1,18 @@
-const CACHE_NAME = 'rdesk-sentinel-v22-2';
+/* =========================================================================
+   RDESK SENTINEL — SERVICE WORKER (NETWORK-FIRST PWA)
+   Arquivo 2 de 7: sw.js
+   ========================================================================= */
+
+const CACHE_NAME = 'rdesk-sentinel-v24';
 
 const CORE_ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './vault-core.js',
-  './ledger-advisor.js',
-  './gateway-pix.js',
-  './sentinel-engine.js',
+  './range-chart.js',
+  './wallet-service.js',
+  './defi-pix-service.js',
+  './app.js',
   './manifest.json',
   './vendor/ethers-5.7.2.umd.min.js',
   './vendor/qrcode-1.0.0.min.js',
@@ -16,20 +21,22 @@ const CORE_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+    caches.keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        )
       )
-    )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -38,30 +45,25 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // Nunca faz cache de RPCs blockchain, cotações, Blockscout, LI.FI ou APIs financeiras
+  // Nunca faz cache de chamadas RPC blockchain, APIs de cotação, Blockscout, BCB ou LI.FI
   const isStaticCdn =
-    url.hostname.includes('cdnjs.cloudflare.com') ||
-    url.hostname.includes('unpkg.com') ||
     url.hostname.includes('fonts.googleapis.com') ||
     url.hostname.includes('fonts.gstatic.com');
 
   const isLocalAsset = url.origin === self.location.origin;
 
-  if (!isLocalAsset && !isStaticCdn) {
-    event.respondWith(fetch(req));
-    return;
-  }
+  // APIs e RPCs seguem direto para a rede, sem passar pelo service worker.
+  if (!isLocalAsset && !isStaticCdn) return;
 
-  // Network-First para arquivos locais (sempre baixa commits novos do GitHub Pages)
-  // com fallback instantâneo para cache em caso de oscilação de sinal no celular
+  // Network-First: baixa sempre a versão mais recente do GitHub Pages com fallback offline
   event.respondWith(
     fetch(req)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, responseClone));
+      .then((networkRes) => {
+        if (networkRes && networkRes.status === 200) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
         }
-        return networkResponse;
+        return networkRes;
       })
       .catch(() => caches.match(req))
   );
