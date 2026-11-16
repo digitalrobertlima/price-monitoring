@@ -1,0 +1,29 @@
+{
+  "name": "RDESK SENTINEL — Autocustódia Web3",
+  "short_name": "RDESK",
+  "description": "Cofre Web3 de autocustódia, gestão de liquidez Uniswap V3 e auditoria contábil na rede Polygon.",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["finance", "security", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23090d16'/%3E%3Cpath d='M256 64L416 128V248C416 352 348 432 256 464C164 432 96 352 96 248V128L256 64Z' fill='%23111827' stroke='%2310b981' stroke-width='24'/%3E%3Cpath d='M204 256L240 292L316 212' fill='none' stroke='%2334d399' stroke-width='28' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23090d16'/%3E%3Cpath d='M256 88L392 142V246C392 336 334 404 256 432C178 404 120 336 120 246V142L256 88Z' fill='%23111827' stroke='%2310b981' stroke-width='22'/%3E%3Cpath d='M208 256L242 290L310 216' fill='none' stroke='%2334d399' stroke-width='26' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
