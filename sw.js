@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rdesk-sentinel-v22-superapp';
+const CACHE_NAME = 'rdesk-sentinel-v22-2';
 
 const CORE_ASSETS = [
   './',
@@ -8,7 +8,10 @@ const CORE_ASSETS = [
   './ledger-advisor.js',
   './gateway-pix.js',
   './sentinel-engine.js',
-  './manifest.json'
+  './manifest.json',
+  './vendor/ethers-5.7.2.umd.min.js',
+  './vendor/qrcode-1.0.0.min.js',
+  './vendor/chart-4.4.1.umd.min.js'
 ];
 
 self.addEventListener('install', (event) => {

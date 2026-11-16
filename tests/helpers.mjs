@@ -23,7 +23,10 @@ export function startStaticServer(port = 8765) {
 }
 
 export async function launch() {
-    return chromium.launch({ args: ['--no-sandbox'] });
+    return chromium.launch({
+        args: ['--no-sandbox'],
+        ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {})
+    });
 }
 
 // Abre a app e devolve a página + a lista (viva) de erros de JavaScript.
@@ -32,6 +35,15 @@ export async function openApp(context, url) {
     const pageErrors = [];
     page.on('pageerror', (e) => pageErrors.push(e.message));
     page.on('dialog', (d) => d.accept().catch(() => {}));
+    if (process.env.OFFLINE_STUBS) {
+        // Ambiente sem internet: simula só o gráfico de velas externo e corta o resto da rede.
+        const stub = `(function(){const U=new Proxy(function(){},{get:(t,p)=>p===Symbol.toPrimitive?()=>0:(p==='then'?undefined:U),apply:()=>U,construct:()=>U});window.LightweightCharts=U;})();`;
+        await page.route((u) => !u.href.startsWith('http://localhost'), (route) => {
+            const u = route.request().url();
+            if (/lightweight-charts/.test(u)) return route.fulfill({ status: 200, contentType: 'application/javascript', body: stub });
+            return route.abort();
+        });
+    }
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForFunction(
         () => window.ethers && window.RdeskVault && window.RdeskLedger && window.RdeskGateway,
