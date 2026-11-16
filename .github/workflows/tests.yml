@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   smoke:
-    name: Carregamento, cofre e leitura on-chain
+    name: Página e leitura on-chain (rede real)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -21,11 +21,11 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: node --check vault-core.js && node --check ledger-advisor.js && node --check gateway-pix.js && node --check sentinel-engine.js && node --check sw.js
+      - run: for f in range-chart.js wallet-service.js defi-pix-service.js app.js sw.js; do node --check "$f"; done
       - run: npm run test:smoke
 
   fluxo:
-    name: Interface do cofre e fluxo de pool (Polygon simulada)
+    name: Carteiras e fluxo de dinheiro (Polygon simulada)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

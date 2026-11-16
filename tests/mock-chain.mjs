@@ -80,6 +80,7 @@ export class MockChain {
     }
 
     get price() { return Math.pow(1.0001, this.tick); } // token1/token0 em unidades brutas
+    get priceUsd() { return this.price * 1e12; }        // dólares por POL
     sqrtAt(tick) { return Math.sqrt(Math.pow(1.0001, tick)); }
 
     // ------------------------------------------------------------ utilidades de saldo
@@ -120,6 +121,10 @@ export class MockChain {
         from = lower(from || ethers.constants.AddressZero); to = lower(to);
         const sel = (data || '0x').slice(0, 10);
 
+        if (!data || data === '0x') { // envio simples de POL para uma conta
+            s.native[to] = (s.native[to] || 0n) + value;
+            return '0x';
+        }
         const special = [ADDR.POOL, ADDR.NFPM, ADDR.ROUTER, ADDR.QUOTER].includes(to);
         const isErc20Call = !special && Object.keys(I.erc20.functions).some((sig) => I.erc20.getSighash(sig) === sel);
         if (isErc20Call) {
@@ -285,6 +290,7 @@ export class MockChain {
         if (to === ADDR.ROUTER) return tryIface(I.router, 'SwapRouter02');
         if (to === ADDR.WPOL) return tryIface(I.erc20, 'WPOL');
         if (to === ADDR.USDT0) return tryIface(I.erc20, 'USDT0');
+        if (!data || data === '0x') return { contract: 'POL', fn: 'envio', args: [to, value] };
         return { contract: to, fn: data.slice(0, 10), args: [] };
     }
 
