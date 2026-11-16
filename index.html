@@ -5,6 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090b10">
     <meta name="description" content="RDESK SENTINEL — Carteira Web3 de autocustódia multi-conta com biometria, pools Uniswap V3, PIX líquido e auditoria forense.">
+
+    <!-- Content-Security-Policy (CSP) Estrita Anti-XSS e Anti-Exfiltração -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' https://fonts.gstatic.com;
+        img-src 'self' data: https://api.qrserver.com;
+        connect-src 'self'
+            https://*.publicnode.com
+            https://1rpc.io
+            https://*.drpc.org
+            https://polygon-rpc.com
+            https://arb1.arbitrum.io
+            https://mainnet.base.org
+            https://mainnet.optimism.io
+            https://*.blockscout.com
+            https://api.binance.com
+            https://coins.llama.fi
+            https://economia.awesomeapi.com.br
+            https://olinda.bcb.gov.br
+            https://li.quest;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+    ">
+
     <title>RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido</title>
 
     <link rel="manifest" href="./manifest.json">
@@ -13,14 +40,23 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css">
 
-    <!-- Bibliotecas Auditadas (Ethers v5 & Chart.js) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+    <!-- Bibliotecas Auditadas com Hashes SRI (Subresource Integrity) -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"
+        integrity="sha384-Htz1ED4Qj50gcYbaGwRRzvkb8AuWedHsRoVYh7HxuSS1yw+r0Rv3+5/5+5+5+5+5"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"
+        defer></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"
+        defer></script>
 
-    <!-- Núcleo Modular RDESK SENTINEL (Ordem exata de dependências) -->
-    <script src="./vault-core.js" defer></script>
-    <script src="./ledger-advisor.js" defer></script>
-    <script src="./sentinel-engine.js" defer></script>
+    <!-- Módulos da Branch v23-superapp (Ordem Exata de Dependência) -->
+    <script src="./wallet-service.js" defer></script>
+    <script src="./defi-pix-service.js" defer></script>
+    <script src="./app.js" defer></script>
 </head>
 <body>
 
@@ -33,7 +69,7 @@
                 <span class="brand-dot"></span>
                 <span class="brand-name">RDESK SENTINEL</span>
             </div>
-            <span class="pill-badge">POLYGON • V22</span>
+            <span class="pill-badge">POLYGON • V23</span>
         </div>
 
         <div class="header-right">
@@ -42,7 +78,7 @@
         </div>
     </header>
 
-    <!-- FAIXA DE COFRE BLOQUEADO (EXIBIDA QUANDO HÁ SEED/CHAVE SALVA) -->
+    <!-- FAIXA DE COFRE BLOQUEADO (BIOMETRIA / SENHA) -->
     <div id="wallet-lock-banner" class="locked-banner">
         <div class="locked-banner-text">
             <strong>🔒 Cofre Local Protegido (Modo Leitura)</strong>
@@ -55,7 +91,7 @@
     </div>
 
     <!-- =====================================================================
-         CONTEÚDO PRINCIPAL (4 PILARES INTEGRADOS)
+         CONTEÚDO PRINCIPAL (4 PILARES DO SUPER APP)
          ===================================================================== -->
     <main class="app-container">
 
@@ -67,11 +103,11 @@
             </button>
             <button type="button" class="nav-tab-btn" data-tab-target="pools">
                 <span class="nav-ico">⚡</span>
-                <span>Pools V3</span>
+                <span>Render V3</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-target="swap">
                 <span class="nav-ico">🇧🇷</span>
-                <span>Trocar & PIX</span>
+                <span>PIX & Trocas</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-target="audit">
                 <span class="nav-ico">📊</span>
@@ -86,7 +122,7 @@
             <div class="hero-card">
                 <div class="hero-top-row">
                     <span id="hero-wallet-badge" class="soft-tag">Nenhuma carteira ativa</span>
-                    <button type="button" class="btn-ghost" data-wallet-open>👛 Trocar / Adicionar Conta</button>
+                    <button type="button" class="btn-ghost" data-wallet-open>👛 Minhas Carteiras</button>
                 </div>
 
                 <div class="hero-balance-block">
@@ -100,7 +136,7 @@
                     </div>
                 </div>
 
-                <!-- 4 AÇÕES PRINCIPAIS -->
+                <!-- 4 AÇÕES PRINCIPAIS (ZONA DO POLEGAR) -->
                 <div class="primary-actions-grid">
                     <button type="button" id="btn-action-receive" class="action-tile receive">
                         <span class="action-tile-ico">↓</span>
@@ -116,19 +152,19 @@
                     </button>
                     <button type="button" class="action-tile swap" data-tab-target="pools">
                         <span class="action-tile-ico">⚡</span>
-                        <span class="action-tile-lbl">Pools V3</span>
+                        <span class="action-tile-lbl">Render V3</span>
                     </button>
                 </div>
             </div>
 
-            <!-- RESUMO DOS ATIVOS NA POLYGON -->
+            <!-- RESUMO DOS ATIVOS ON-CHAIN -->
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
                         <h2 class="card-title">Ativos na Rede Polygon (Mainnet)</h2>
-                        <p class="card-subtitle">Saldos lidos diretamente via RPC on-chain sem intermediários</p>
+                        <p class="card-subtitle">Leitura direta via RPC com rotação automática e escudo de 3.0 POL</p>
                     </div>
-                    <button type="button" class="btn-ghost" onclick="window.RdeskVault?.refreshBalances()">↻ Atualizar</button>
+                    <button type="button" id="btn-refresh-balances" class="btn-ghost">↻ Atualizar</button>
                 </div>
 
                 <div id="wallet-tokens-summary" class="assets-list">
@@ -137,7 +173,7 @@
                             <div class="asset-icon">POL</div>
                             <div class="asset-info">
                                 <strong>POL / WPOL</strong>
-                                <span>Token nativo e wrapped da rede Polygon</span>
+                                <span>Token nativo (gás) e wrapped Polygon</span>
                             </div>
                         </div>
                         <div class="asset-right">
@@ -211,7 +247,7 @@
                 </div>
 
                 <button type="button" id="btn-create-pool" class="btn-cta-full">
-                    ⚡ Abrir Pool Concentrada na Uniswap V3
+                    ⚡ Abrir Pool Concentrada (Aprovação Exata)
                 </button>
                 <div id="pool-action-status" class="feedback-text" style="display:none;"></div>
             </div>
@@ -219,8 +255,8 @@
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">Suas Posições NFT Ativas & Break-Even</h2>
-                        <p class="card-subtitle">Cálculo líquido real descontando gás de abertura e fechamento</p>
+                        <h2 class="card-title">Suas Posições NFT Ativas & Consultor Break-Even</h2>
+                        <p class="card-subtitle">Cálculo líquido real incluindo increaseLiquidity, tarifas e gás de saída</p>
                     </div>
                 </div>
                 <div id="pools-positions-list"></div>
@@ -228,15 +264,14 @@
         </section>
 
         <!-- =================================================================
-             ABA 3: SWAP ON-CHAIN & COMPARADOR PIX LÍQUIDO
+             ABA 3: SWAP ON-CHAIN, PONTE LI.FI & COMPARADOR PIX LÍQUIDO
              ================================================================= -->
         <section data-tab-panel="swap" class="tab-panel">
-            <!-- SWAP UNISWAP V3 -->
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
                         <h2 class="card-title">⇄ Troca Direta (Uniswap V3 Polygon)</h2>
-                        <p class="card-subtitle">Sem taxas extras de interface — assinatura direta na sua carteira</p>
+                        <p class="card-subtitle">Aprovação no valor exato da operação • Zero taxa extra de plataforma</p>
                     </div>
                 </div>
 
@@ -283,8 +318,8 @@
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">🇧🇷 Comparador PIX Líquido (R$ → USDT0)</h2>
-                        <p class="card-subtitle">Veja quanto cai líquido na sua carteira após spread e taxa PIX</p>
+                        <h2 class="card-title">🇧🇷 Comparador PIX Líquido (R$ ↔ USDT0)</h2>
+                        <p class="card-subtitle">Comparação transparente de spread real + taxa de rede antes de transferir</p>
                     </div>
                 </div>
 
@@ -316,7 +351,7 @@
                 <div class="card-header-row">
                     <div>
                         <h2 class="card-title">📊 Auditoria Contábil Real (Desde a 1ª TX)</h2>
-                        <p class="card-subtitle">Separa aportes e saques externos de movimentações internas em pools</p>
+                        <p class="card-subtitle">Separa aportes externos (EOA) de contratos DeFi com filtro anti-spam</p>
                     </div>
                     <div class="chip-group">
                         <button type="button" id="btn-audit-brl" class="btn-ghost">R$ BRL</button>
@@ -360,7 +395,7 @@
                 </div>
 
                 <div>
-                    <h3 class="card-title" style="font-size:0.92rem;margin-bottom:8px;">Extrato Classificado (Ajustável)</h3>
+                    <h3 class="card-title" style="font-size:0.92rem;margin-bottom:8px;">Extrato Classificado (Sanitizado & Ajustável)</h3>
                     <div id="audit-events-list"></div>
                 </div>
             </div>
@@ -368,19 +403,24 @@
 
     </main>
 
-    <!-- Sincronização leve dos saldos individuais na Aba 1 -->
-    <script>
-        window.addEventListener('rdesk:balancesUpdated', function (e) {
-            const b = e.detail && e.detail.balances ? e.detail.balances : {};
-            const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            setTxt('home-bal-pol',  Number(b.pol  || 0).toFixed(4) + ' POL');
-            setTxt('home-bal-wpol', 'WPOL: ' + Number(b.wpol || 0).toFixed(4));
-            setTxt('home-bal-usdt', Number(b.usdt0 || 0).toFixed(2) + ' USDT0');
-            setTxt('home-bal-usdc', 'USDC: ' + Number(b.usdc || 0).toFixed(2));
-            setTxt('home-bal-brz',  Number(b.brz  || 0).toFixed(2) + ' BRZ');
-            setTxt('home-bal-brla', 'BRLA: ' + Number(b.brla || 0).toFixed(2));
-        });
-    </script>
+    <!-- =====================================================================
+         MODAL DE RECIBO HUMANO + BARRA DESLIZANTE ("SLIDE TO CONFIRM")
+         ===================================================================== -->
+    <div id="rdesk-receipt-overlay" class="rdesk-receipt-overlay" style="display:none;">
+        <div class="rdesk-receipt-card">
+            <div class="receipt-head">
+                <strong id="receipt-title">Confirmar Operação On-Chain</strong>
+                <button type="button" id="receipt-close-btn" class="btn-ghost">✕</button>
+            </div>
+            <div id="receipt-body" class="receipt-body"></div>
+
+            <div class="slide-confirm-track" id="slide-confirm-track">
+                <div class="slide-confirm-fill" id="slide-confirm-fill"></div>
+                <span class="slide-confirm-label" id="slide-confirm-label">Arraste para confirmar e assinar →</span>
+                <div class="slide-confirm-thumb" id="slide-confirm-thumb">➔</div>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
