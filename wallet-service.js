@@ -1,5 +1,5 @@
 /* =========================================================================
-   RDESK SENTINEL — GERENCIADOR MULTI-CARTEIRA, ORÁCULO DE PREÇOS & RECEIVE V4
+   RDESK SENTINEL — GERENCIADOR MULTI-CARTEIRA, ORÁCULO & SYNC SWAP V5
    Substitui: wallet-service.js
    ========================================================================= */
 
@@ -9,6 +9,14 @@
     const VAULT_STORAGE_KEY = 'rdesk_multi_vault_v2';
     const BIO_STORAGE_KEY = 'rdesk_bio_passkey_v2';
     const LEGACY_KEYS = ['rdesk_vault_v1', 'rdesk_wallet_vault', 'rdesk_bio_v1'];
+
+    const CHAIN_RPCS = {
+        137:   'https://polygon-bor-rpc.publicnode.com',
+        42161: 'https://arb1.arbitrum.io/rpc',
+        8453:  'https://mainnet.base.org',
+        10:    'https://mainnet.optimism.io',
+        1:     'https://ethereum-rpc.publicnode.com'
+    };
 
     const POLYGON_RPCS = [
         'https://polygon-bor-rpc.publicnode.com',
@@ -26,6 +34,7 @@
         POL:   { symbol: 'POL',   name: 'Polygon Ecosystem Token • Rede Polygon', address: null, decimals: 18 },
         WPOL:  { symbol: 'WPOL',  name: 'Wrapped POL • Rede Polygon',             address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18 },
         USDT0: { symbol: 'USDT0', name: 'Tether USD (USDT0) • Rede Polygon',      address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6 },
+        USDC:  { symbol: 'USDC',  name: 'USD Coin (Nativo) • Rede Polygon',       address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6 },
         BRZ:   { symbol: 'BRZ',   name: 'Brazilian Digital Token • Rede Polygon', address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18 },
         BRLA:  { symbol: 'BRLA',  name: 'BRLA Digital • Rede Polygon',            address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18 }
     };
@@ -37,7 +46,7 @@
         isLocked: true,
         hasLegacyCorrupted: false,
         rabbyProvider: null,
-        balancesCache: {},     // { [addrLower]: { brl, usd, summary, tokens: { POL, WPOL, USDT0, BRZ, BRLA }, polUsd, usdBrl } }
+        balancesCache: {},     // { [addrLower]: { brl, usd, summary, tokens: { POL, WPOL, USDT0, USDC, BRZ, BRLA }, polUsd, usdBrl } }
         prices: {
             usdBrl: 5.65,
             polUsd: 0.088,
@@ -107,7 +116,7 @@
     }
 
     // =========================================================================
-    // 2. ORÁCULO DE PREÇOS & SALDOS (COMPATÍVEL COM defi-pix-service.js)
+    // 2. ORÁCULO DE PREÇOS & SALDOS COM ALIASES COMPLETOS (USDT = USDT0)
     // =========================================================================
     function getNormalizedPricesObject() {
         const usdBrl = state.prices.usdBrl > 0 ? state.prices.usdBrl : 5.65;
@@ -123,19 +132,26 @@
             polToUsd: polUsd,
             polBrl,
             polToBrl: polBrl,
+            maticUsd: polUsd,
             wpolUsd: polUsd,
             wpolBrl: polBrl,
             usdtUsd: 1.0,
             usdt0Usd: 1.0,
+            usdcUsd: 1.0,
             usdtBrl: usdBrl,
             usdt0Brl: usdBrl,
+            usdcBrl: usdBrl,
             brzUsd: brlToUsd,
             brzBrl: 1.0,
             brlaUsd: brlToUsd,
             brlaBrl: 1.0,
             POL: polUsd,
+            MATIC: polUsd,
             WPOL: polUsd,
+            WMATIC: polUsd,
+            USDT: 1.0,
             USDT0: 1.0,
+            USDC: 1.0,
             BRZ: brlToUsd,
             BRLA: brlToUsd,
             updatedAt: state.prices.updatedAt || Date.now()
@@ -171,16 +187,41 @@
     function getActiveAccountBalances() {
         const acc = getActiveAccount();
         const cached = acc ? state.balancesCache[acc.address.toLowerCase()] : null;
+        const pol = cached?.tokens?.POL || 0;
+        const wpol = cached?.tokens?.WPOL || 0;
+        const usdt0 = cached?.tokens?.USDT0 || 0;
+        const usdc = cached?.tokens?.USDC || 0;
+        const brz = cached?.tokens?.BRZ || 0;
+        const brla = cached?.tokens?.BRLA || 0;
+
         return {
-            pol: cached?.tokens?.POL || 0,
-            wpol: cached?.tokens?.WPOL || 0,
-            usdt0: cached?.tokens?.USDT0 || 0,
-            usdt: cached?.tokens?.USDT0 || 0,
-            brz: cached?.tokens?.BRZ || 0,
-            brla: cached?.tokens?.BRLA || 0,
+            pol,
+            matic: pol,
+            wpol,
+            wmatic: wpol,
+            usdt0,
+            usdt: usdt0,
+            usdc,
+            brz,
+            brla,
+            POL: pol,
+            MATIC: pol,
+            WPOL: wpol,
+            WMATIC: wpol,
+            USDT0: usdt0,
+            USDT: usdt0,
+            USDC: usdc,
+            BRZ: brz,
+            BRLA: brla,
             totalUsd: cached?.usd || 0,
             totalBrl: cached?.brl || 0
         };
+    }
+
+    function getSingleTokenBalance(symbol) {
+        const sym = String(symbol || '').toUpperCase();
+        const bals = getActiveAccountBalances();
+        return Number(bals[sym] ?? bals[sym.toLowerCase()] ?? 0);
     }
 
     // =========================================================================
@@ -421,6 +462,8 @@
         return {
             address,
             account: acc,
+            balances: getActiveAccountBalances(),
+            prices: getPricesSyncOrRefresh(),
             isConnected: Boolean(address),
             isUnlocked: !state.isLocked,
             isLocked: state.isLocked,
@@ -496,7 +539,7 @@
             await registerDeviceBiometry(secrets.password).catch(() => {});
         }
         notifyAccountChanged();
-        refreshAllAccountsBalances();
+        await refreshAllAccountsBalances();
     }
 
     async function deriveNextAccountFromSeed(seedGroupId) {
@@ -552,7 +595,7 @@
             await registerDeviceBiometry(secrets.password).catch(() => {});
         }
         notifyAccountChanged();
-        refreshAllAccountsBalances();
+        await refreshAllAccountsBalances();
     }
 
     async function addWatchOnlyAccount({ address, name }) {
@@ -575,7 +618,7 @@
         state.activeAccountId = acc.id;
         await persistVaultToStorage();
         notifyAccountChanged();
-        refreshAllAccountsBalances();
+        await refreshAllAccountsBalances();
     }
 
     async function upsertRabbyAccount(rawAddress, providerObj, makeActive = true) {
@@ -597,7 +640,7 @@
         }
         await persistVaultToStorage();
         notifyAccountChanged();
-        refreshAllAccountsBalances();
+        await refreshAllAccountsBalances();
     }
 
     function resolveInjectedWeb3Provider() {
@@ -611,6 +654,35 @@
             return window.ethereum;
         }
         return null;
+    }
+
+    async function switchChainOnProvider(chainId = 137) {
+        const targetId = Number(chainId) || 137;
+        const hexChainId = '0x' + targetId.toString(16);
+        const acc = getActiveAccount();
+        if (!acc || acc.type !== 'rabby') return true;
+
+        const eth = resolveInjectedWeb3Provider();
+        if (!eth) return false;
+        try {
+            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexChainId }] });
+            return true;
+        } catch (switchErr) {
+            if (switchErr && switchErr.code === 4902 && targetId === 137) {
+                await eth.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: '0x89',
+                        chainName: 'Polygon Mainnet',
+                        nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+                        rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
+                        blockExplorerUrls: ['https://polygonscan.com/']
+                    }]
+                });
+                return true;
+            }
+            throw switchErr;
+        }
     }
 
     async function connectRabbyExtension() {
@@ -627,23 +699,7 @@
             throw new Error('Nenhuma conta autorizada na Rabby Wallet.');
         }
 
-        try {
-            await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x89' }] });
-        } catch (switchErr) {
-            if (switchErr && switchErr.code === 4902) {
-                await eth.request({
-                    method: 'wallet_addEthereumChain',
-                    params: [{
-                        chainId: '0x89',
-                        chainName: 'Polygon Mainnet',
-                        nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
-                        rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
-                        blockExplorerUrls: ['https://polygonscan.com/']
-                    }]
-                });
-            }
-        }
-
+        await switchChainOnProvider(137).catch(() => {});
         await upsertRabbyAccount(accounts[0], eth, true);
     }
 
@@ -653,7 +709,7 @@
         state.activeAccountId = target.id;
         await persistVaultToStorage();
         notifyAccountChanged();
-        refreshAllAccountsBalances();
+        await refreshAllAccountsBalances();
     }
 
     async function deleteSingleAccount(accountId) {
@@ -695,13 +751,14 @@
     }
 
     // =========================================================================
-    // 6. PROVIDER, SIGNER & LEITURA DE SALDOS REAIS
+    // 6. PROVIDER, SIGNER MULTI-CHAIN & LEITURA DE SALDOS REAIS
     // =========================================================================
-    function getReadProvider() {
-        return new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+    function getReadProvider(chainId = 137) {
+        const rpc = CHAIN_RPCS[Number(chainId)] || POLYGON_RPCS[0];
+        return new ethers.providers.JsonRpcProvider(rpc);
     }
 
-    async function getActiveSigner() {
+    async function getActiveSigner(chainId = 137) {
         const acc = getActiveAccount();
         if (!acc) {
             openWalletModal('add');
@@ -714,6 +771,9 @@
             const eth = resolveInjectedWeb3Provider();
             if (!eth) throw new Error('Extensão Rabby não encontrada.');
             await eth.request({ method: 'eth_requestAccounts' });
+            if (chainId) {
+                await switchChainOnProvider(chainId).catch(() => {});
+            }
             return new ethers.providers.Web3Provider(eth).getSigner();
         }
         if (state.isLocked || !state.unlockedSecrets) {
@@ -721,7 +781,7 @@
             throw new Error('Cofre bloqueado. Desbloqueie com sua Biometria ou Senha/PIN.');
         }
         const { privateKey } = exportAccountSecrets(acc.id);
-        return new ethers.Wallet(privateKey, getReadProvider());
+        return new ethers.Wallet(privateKey, getReadProvider(chainId));
     }
 
     async function refreshAllAccountsBalances() {
@@ -729,18 +789,20 @@
         await refreshLiveMarketPrices();
 
         try {
-            const provider = getReadProvider();
+            const provider = getReadProvider(137);
             const wpol = new ethers.Contract(TOKENS_META.WPOL.address, ERC20_ABI, provider);
             const usdt = new ethers.Contract(TOKENS_META.USDT0.address, ERC20_ABI, provider);
+            const usdc = new ethers.Contract(TOKENS_META.USDC.address, ERC20_ABI, provider);
             const brz = new ethers.Contract(TOKENS_META.BRZ.address, ERC20_ABI, provider);
             const brla = new ethers.Contract(TOKENS_META.BRLA.address, ERC20_ABI, provider);
 
             await Promise.all(state.accounts.map(async (acc) => {
                 try {
-                    const [bPol, bWpol, bUsdt, bBrz, bBrla] = await Promise.all([
+                    const [bPol, bWpol, bUsdt, bUsdc, bBrz, bBrla] = await Promise.all([
                         provider.getBalance(acc.address),
                         wpol.balanceOf(acc.address),
                         usdt.balanceOf(acc.address),
+                        usdc.balanceOf(acc.address).catch(() => ethers.BigNumber.from(0)),
                         brz.balanceOf(acc.address),
                         brla.balanceOf(acc.address)
                     ]);
@@ -748,24 +810,26 @@
                     const polNum = parseFloat(ethers.utils.formatEther(bPol));
                     const wpolNum = parseFloat(ethers.utils.formatEther(bWpol));
                     const usdtNum = parseFloat(ethers.utils.formatUnits(bUsdt, 6));
+                    const usdcNum = parseFloat(ethers.utils.formatUnits(bUsdc, 6));
                     const brzNum = parseFloat(ethers.utils.formatEther(bBrz));
                     const brlaNum = parseFloat(ethers.utils.formatEther(bBrla));
 
-                    const totalUsd = ((polNum + wpolNum) * state.prices.polUsd) + usdtNum + ((brzNum + brlaNum) / state.prices.usdBrl);
+                    const totalUsd = ((polNum + wpolNum) * state.prices.polUsd) + usdtNum + usdcNum + ((brzNum + brlaNum) / state.prices.usdBrl);
                     const totalBrl = totalUsd * state.prices.usdBrl;
 
                     state.balancesCache[acc.address.toLowerCase()] = {
                         brl: totalBrl,
                         usd: totalUsd,
                         summary: `${(polNum + wpolNum).toFixed(2)} POL • ${usdtNum.toFixed(2)} USDT0`,
-                        tokens: { POL: polNum, WPOL: wpolNum, USDT0: usdtNum, BRZ: brzNum, BRLA: brlaNum },
+                        tokens: { POL: polNum, WPOL: wpolNum, USDT0: usdtNum, USDC: usdcNum, BRZ: brzNum, BRLA: brlaNum },
                         polUsd: state.prices.polUsd,
                         usdBrl: state.prices.usdBrl
                     };
                 } catch (e) {}
             }));
 
-            syncMainDashboardDom();
+            // Notifica imediatamente o Swap e o Painel após os saldos reais chegarem!
+            notifyAccountChanged(true);
             if (currentView === 'list') renderModal();
         } catch (e) {}
 
@@ -773,9 +837,9 @@
     }
 
     // =========================================================================
-    // 7. SINCRONIZAÇÃO COM O PAINEL PRINCIPAL (SEM QUEBRAR SE HOUVER ERRO)
+    // 7. SINCRONIZAÇÃO COM PAINEL PRINCIPAL & MÓDULO DE SWAP / PIX
     // =========================================================================
-    function syncMainDashboardDom() {
+    function syncMainDashboardDom(triggerSwapRefresh = false) {
         const acc = getActiveAccount();
         const topBtn = document.querySelector('#btn-wallet-trigger, #wallet-chip-btn, #btn-connect-wallet, [data-wallet-open]');
         if (topBtn) {
@@ -831,7 +895,6 @@
         if (acc && cached) {
             const totalBrlEl = document.getElementById('hero-total-brl') || document.getElementById('total-patrimonio-brl');
             const totalUsdEl = document.getElementById('hero-total-usd') || document.getElementById('total-patrimonio-usd');
-            const freeBrlEl = document.getElementById('hero-free-brl') || document.getElementById('livre-carteira-brl');
 
             if (totalBrlEl && /0,00/.test(totalBrlEl.textContent) && cached.brl > 0) {
                 totalBrlEl.textContent = cached.brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -839,43 +902,37 @@
             if (totalUsdEl && /0\.00/.test(totalUsdEl.textContent) && cached.usd > 0) {
                 totalUsdEl.textContent = `$ ${cached.usd.toFixed(2)} • Cotação Dólar: R$ ${cached.usdBrl.toFixed(3)}`;
             }
-            if (freeBrlEl && /0,00/.test(freeBrlEl.textContent) && cached.brl > 0) {
-                freeBrlEl.textContent = `Livre na Carteira: ${cached.brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
-            }
 
-            walletPanel.querySelectorAll('div, p').forEach((el) => {
-                if (el.children.length === 0 && el.textContent.includes('Conecte ou crie sua carteira para visualizar seus saldos')) {
-                    const container = el.parentElement || el;
-                    const rows = [
-                        { sym: 'POL',   amt: cached.tokens.POL,   usd: cached.tokens.POL * cached.polUsd },
-                        { sym: 'WPOL',  amt: cached.tokens.WPOL,  usd: cached.tokens.WPOL * cached.polUsd },
-                        { sym: 'USDT0', amt: cached.tokens.USDT0, usd: cached.tokens.USDT0 },
-                        { sym: 'BRZ',   amt: cached.tokens.BRZ,   usd: cached.tokens.BRZ / cached.usdBrl },
-                        { sym: 'BRLA',  amt: cached.tokens.BRLA,  usd: cached.tokens.BRLA / cached.usdBrl }
-                    ].filter((r) => r.amt > 0 || r.sym === 'POL' || r.sym === 'USDT0');
-
-                    container.innerHTML = rows.map((r) => {
-                        const brlVal = r.usd * cached.usdBrl;
-                        const meta = TOKENS_META[r.sym];
-                        return `
-                            <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:8px;">
-                                <div>
-                                    <div style="font-weight:700;font-size:0.92rem;color:#f8fafc;">${r.sym}</div>
-                                    <div style="font-size:0.74rem;color:#94a3b8;">${meta.name}</div>
-                                </div>
-                                <div style="text-align:right;font-family:monospace;">
-                                    <div style="font-weight:700;color:#00e676;">${brlVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
-                                    <div style="font-size:0.76rem;color:#94a3b8;">${r.amt.toFixed(4)} ${r.sym}</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
+            // Atualiza pílula "Livre na Carteira: R$ 0,00"
+            document.querySelectorAll('span, div').forEach((el) => {
+                if (el.children.length === 0 && /Livre na Carteira:\s*R\$\s*0,00/.test(el.textContent) && cached.brl > 0) {
+                    el.textContent = el.textContent.replace(
+                        /Livre na Carteira:\s*R\$\s*0,00/,
+                        `Livre na Carteira: ${cached.brl.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                    );
                 }
             });
+
+            // Sincroniza o label "Disponível: X.XX" na aba Trocar / Ponte
+            const swapInSelect = document.querySelector('#swap-from-token, #swap-token-in, select[data-swap-from]');
+            const swapAvailEl = document.querySelector('#swap-available-amount, #swap-in-bal, [data-swap-available]');
+            if (swapInSelect && swapAvailEl) {
+                const sym = String(swapInSelect.value || 'POL').toUpperCase();
+                const bal = getSingleTokenBalance(sym);
+                swapAvailEl.textContent = bal.toFixed(4);
+            }
+
+            if (triggerSwapRefresh) {
+                const swapInput = document.querySelector('#swap-from-amount, #swap-amount-in, input[data-swap-amount]');
+                if (swapInput) {
+                    swapInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    swapInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
         }
     }
 
-    function notifyAccountChanged() {
+    function notifyAccountChanged(fromBalanceLoad = false) {
         const pubState = getPublicWalletState();
         const addr = pubState.address;
         const acc = pubState.account;
@@ -883,9 +940,13 @@
         const legacyInput = document.getElementById('wallet-address');
         if (legacyInput) legacyInput.value = addr;
 
-        syncMainDashboardDom();
+        syncMainDashboardDom(fromBalanceLoad);
 
-        ['rdesk:walletChanged', 'rdesk:wallet-changed', 'rdesk-wallet-changed', 'wallet:changed', 'walletChanged'].forEach((evName) => {
+        const events = fromBalanceLoad
+            ? ['rdesk:balancesUpdated', 'rdesk:walletChanged', 'wallet:changed']
+            : ['rdesk:walletChanged', 'rdesk:wallet-changed', 'rdesk-wallet-changed', 'wallet:changed', 'walletChanged'];
+
+        events.forEach((evName) => {
             try {
                 window.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
                 document.dispatchEvent(new CustomEvent(evName, { detail: pubState }));
@@ -911,6 +972,8 @@
             safeCall('refreshAll');
             safeCall('refreshWallet');
             safeCall('refreshBalances');
+            safeCall('refreshSwapQuote');
+            safeCall('updateSwapQuote');
             safeCall('refreshPoolAndPositions');
             safeCall('refreshPixAndSwap');
             safeCall('runAudit', false);
@@ -1220,7 +1283,7 @@
                 if (!ethers.utils.isAddress(to)) throw new Error('Endereço de destino inválido.');
                 if (!amtStr || parseFloat(amtStr) <= 0) throw new Error('Informe uma quantidade válida.');
 
-                const signer = await getActiveSigner();
+                const signer = await getActiveSigner(137);
                 const meta = TOKENS_META[sym];
                 const amountWei = ethers.utils.parseUnits(amtStr, meta.decimals);
 
@@ -1942,7 +2005,7 @@
     }
 
     // =========================================================================
-    // 9. GARANTIA UNIVERSAL DOS BOTÕES "RECEBER" E "ENVIAR" (RABBY & PC)
+    // 9. GARANTIA UNIVERSAL DOS BOTÕES "RECEBER" E "ENVIAR"
     // =========================================================================
     function bindHeroActionFallbacks() {
         document.addEventListener('click', (e) => {
@@ -1996,7 +2059,6 @@
             state.isLocked = Boolean(meta.encryptedSecrets);
         }
 
-        // Descoberta EIP-6963 (Rabby Wallet PC & Mobile)
         window.addEventListener('eip6963:announceProvider', (event) => {
             const info = event.detail?.info;
             if (info && (info.rdns?.includes('rabby') || info.name?.toLowerCase().includes('rabby'))) {
@@ -2005,7 +2067,6 @@
         });
         window.dispatchEvent(new Event('eip6963:requestProvider'));
 
-        // Se aberto dentro do navegador da Rabby Mobile ou com permissão já concedida
         const injected = resolveInjectedWeb3Provider();
         if (injected && typeof injected.request === 'function') {
             injected.request({ method: 'eth_accounts' })
@@ -2043,12 +2104,11 @@
 
         bindHeroActionFallbacks();
         await refreshLiveMarketPrices();
-        notifyAccountChanged();
-        refreshAllAccountsBalances();
-        setTimeout(() => { notifyAccountChanged(); refreshAllAccountsBalances(); }, 400);
+        notifyAccountChanged(false);
+        await refreshAllAccountsBalances();
     }
 
-    window.RdeskWallet = {
+    const walletApi = {
         getAddress: () => getActiveAccount()?.address || '',
         getActiveAccount,
         getAccounts: () => [...state.accounts],
@@ -2056,10 +2116,15 @@
         getPrices: getPricesSyncOrRefresh,
         refreshPrices: refreshLiveMarketPrices,
         getBalances: getActiveAccountBalances,
+        getBalance: getSingleTokenBalance,
+        getTokenBalance: getSingleTokenBalance,
         refreshBalances: refreshAllAccountsBalances,
         getSigner: getActiveSigner,
         getProvider: getReadProvider,
         getReadProvider,
+        getChainId: () => 137,
+        switchChain: switchChainOnProvider,
+        ensureChain: switchChainOnProvider,
         connectRabby: connectRabbyExtension,
         isConnected: () => Boolean(getActiveAccount()?.address),
         isUnlocked: () => !state.isLocked,
@@ -2078,6 +2143,14 @@
         onAccountChange: registerChangeListener,
         subscribe: registerChangeListener
     };
+
+    Object.defineProperties(walletApi, {
+        address:  { get: () => getActiveAccount()?.address || '', enumerable: true },
+        balances: { get: getActiveAccountBalances, enumerable: true },
+        prices:   { get: getPricesSyncOrRefresh, enumerable: true }
+    });
+
+    window.RdeskWallet = walletApi;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initWalletEngine);
