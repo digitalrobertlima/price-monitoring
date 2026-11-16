@@ -1,7 +1,7 @@
 {
   "name": "RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido",
   "short_name": "RDESK SENTINEL",
-  "description": "Carteira de autocustódia com biometria, rendimento Uniswap V3, comparador PIX líquido e auditoria real.",
+  "description": "Carteira Web3 de autocustódia multi-conta com biometria, rendimento Uniswap V3, comparador PIX líquido e auditoria real.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
