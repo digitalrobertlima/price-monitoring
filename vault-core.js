@@ -11,7 +11,7 @@
     // 1. CARTEIRAS DO PROPRIETÁRIO (ISENÇÃO AUTOMÁTICA DE TAXA DE INTEGRADOR)
     // =========================================================================
     const OWNER_EXEMPT_WALLETS = new Set([
-        '0x2833c7c0a42080a9407f82524c79c8442a7e0fe3'
+        '0x2833a1c3dde3b5d2265f057301a89bef1bb50fe3'
     ]);
 
     const DERIVATION_PATH_EVM = "m/44'/60'/0'/0/0";
