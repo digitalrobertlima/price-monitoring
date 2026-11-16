@@ -1,26 +1,27 @@
 {
-  "name": "RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido",
-  "short_name": "RDESK SENTINEL",
-  "description": "Carteira Web3 de autocustódia multi-conta com biometria, rendimento Uniswap V3, comparador PIX líquido e auditoria real.",
+  "name": "RDESK SENTINEL — Super App Web3",
+  "short_name": "RDESK Sentinel",
+  "description": "Carteira Web3 de autocustódia blindada, gestão Uniswap V3 e auditoria contábil na Polygon.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#090b10",
-  "theme_color": "#090b10",
+  "orientation": "portrait",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
   "lang": "pt-BR",
+  "categories": ["finance", "utilities", "security"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%23090b10'/%3E%3Ccircle cx='96' cy='96' r='64' fill='none' stroke='%23eab308' stroke-width='10'/%3E%3Cpath d='M68 124V68h32c14 0 22 7 22 18 0 9-5 15-14 17l16 21h-16l-14-19H82v19H68zm14-31h16c6 0 10-3 10-7s-4-7-10-7H82v14z' fill='%2300e676'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2310b981'/%3E%3Cstop offset='100%25' stop-color='%233b82f6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='112' fill='%23090d16'/%3E%3Cpath d='M256 64L416 128V248C416 352 348 436 256 464C164 436 96 352 96 248V128L256 64Z' fill='url(%23g)' fill-opacity='0.18' stroke='url(%23g)' stroke-width='24'/%3E%3Cpath d='M168 296L224 240L268 280L348 192' fill='none' stroke='%2310b981' stroke-width='28' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='348' cy='192' r='18' fill='%2310b981'/%3E%3C/svg%3E",
       "sizes": "192x192",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='108' fill='%23090b10'/%3E%3Ccircle cx='256' cy='256' r='172' fill='none' stroke='%23eab308' stroke-width='26'/%3E%3Cpath d='M182 330V182h86c36 0 58 18 58 48 0 24-14 40-38 45l42 55h-42l-36-50h-32v50h-38zm38-82h42c16 0 26-7 26-18s-10-18-26-18h-42v36z' fill='%2300e676'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2310b981'/%3E%3Cstop offset='100%25' stop-color='%233b82f6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' fill='%23090d16'/%3E%3Cpath d='M256 76L404 136V248C404 344 340 422 256 448C172 422 108 344 108 248V136L256 76Z' fill='url(%23g)' fill-opacity='0.22' stroke='url(%23g)' stroke-width='24'/%3E%3Cpath d='M172 292L224 240L266 278L344 196' fill='none' stroke='%2310b981' stroke-width='28' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='344' cy='196' r='18' fill='%2310b981'/%3E%3C/svg%3E",
       "sizes": "512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ]
 }
