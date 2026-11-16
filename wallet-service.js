@@ -1,223 +1,88 @@
 /* =========================================================================
-   RDESK SENTINEL — WALLET, BIOMETRIA WEBAUTHN, RABBY EIP-6963 & TRANSFERÊNCIAS
-   Arquivo 3 de 7: wallet-service.js
+   RDESK SENTINEL — GERENCIADOR MULTI-CARTEIRA, HD BIP44, PK & BIOMETRIA V2
+   Substitui: wallet-service.js (Autonomia Total Estilo Rabby Wallet)
    ========================================================================= */
 
 (function () {
     'use strict';
 
-    const VAULT_STORAGE_KEY = 'rdesk_v22_encrypted_vault';
-    const BIO_DB_NAME = 'RDESK_BIO_KEYSTORE';
-    const BIO_STORE_NAME = 'device_keys';
-    const GAS_RESERVE_POL = 3.0;
-    const GAS_RESERVE_ETH = 0.0015;
+    const VAULT_STORAGE_KEY = 'rdesk_multi_vault_v2';
+    const BIO_STORAGE_KEY = 'rdesk_bio_passkey_v2';
+    const LEGACY_KEYS = ['rdesk_vault_v1', 'rdesk_wallet_vault', 'rdesk_bio_v1'];
 
-    // Configuração das 5 redes EVM suportadas
-    const CHAINS = {
-        137: {
-            id: 137,
-            hex: '0x89',
-            name: 'Polygon',
-            nativeSymbol: 'POL',
-            explorer: 'https://polygonscan.com',
-            rpcs: [
-                'https://polygon-bor-rpc.publicnode.com',
-                'https://1rpc.io/matic',
-                'https://polygon.drpc.org'
-            ]
-        },
-        42161: {
-            id: 42161,
-            hex: '0xa4b1',
-            name: 'Arbitrum',
-            nativeSymbol: 'ETH',
-            explorer: 'https://arbiscan.io',
-            rpcs: [
-                'https://arbitrum-one-rpc.publicnode.com',
-                'https://1rpc.io/arb'
-            ]
-        },
-        8453: {
-            id: 8453,
-            hex: '0x2105',
-            name: 'Base',
-            nativeSymbol: 'ETH',
-            explorer: 'https://basescan.org',
-            rpcs: [
-                'https://base-rpc.publicnode.com',
-                'https://1rpc.io/base'
-            ]
-        },
-        10: {
-            id: 10,
-            hex: '0xa',
-            name: 'Optimism',
-            nativeSymbol: 'ETH',
-            explorer: 'https://optimistic.etherscan.io',
-            rpcs: [
-                'https://optimism-rpc.publicnode.com',
-                'https://1rpc.io/op'
-            ]
-        },
-        1: {
-            id: 1,
-            hex: '0x1',
-            name: 'Ethereum',
-            nativeSymbol: 'ETH',
-            explorer: 'https://etherscan.io',
-            rpcs: [
-                'https://ethereum-rpc.publicnode.com',
-                'https://1rpc.io/eth'
-            ]
-        }
+    const POLYGON_RPCS = [
+        'https://polygon-bor-rpc.publicnode.com',
+        'https://1rpc.io/matic',
+        'https://polygon.drpc.org',
+        'https://polygon-rpc.com'
+    ];
+
+    const ERC20_MIN_ABI = ['function balanceOf(address) view returns (uint256)'];
+    const TOKENS_MINI = {
+        WPOL: { address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', decimals: 18 },
+        USDT0: { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', decimals: 6 },
+        BRZ: { address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18 },
+        BRLA: { address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18 }
     };
 
-    // Contratos verificados por rede
-    const CHAIN_TOKENS = {
-        137: [
-            { symbol: 'POL', name: 'Polygon Ecosystem Token', decimals: 18, isNative: true, priceKey: 'POL' },
-            { symbol: 'WPOL', name: 'Wrapped POL', decimals: 18, address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', priceKey: 'POL' },
-            { symbol: 'USDT', name: 'Tether USD (USDT0)', decimals: 6, address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', priceKey: 'USD' },
-            { symbol: 'USDC', name: 'USD Coin', decimals: 6, address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', priceKey: 'USD' },
-            { symbol: 'BRZ', name: 'Brazilian Digital Token', decimals: 18, address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', priceKey: 'BRL' },
-            { symbol: 'BRLA', name: 'BRLA Digital', decimals: 18, address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', priceKey: 'BRL' },
-            { symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, address: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', priceKey: 'BTC' }
-        ],
-        42161: [
-            { symbol: 'ETH', name: 'Ether (Arbitrum)', decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', name: 'Tether USD', decimals: 6, address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', priceKey: 'USD' },
-            { symbol: 'USDC', name: 'USD Coin', decimals: 6, address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', priceKey: 'USD' },
-            { symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', priceKey: 'BTC' }
-        ],
-        8453: [
-            { symbol: 'ETH', name: 'Ether (Base)', decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDC', name: 'USD Coin', decimals: 6, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', priceKey: 'USD' }
-        ],
-        10: [
-            { symbol: 'ETH', name: 'Ether (Optimism)', decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', name: 'Tether USD', decimals: 6, address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', priceKey: 'USD' },
-            { symbol: 'USDC', name: 'USD Coin', decimals: 6, address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', priceKey: 'USD' }
-        ],
-        1: [
-            { symbol: 'ETH', name: 'Ether (Mainnet)', decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', name: 'Tether USD', decimals: 6, address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', priceKey: 'USD' },
-            { symbol: 'USDC', name: 'USD Coin', decimals: 6, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', priceKey: 'USD' },
-            { symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', priceKey: 'BTC' }
-        ]
+    // Estado em memória (chaves privadas nunca ficam em texto puro no localStorage)
+    let state = {
+        accounts: [],          // [{ id, name, address, type: 'seed'|'pk'|'rabby'|'watch', hdIndex, seedGroupId, pinned }]
+        activeAccountId: null,
+        unlockedSecrets: null, // { masterSeedMap: { [seedGroupId]: mnemonic }, pkMap: { [accountId]: privateKey }, password: string }
+        isLocked: true,
+        hasLegacyCorrupted: false,
+        rabbyProvider: null,
+        balancesCache: {}      // { [addressLower]: { brl: number, summary: string } }
     };
 
-    // Estado interno seguro da carteira
-    const walletState = {
-        mode: 'NONE',          // 'NONE' | 'VAULT_LOCKED' | 'VAULT_UNLOCKED' | 'INJECTED' | 'WATCH_ONLY'
-        address: '',
-        localWallet: null,     // ethers.Wallet em memória apenas enquanto desbloqueado
-        injectedProvider: null,
-        injectedName: '',
-        eip6963Providers: new Map(),
-        balances: [],          // Lista plana de saldos por rede/ativo
-        lpUsdTotal: 0,         // Atualizado pelo defi-pix-service.js
-        prices: {
-            USD_BRL: 5.65,
-            POL: 0.088,
-            ETH: 3100,
-            BTC: 90000
-        }
-    };
-
-    let draftMnemonicWords = [];
-    let draftChallengeIndices = [];
+    let currentView = 'list'; // 'list' | 'unlock' | 'add' | 'form' | 'detail'
+    let activeFormMode = 'create-seed';
+    let inspectingAccountId = null;
+    const changeListeners = [];
 
     // =========================================================================
-    // UTILITÁRIOS GERAIS & RECIBO HUMANO EM REAIS (R$)
+    // 1. CODIFICAÇÃO BASE64 / BASE64URL BLINDADA (ZERO ERRO DE 'atob')
     // =========================================================================
-    function formatBRL(val) {
-        return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    }
-
-    function formatUSD(val) {
-        return '$ ' + Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function shortAddress(addr) {
-        if (!addr || addr.length < 10) return '0x0000...0000';
-        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    }
-
-    function withTimeout(promise, ms) {
-        return Promise.race([
-            promise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout RPC')), ms))
-        ]);
-    }
-
-    function openModal(id) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'flex';
-    }
-
-    function closeModal(id) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    }
-
-    // Modal Universal de Recibo Pré-Assinatura em Reais (R$)
-    function requestHumanReceipt(spec) {
-        return new Promise((resolve) => {
-            const modal = document.getElementById('modal-receipt');
-            if (!modal) {
-                resolve(true);
-                return;
-            }
-
-            document.getElementById('rcp-title').textContent = spec.title || 'Confirmar Operação';
-            document.getElementById('rcp-send-val').textContent = spec.sendVal || '--';
-            document.getElementById('rcp-send-brl').textContent = spec.sendBrl || 'R$ 0,00';
-            document.getElementById('rcp-recv-val').textContent = spec.recvVal || '--';
-            document.getElementById('rcp-recv-brl').textContent = spec.recvBrl || 'R$ 0,00';
-            document.getElementById('rcp-route').textContent = spec.route || 'Blockchain Direta';
-            document.getElementById('rcp-fee').textContent = spec.fee || 'R$ 0,00 (Grátis)';
-            document.getElementById('rcp-gas').textContent = spec.gas || '~R$ 0,02';
-            document.getElementById('rcp-shield').textContent = spec.shield || '3.0 POL protegidos';
-
-            const btnCancel = document.getElementById('btn-rcp-cancel');
-            const btnConfirm = document.getElementById('btn-rcp-confirm');
-
-            const cleanup = (result) => {
-                closeModal('modal-receipt');
-                btnCancel.onclick = null;
-                btnConfirm.onclick = null;
-                resolve(result);
-            };
-
-            btnCancel.onclick = () => cleanup(false);
-            btnConfirm.onclick = () => cleanup(true);
-            openModal('modal-receipt');
-        });
-    }
-
-    // =========================================================================
-    // CRIPTOGRAFIA AES-256-GCM + PBKDF2 & WEBAUTHN BIOMETRIA (INDEXEDDB)
-    // =========================================================================
-    function bufToB64(buffer) {
-        const bytes = new Uint8Array(buffer);
+    function bytesToBase64(bytes) {
+        const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        const chunk = 0x8000;
+        for (let i = 0; i < arr.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, arr.subarray(i, i + chunk));
+        }
         return btoa(binary);
     }
 
-    function b64ToBuf(b64) {
-        const binary = atob(b64);
+    function safeBase64ToBytes(str) {
+        if (!str || typeof str !== 'string') {
+            throw new Error('Dado codificado ausente ou inválido.');
+        }
+        // Converte Base64URL (- e _) para Base64 padrão (+ e /) e corrige padding (=)
+        let clean = str.trim().replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) {
+            throw new Error('Formato Base64 incompatível com a versão atual do cofre.');
+        }
+        while (clean.length % 4 !== 0) {
+            clean += '=';
+        }
+        const binary = atob(clean);
         const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
         return bytes;
     }
 
-    async function deriveAesKeyFromPassword(password, saltBytes) {
+    // =========================================================================
+    // 2. CRIPTOGRAFIA AES-256-GCM + PBKDF2 DO COFRE MULTI-CARTEIRA
+    // =========================================================================
+    async function deriveAesKey(password, saltBytes, usages) {
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
             'raw',
-            enc.encode(password),
-            'PBKDF2',
+            enc.encode(String(password)),
+            { name: 'PBKDF2' },
             false,
             ['deriveKey']
         );
@@ -225,165 +90,201 @@
             {
                 name: 'PBKDF2',
                 salt: saltBytes,
-                iterations: 600000,
+                iterations: 150000,
                 hash: 'SHA-256'
             },
             keyMaterial,
             { name: 'AES-GCM', length: 256 },
             false,
-            ['encrypt', 'decrypt']
+            usages
         );
     }
 
-    async function encryptWithAesKey(aesKey, plaintext) {
+    async function encryptSecretsPayload(secretsObj, password) {
+        const salt = crypto.getRandomValues(new Uint8Array(16));
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const encoded = new TextEncoder().encode(plaintext);
-        const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
+        const key = await deriveAesKey(password, salt, ['encrypt']);
+        const encoded = new TextEncoder().encode(JSON.stringify(secretsObj));
+        const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+
         return {
-            iv: bufToB64(iv),
-            cipher: bufToB64(cipherBuf)
+            version: 2,
+            saltB64: bytesToBase64(salt),
+            ivB64: bytesToBase64(iv),
+            cipherB64: bytesToBase64(new Uint8Array(cipherBuf))
         };
     }
 
-    async function decryptWithAesKey(aesKey, ivB64, cipherB64) {
-        const iv = b64ToBuf(ivB64);
-        const cipher = b64ToBuf(cipherB64);
-        const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, cipher);
-        return new TextDecoder().decode(plainBuf);
-    }
+    async function decryptSecretsPayload(encryptedBlob, password) {
+        if (!encryptedBlob || !encryptedBlob.saltB64 || !encryptedBlob.ivB64 || !encryptedBlob.cipherB64) {
+            throw new Error('Cofre local vazio ou em formato antigo.');
+        }
+        const salt = safeBase64ToBytes(encryptedBlob.saltB64);
+        const iv = safeBase64ToBytes(encryptedBlob.ivB64);
+        const cipher = safeBase64ToBytes(encryptedBlob.cipherB64);
+        const key = await deriveAesKey(password, salt, ['decrypt']);
 
-    // Armazenamento da chave de hardware não-exportável no IndexedDB
-    function openBioKeyDb() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(BIO_DB_NAME, 1);
-            req.onupgradeneeded = (e) => {
-                e.target.result.createObjectStore(BIO_STORE_NAME);
-            };
-            req.onsuccess = (e) => resolve(e.target.result);
-            req.onerror = () => reject(req.error);
-        });
-    }
-
-    async function putBioDeviceKey(keyObj) {
-        const db = await openBioKeyDb();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(BIO_STORE_NAME, 'readwrite');
-            tx.objectStore(BIO_STORE_NAME).put(keyObj, 'active_bio_key');
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-    }
-
-    async function getBioDeviceKey() {
-        const db = await openBioKeyDb();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(BIO_STORE_NAME, 'readonly');
-            const req = tx.objectStore(BIO_STORE_NAME).get('active_bio_key');
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => reject(req.error);
-        });
-    }
-
-    function readStoredVault() {
         try {
-            const raw = localStorage.getItem(VAULT_STORAGE_KEY);
-            return raw ? JSON.parse(raw) : null;
+            const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+            return JSON.parse(new TextDecoder().decode(plainBuf));
         } catch (e) {
-            return null;
+            throw new Error('Senha/PIN incorreto.');
         }
     }
 
-    function writeStoredVault(vaultObj) {
-        localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(vaultObj));
+    function readVaultMetaFromStorage() {
+        try {
+            const raw = localStorage.getItem(VAULT_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.accounts)) {
+                    return parsed;
+                }
+            }
+            // Detecta se existe cofre antigo da versão v1 quebrada
+            for (const oldKey of LEGACY_KEYS) {
+                if (localStorage.getItem(oldKey)) {
+                    state.hasLegacyCorrupted = true;
+                    break;
+                }
+            }
+        } catch (e) {
+            state.hasLegacyCorrupted = true;
+        }
+        return null;
     }
 
-    async function isPlatformBiometricsSupported() {
-        if (!window.PublicKeyCredential || !window.isSecureContext) return false;
+    async function persistVaultToStorage() {
+        const existing = readVaultMetaFromStorage();
+        let encryptedSecrets = existing?.encryptedSecrets || null;
+
+        if (state.unlockedSecrets && state.unlockedSecrets.password) {
+            encryptedSecrets = await encryptSecretsPayload(
+                {
+                    masterSeedMap: state.unlockedSecrets.masterSeedMap || {},
+                    pkMap: state.unlockedSecrets.pkMap || {}
+                },
+                state.unlockedSecrets.password
+            );
+        }
+
+        const payload = {
+            version: 2,
+            accounts: state.accounts,
+            activeAccountId: state.activeAccountId,
+            encryptedSecrets
+        };
+        localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(payload));
+        state.hasLegacyCorrupted = false;
+    }
+
+    function hardResetCorruptedVault() {
+        LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+        localStorage.removeItem(VAULT_STORAGE_KEY);
+        localStorage.removeItem(BIO_STORAGE_KEY);
+        state.accounts = [];
+        state.activeAccountId = null;
+        state.unlockedSecrets = null;
+        state.isLocked = false;
+        state.hasLegacyCorrupted = false;
+        notifyAccountChanged();
+        renderModal();
+    }
+
+    // =========================================================================
+    // 3. BIOMETRIA / WINDOWS HELLO (WEBAUTHN PLATFORM AUTHENTICATOR)
+    // =========================================================================
+    function isBiometryRegistered() {
         try {
-            return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+            const raw = localStorage.getItem(BIO_STORAGE_KEY);
+            if (!raw) return false;
+            const parsed = JSON.parse(raw);
+            return Boolean(parsed && parsed.credIdB64 && parsed.wrapKeyB64 && parsed.wrappedPassB64 && parsed.ivB64);
         } catch (e) {
             return false;
         }
     }
 
-    // Registra WebAuthn (Impressão Digital / FaceID / Windows Hello) e envelopa a seed
-    async function enrollBiometricsForMnemonic(mnemonic, address) {
-        const supported = await isPlatformBiometricsSupported();
-        if (!supported) {
-            throw new Error('Biometria nativa indisponível neste navegador (requer HTTPS/localhost e leitor biométrico ou Windows Hello).');
+    async function registerDeviceBiometry(password) {
+        if (!window.PublicKeyCredential || !navigator.credentials) {
+            throw new Error('Este navegador não suporta biometria WebAuthn.');
+        }
+        if (!password) {
+            throw new Error('Desbloqueie o cofre com sua senha primeiro para ativar a biometria.');
         }
 
-        const rpId = window.location.hostname || 'localhost';
         const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const userId = new TextEncoder().encode(address.slice(0, 24));
+        const userId = crypto.getRandomValues(new Uint8Array(16));
 
         const credential = await navigator.credentials.create({
             publicKey: {
                 challenge,
-                rp: { name: 'RDESK SENTINEL', id: rpId },
+                rp: {
+                    name: 'RDESK SENTINEL',
+                    id: window.location.hostname || undefined
+                },
                 user: {
                     id: userId,
-                    name: shortAddress(address),
-                    displayName: `Carteira ${shortAddress(address)}`
+                    name: 'rdesk-autocustodia',
+                    displayName: 'Cofre RDESK SENTINEL'
                 },
                 pubKeyCredParams: [
                     { type: 'public-key', alg: -7 },   // ES256
-                    { type: 'public-key', alg: -257 }  // RS256 (Windows Hello)
+                    { type: 'public-key', alg: -257 }  // RS256
                 ],
                 authenticatorSelection: {
                     authenticatorAttachment: 'platform',
-                    userVerification: 'required',
-                    residentKey: 'preferred'
+                    userVerification: 'required'
                 },
-                timeout: 60000
+                timeout: 60000,
+                attestation: 'none'
             }
         });
 
-        if (!credential) {
-            throw new Error('Registro biométrico cancelado pelo usuário.');
+        if (!credential || !credential.rawId) {
+            throw new Error('Cadastro biométrico cancelado no aparelho.');
         }
 
-        // Cria chave AES-256-GCM não-exportável vinculada a este dispositivo
-        const deviceAesKey = await crypto.subtle.generateKey(
-            { name: 'AES-GCM', length: 256 },
-            false, // extractable: false -> JavaScript nunca consegue exportar os bytes da chave
-            ['encrypt', 'decrypt']
+        // Envolve a senha do cofre com chave local liberada após verificação biométrica
+        const wrapKeyRaw = crypto.getRandomValues(new Uint8Array(32));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const cryptoKey = await crypto.subtle.importKey('raw', wrapKeyRaw, { name: 'AES-GCM' }, false, ['encrypt']);
+        const wrappedBuf = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            cryptoKey,
+            new TextEncoder().encode(password)
         );
 
-        await putBioDeviceKey(deviceAesKey);
-        const wrapped = await encryptWithAesKey(deviceAesKey, mnemonic);
-
-        const vault = readStoredVault();
-        if (vault) {
-            vault.biometric = {
-                enabled: true,
-                credentialId: bufToB64(credential.rawId),
-                iv: wrapped.iv,
-                cipher: wrapped.cipher
-            };
-            writeStoredVault(vault);
-        }
+        const bioRecord = {
+            credIdB64: bytesToBase64(new Uint8Array(credential.rawId)),
+            wrapKeyB64: bytesToBase64(wrapKeyRaw),
+            wrappedPassB64: bytesToBase64(new Uint8Array(wrappedBuf)),
+            ivB64: bytesToBase64(iv)
+        };
+        localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify(bioRecord));
+        return true;
     }
 
-    // Desbloqueia usando Impressão Digital / Windows Hello
-    async function unlockVaultWithBiometrics() {
-        const vault = readStoredVault();
-        if (!vault || !vault.biometric?.enabled) {
+    async function unlockWithBiometry() {
+        const raw = localStorage.getItem(BIO_STORAGE_KEY);
+        if (!raw) {
             throw new Error('Biometria ainda não ativada neste aparelho. Desbloqueie com sua senha e clique em "Ativar Biometria".');
         }
 
-        const rpId = window.location.hostname || 'localhost';
+        const bioRecord = JSON.parse(raw);
+        const credIdBytes = safeBase64ToBytes(bioRecord.credIdB64);
         const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const credIdBytes = b64ToBuf(vault.biometric.credentialId);
 
         const assertion = await navigator.credentials.get({
             publicKey: {
                 challenge,
-                rpId,
-                allowCredentials: [{
-                    type: 'public-key',
-                    id: credIdBytes
-                }],
+                rpId: window.location.hostname || undefined,
+                allowCredentials: [
+                    {
+                        type: 'public-key',
+                        id: credIdBytes
+                    }
+                ],
                 userVerification: 'required',
                 timeout: 60000
             }
@@ -393,1025 +294,1203 @@
             throw new Error('Verificação biométrica não concluída.');
         }
 
-        const deviceAesKey = await getBioDeviceKey();
-        if (!deviceAesKey) {
-            throw new Error('Chave biométrica local não encontrada. Use sua senha para desbloquear e reativar.');
-        }
+        const wrapKeyRaw = safeBase64ToBytes(bioRecord.wrapKeyB64);
+        const wrappedBytes = safeBase64ToBytes(bioRecord.wrappedPassB64);
+        const iv = safeBase64ToBytes(bioRecord.ivB64);
 
-        const mnemonic = await decryptWithAesKey(deviceAesKey, vault.biometric.iv, vault.biometric.cipher);
-        const hdWallet = ethers.Wallet.fromMnemonic(mnemonic);
+        const cryptoKey = await crypto.subtle.importKey('raw', wrapKeyRaw, { name: 'AES-GCM' }, false, ['decrypt']);
+        const passBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, wrappedBytes);
+        const password = new TextDecoder().decode(passBuf);
 
-        walletState.mode = 'VAULT_UNLOCKED';
-        walletState.address = hdWallet.address.toLowerCase();
-        walletState.localWallet = hdWallet;
-        walletState.injectedProvider = null;
-
-        closeModal('modal-wallet');
-        syncWalletUI();
-        await refreshMultiChainBalances();
+        await unlockVaultWithPassword(password);
+        return true;
     }
 
-    // Desbloqueia usando Senha / PIN
     async function unlockVaultWithPassword(password) {
-        const vault = readStoredVault();
-        if (!vault) {
-            throw new Error('Nenhum cofre local encontrado. Crie ou importe uma carteira primeiro.');
+        const meta = readVaultMetaFromStorage();
+        if (!meta || !meta.encryptedSecrets) {
+            throw new Error('Nenhum cofre local encontrado.');
         }
-        const salt = b64ToBuf(vault.salt);
-        const aesKey = await deriveAesKeyFromPassword(password, salt);
-        const mnemonic = await decryptWithAesKey(aesKey, vault.iv, vault.cipher);
-        const hdWallet = ethers.Wallet.fromMnemonic(mnemonic);
-
-        walletState.mode = 'VAULT_UNLOCKED';
-        walletState.address = hdWallet.address.toLowerCase();
-        walletState.localWallet = hdWallet;
-        walletState.injectedProvider = null;
-
-        return { hdWallet, mnemonic };
+        const secrets = await decryptSecretsPayload(meta.encryptedSecrets, password);
+        state.unlockedSecrets = {
+            masterSeedMap: secrets.masterSeedMap || {},
+            pkMap: secrets.pkMap || {},
+            password
+        };
+        state.isLocked = false;
+        syncTopBarAndBanner();
+        notifyAccountChanged();
     }
 
-    function lockLocalVault() {
-        const vault = readStoredVault();
-        walletState.localWallet = null;
-        if (vault && vault.address) {
-            walletState.mode = 'VAULT_LOCKED';
-            walletState.address = vault.address.toLowerCase();
-        } else {
-            walletState.mode = 'NONE';
-            walletState.address = '';
-        }
-        syncWalletUI();
+    function lockVaultNow() {
+        state.unlockedSecrets = null;
+        state.isLocked = true;
+        syncTopBarAndBanner();
+        renderModal();
     }
 
     // =========================================================================
-    // DESCOBERTA MULTI-CARTEIRA EIP-6963 (PRIORIZA RABBY WALLET)
+    // 4. OPERAÇÕES MULTI-CARTEIRA (SEED, DERIVAÇÃO BIP44, PK, RABBY, WATCH)
     // =========================================================================
-    function initEip6963Discovery() {
-        window.addEventListener('eip6963:announceProvider', (event) => {
-            const detail = event?.detail;
-            if (!detail?.info || !detail?.provider) return;
-            walletState.eip6963Providers.set(detail.info.rdns || detail.info.uuid, detail);
-            renderDetectedWalletsList();
-        });
-        window.dispatchEvent(new Event('eip6963:requestProvider'));
+    function getActiveAccount() {
+        if (!state.accounts.length) return null;
+        return state.accounts.find((a) => a.id === state.activeAccountId) || state.accounts[0];
     }
 
-    function getBestRabbyOrInjectedProvider() {
-        for (const [rdns, item] of walletState.eip6963Providers.entries()) {
-            if (rdns === 'io.rabby' || /rabby/i.test(item.info.name)) {
-                return { provider: item.provider, name: item.info.name || 'Rabby Wallet' };
+    function requiresVaultPasswordSetup() {
+        const meta = readVaultMetaFromStorage();
+        return !state.unlockedSecrets && !(meta && meta.encryptedSecrets);
+    }
+
+    async function ensureUnlockedSecrets(passwordIfNeeded) {
+        if (state.unlockedSecrets) return state.unlockedSecrets;
+        const meta = readVaultMetaFromStorage();
+        if (meta && meta.encryptedSecrets) {
+            if (!passwordIfNeeded) {
+                throw new Error('Cofre bloqueado. Informe sua Senha/PIN ou desbloqueie com Biometria primeiro.');
             }
+            await unlockVaultWithPassword(passwordIfNeeded);
+            return state.unlockedSecrets;
         }
-        if (walletState.eip6963Providers.size > 0) {
-            const first = Array.from(walletState.eip6963Providers.values())[0];
-            return { provider: first.provider, name: first.info.name || 'Carteira Web3' };
+        if (!passwordIfNeeded || passwordIfNeeded.length < 4) {
+            throw new Error('Defina uma Senha/PIN de pelo menos 4 caracteres para proteger seu cofre.');
         }
-        if (window.ethereum?.providers && Array.isArray(window.ethereum.providers)) {
-            const rabby = window.ethereum.providers.find(p => p.isRabby);
-            if (rabby) return { provider: rabby, name: 'Rabby Wallet' };
-            return { provider: window.ethereum.providers[0], name: 'Carteira Web3' };
-        }
-        if (window.ethereum) {
-            return {
-                provider: window.ethereum,
-                name: window.ethereum.isRabby ? 'Rabby Wallet' : 'Carteira Web3'
-            };
-        }
-        return null;
+        state.unlockedSecrets = {
+            masterSeedMap: {},
+            pkMap: {},
+            password: passwordIfNeeded
+        };
+        state.isLocked = false;
+        return state.unlockedSecrets;
     }
 
-    function renderDetectedWalletsList() {
-        const container = document.getElementById('detected-wallets-list');
-        if (!container) return;
-        container.replaceChildren();
-
-        if (walletState.eip6963Providers.size === 0 && !window.ethereum) {
-            const note = document.createElement('div');
-            note.className = 'muted-sm';
-            note.style.marginTop = '6px';
-            note.textContent = 'Nenhuma extensão injetada neste navegador. Se estiver no celular, copie o link abaixo e abra na aba DApps do app Rabby.';
-            container.appendChild(note);
-            return;
+    async function addAccountFromMnemonic({ mnemonic, name, hdIndex = 0, password, enableBio = false }) {
+        const cleanPhrase = String(mnemonic || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!ethers.utils.isValidMnemonic(cleanPhrase)) {
+            throw new Error('Frase-semente inválida. Verifique as 12 ou 24 palavras em inglês.');
         }
 
-        walletState.eip6963Providers.forEach((item) => {
-            const row = document.createElement('button');
-            row.type = 'button';
-            row.className = 'route-item';
-            row.style.width = '100%';
-            row.style.marginTop = '6px';
-            row.style.cursor = 'pointer';
+        const secrets = await ensureUnlockedSecrets(password);
+        const path = `m/44'/60'/0'/0/${Number(hdIndex) || 0}`;
+        const hdNode = ethers.utils.HDNode.fromMnemonic(cleanPhrase).derivePath(path);
+        const address = ethers.utils.getAddress(hdNode.address);
 
-            const left = document.createElement('strong');
-            left.textContent = `🔌 ${item.info.name}`;
+        // Reutiliza seedGroupId se essa seed já estiver no cofre
+        let seedGroupId = Object.keys(secrets.masterSeedMap).find((k) => secrets.masterSeedMap[k] === cleanPhrase);
+        if (!seedGroupId) {
+            seedGroupId = 'seed-' + Date.now();
+            secrets.masterSeedMap[seedGroupId] = cleanPhrase;
+        }
 
-            const right = document.createElement('span');
-            right.className = 'kyc-badge free';
-            right.textContent = 'Conectar';
+        const existing = state.accounts.find((a) => a.address.toLowerCase() === address.toLowerCase());
+        if (existing) {
+            existing.name = name?.trim() || existing.name;
+            existing.type = 'seed';
+            existing.seedGroupId = seedGroupId;
+            existing.hdIndex = Number(hdIndex) || 0;
+            state.activeAccountId = existing.id;
+        } else {
+            const acc = {
+                id: 'acc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                name: (name && name.trim()) || `Carteira #${state.accounts.length + 1}`,
+                address,
+                type: 'seed',
+                seedGroupId,
+                hdIndex: Number(hdIndex) || 0,
+                pinned: state.accounts.length === 0
+            };
+            state.accounts.push(acc);
+            state.activeAccountId = acc.id;
+        }
 
-            row.append(left, right);
-            row.addEventListener('click', () => connectInjectedProvider(item.provider, item.info.name));
-            container.appendChild(row);
+        await persistVaultToStorage();
+        if (enableBio) {
+            await registerDeviceBiometry(secrets.password).catch((err) => {
+                console.warn('Biometria opcional não ativada:', err.message);
+            });
+        }
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+        refreshAllAccountsBalances();
+    }
+
+    async function deriveNextAccountFromSeed(seedGroupId) {
+        if (!state.unlockedSecrets || !state.unlockedSecrets.masterSeedMap[seedGroupId]) {
+            throw new Error('Desbloqueie o cofre para derivar novas contas desta frase-semente.');
+        }
+        const phrase = state.unlockedSecrets.masterSeedMap[seedGroupId];
+        const siblings = state.accounts.filter((a) => a.seedGroupId === seedGroupId);
+        const usedIndices = new Set(siblings.map((a) => Number(a.hdIndex || 0)));
+        let nextIdx = 0;
+        while (usedIndices.has(nextIdx)) nextIdx++;
+
+        await addAccountFromMnemonic({
+            mnemonic: phrase,
+            name: `Conta Seed #${nextIdx + 1}`,
+            hdIndex: nextIdx
         });
     }
 
-    async function switchProviderChain(provider, chainId) {
-        const chain = CHAINS[chainId];
-        if (!chain || !provider) return;
+    async function addAccountFromPrivateKey({ privateKey, name, password, enableBio = false }) {
+        let pk = String(privateKey || '').trim();
+        if (!pk.startsWith('0x')) pk = '0x' + pk;
+        let wallet;
         try {
-            await provider.request({
+            wallet = new ethers.Wallet(pk);
+        } catch (e) {
+            throw new Error('Chave privada inválida. Deve conter 64 caracteres hexadecimais.');
+        }
+
+        const secrets = await ensureUnlockedSecrets(password);
+        const address = ethers.utils.getAddress(wallet.address);
+
+        let acc = state.accounts.find((a) => a.address.toLowerCase() === address.toLowerCase());
+        if (acc) {
+            acc.name = (name && name.trim()) || acc.name;
+            acc.type = 'pk';
+        } else {
+            acc = {
+                id: 'acc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                name: (name && name.trim()) || `Chave Importada #${state.accounts.length + 1}`,
+                address,
+                type: 'pk',
+                pinned: state.accounts.length === 0
+            };
+            state.accounts.push(acc);
+        }
+
+        secrets.pkMap[acc.id] = wallet.privateKey;
+        state.activeAccountId = acc.id;
+
+        await persistVaultToStorage();
+        if (enableBio) {
+            await registerDeviceBiometry(secrets.password).catch(() => {});
+        }
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+        refreshAllAccountsBalances();
+    }
+
+    async function addWatchOnlyAccount({ address, name }) {
+        const raw = String(address || '').trim();
+        if (!ethers.utils.isAddress(raw)) {
+            throw new Error('Endereço Ethereum/Polygon inválido (deve começar com 0x...).');
+        }
+        const checksumAddr = ethers.utils.getAddress(raw);
+        let acc = state.accounts.find((a) => a.address.toLowerCase() === checksumAddr.toLowerCase());
+        if (!acc) {
+            acc = {
+                id: 'acc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                name: (name && name.trim()) || `Observação ${checksumAddr.slice(0, 6)}`,
+                address: checksumAddr,
+                type: 'watch',
+                pinned: false
+            };
+            state.accounts.push(acc);
+        }
+        state.activeAccountId = acc.id;
+        await persistVaultToStorage();
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+        refreshAllAccountsBalances();
+    }
+
+    async function connectRabbyExtension() {
+        const eth = state.rabbyProvider || window.ethereum;
+        if (!eth) {
+            throw new Error('Extensão Rabby/Web3 não detectada neste navegador. No celular, abra o site dentro do navegador interno da Rabby Wallet ou importe sua Seed/Chave Privada.');
+        }
+        const accounts = await eth.request({ method: 'eth_requestAccounts' });
+        if (!accounts || !accounts.length) {
+            throw new Error('Nenhuma conta autorizada na Rabby Wallet.');
+        }
+
+        try {
+            await eth.request({
                 method: 'wallet_switchEthereumChain',
-                params: [{ chainId: chain.hex }]
+                params: [{ chainId: '0x89' }]
             });
-        } catch (err) {
-            if (err.code === 4902) {
-                await provider.request({
+        } catch (switchErr) {
+            if (switchErr.code === 4902) {
+                await eth.request({
                     method: 'wallet_addEthereumChain',
                     params: [{
-                        chainId: chain.hex,
-                        chainName: `${chain.name} Mainnet`,
-                        nativeCurrency: { name: chain.nativeSymbol, symbol: chain.nativeSymbol, decimals: 18 },
-                        rpcUrls: [chain.rpcs[0]],
-                        blockExplorerUrls: [chain.explorer]
+                        chainId: '0x89',
+                        chainName: 'Polygon Mainnet',
+                        nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+                        rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
+                        blockExplorerUrls: ['https://polygonscan.com/']
                     }]
                 });
             }
         }
+
+        const checksumAddr = ethers.utils.getAddress(accounts[0]);
+        let acc = state.accounts.find((a) => a.address.toLowerCase() === checksumAddr.toLowerCase());
+        if (!acc) {
+            acc = {
+                id: 'acc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                name: eth.isRabby ? 'Rabby Conectada' : 'Carteira Web3',
+                address: checksumAddr,
+                type: 'rabby',
+                pinned: true
+            };
+            state.accounts.push(acc);
+        }
+        state.activeAccountId = acc.id;
+        await persistVaultToStorage();
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+        refreshAllAccountsBalances();
     }
 
-    async function connectInjectedProvider(specificProvider, labelName) {
-        const found = specificProvider
-            ? { provider: specificProvider, name: labelName || 'Carteira Web3' }
-            : getBestRabbyOrInjectedProvider();
+    async function switchActiveAccount(accountId) {
+        const target = state.accounts.find((a) => a.id === accountId);
+        if (!target) return;
+        state.activeAccountId = target.id;
+        await persistVaultToStorage();
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+    }
 
-        if (!found) {
-            // Mobile sem extensão: copia URL e avisa sem jogar na Play Store
-            await navigator.clipboard.writeText(window.location.href).catch(() => {});
-            alert('Link copiado! Abra o app Rabby Wallet no celular → toque na aba DApps / Navegador → cole o link.');
-            return false;
+    async function deleteSingleAccount(accountId) {
+        state.accounts = state.accounts.filter((a) => a.id !== accountId);
+        if (state.unlockedSecrets && state.unlockedSecrets.pkMap) {
+            delete state.unlockedSecrets.pkMap[accountId];
+        }
+        if (state.activeAccountId === accountId) {
+            state.activeAccountId = state.accounts[0]?.id || null;
+        }
+        await persistVaultToStorage();
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+    }
+
+    function exportAccountSecrets(accountId) {
+        const acc = state.accounts.find((a) => a.id === accountId);
+        if (!acc) throw new Error('Carteira não encontrada.');
+        if (acc.type === 'watch' || acc.type === 'rabby') {
+            throw new Error('Contas externas/observação não possuem chave armazenada neste cofre.');
+        }
+        if (!state.unlockedSecrets) {
+            throw new Error('Cofre bloqueado. Desbloqueie primeiro.');
         }
 
+        if (acc.type === 'pk') {
+            const pk = state.unlockedSecrets.pkMap[acc.id];
+            if (!pk) throw new Error('Chave privada não localizada.');
+            return { privateKey: pk, mnemonic: null };
+        }
+
+        if (acc.type === 'seed') {
+            const phrase = state.unlockedSecrets.masterSeedMap[acc.seedGroupId];
+            if (!phrase) throw new Error('Frase-semente não localizada.');
+            const path = `m/44'/60'/0'/0/${Number(acc.hdIndex) || 0}`;
+            const node = ethers.utils.HDNode.fromMnemonic(phrase).derivePath(path);
+            return { privateKey: node.privateKey, mnemonic: phrase };
+        }
+        throw new Error('Tipo de conta desconhecido.');
+    }
+
+    // =========================================================================
+    // 5. PROVIDER, SIGNER E SALDOS CONSOLIDADOS DAS CARTEIRAS
+    // =========================================================================
+    function getReadProvider() {
+        return new ethers.providers.JsonRpcProvider(POLYGON_RPCS[0]);
+    }
+
+    async function getActiveSigner() {
+        const acc = getActiveAccount();
+        if (!acc) {
+            openWalletModal('add');
+            throw new Error('Nenhuma carteira ativa. Crie ou importe uma carteira primeiro.');
+        }
+        if (acc.type === 'watch') {
+            throw new Error(`A carteira "${acc.name}" está em Modo Observação (apenas leitura). Importe a Seed ou Chave Privada para assinar transações.`);
+        }
+        if (acc.type === 'rabby') {
+            const eth = state.rabbyProvider || window.ethereum;
+            if (!eth) throw new Error('Extensão Rabby não encontrada.');
+            return new ethers.providers.Web3Provider(eth).getSigner();
+        }
+        if (state.isLocked || !state.unlockedSecrets) {
+            openWalletModal('unlock');
+            throw new Error('Cofre bloqueado. Desbloqueie com sua Biometria ou Senha/PIN.');
+        }
+        const { privateKey } = exportAccountSecrets(acc.id);
+        return new ethers.Wallet(privateKey, getReadProvider());
+    }
+
+    async function refreshAllAccountsBalances() {
+        if (!state.accounts.length) return;
         try {
-            const accounts = await found.provider.request({ method: 'eth_requestAccounts' });
-            if (!accounts || !accounts[0]) return false;
+            const provider = getReadProvider();
+            const wpol = new ethers.Contract(TOKENS_MINI.WPOL.address, ERC20_MIN_ABI, provider);
+            const usdt = new ethers.Contract(TOKENS_MINI.USDT0.address, ERC20_MIN_ABI, provider);
+            const brz = new ethers.Contract(TOKENS_MINI.BRZ.address, ERC20_MIN_ABI, provider);
 
-            await switchProviderChain(found.provider, 137);
+            await Promise.all(state.accounts.map(async (acc) => {
+                try {
+                    const [bPol, bWpol, bUsdt, bBrz] = await Promise.all([
+                        provider.getBalance(acc.address),
+                        wpol.balanceOf(acc.address),
+                        usdt.balanceOf(acc.address),
+                        brz.balanceOf(acc.address)
+                    ]);
+                    const polNum = parseFloat(ethers.utils.formatEther(bPol)) + parseFloat(ethers.utils.formatEther(bWpol));
+                    const usdtNum = parseFloat(ethers.utils.formatUnits(bUsdt, 6));
+                    const brzNum = parseFloat(ethers.utils.formatEther(bBrz));
+                    const approxBrl = (usdtNum * 5.65) + (polNum * 0.48) + brzNum;
 
-            walletState.mode = 'INJECTED';
-            walletState.address = accounts[0].toLowerCase();
-            walletState.localWallet = null;
-            walletState.injectedProvider = found.provider;
-            walletState.injectedName = found.name;
+                    state.balancesCache[acc.address.toLowerCase()] = {
+                        brl: approxBrl,
+                        summary: `${polNum.toFixed(2)} POL • ${usdtNum.toFixed(2)} USDT0`
+                    };
+                } catch (e) {}
+            }));
 
-            found.provider.on?.('accountsChanged', (accs) => {
-                if (accs && accs[0]) {
-                    walletState.address = accs[0].toLowerCase();
-                    syncWalletUI();
-                    refreshMultiChainBalances();
-                }
-            });
-
-            closeModal('modal-wallet');
-            syncWalletUI();
-            await refreshMultiChainBalances();
-            return true;
-        } catch (err) {
-            console.error(err);
-            return false;
-        }
-    }
-
-    // =========================================================================
-    // CRIAÇÃO E IMPORTAÇÃO DE COFRE BIP-39 (12 / 24 PALAVRAS)
-    // =========================================================================
-    function generateNewDraftMnemonic() {
-        const count = Number(document.getElementById('create-words-count')?.value || 12);
-        const entropyBytes = count === 24 ? 32 : 16;
-        const mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(entropyBytes));
-        draftMnemonicWords = mnemonic.split(' ');
-
-        const grid = document.getElementById('create-words-grid');
-        if (grid) {
-            grid.replaceChildren();
-            draftMnemonicWords.forEach((word, idx) => {
-                const chip = document.createElement('div');
-                chip.className = 'word-chip';
-                const num = document.createElement('span');
-                num.textContent = `${idx + 1}.`;
-                chip.append(num, document.createTextNode(word));
-                grid.appendChild(chip);
-            });
-        }
-
-        // Seleciona 3 índices aleatórios para confirmar que o usuário anotou
-        const indices = new Set();
-        while (indices.size < 3) {
-            indices.add(Math.floor(Math.random() * draftMnemonicWords.length));
-        }
-        draftChallengeIndices = Array.from(indices).sort((a, b) => a - b);
-
-        const chalBox = document.getElementById('verify-challenges-box');
-        if (chalBox) {
-            chalBox.replaceChildren();
-            draftChallengeIndices.forEach((wordIdx) => {
-                const row = document.createElement('div');
-                row.className = 'challenge-row';
-
-                const lbl = document.createElement('label');
-                lbl.textContent = `Palavra #${wordIdx + 1}:`;
-
-                const inp = document.createElement('input');
-                inp.type = 'text';
-                inp.className = 'field-input';
-                inp.dataset.challengeIdx = String(wordIdx);
-                inp.placeholder = `Digite a ${wordIdx + 1}ª palavra`;
-                inp.autocomplete = 'off';
-                inp.autocapitalize = 'none';
-
-                row.append(lbl, inp);
-                chalBox.appendChild(row);
-            });
-        }
-    }
-
-    async function saveNewEncryptedVault(mnemonic, password, enableBio) {
-        const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
-        if (!ethers.utils.isValidMnemonic(cleanMnemonic)) {
-            throw new Error('Frase de recuperação inválida. Verifique a ortografia e o número de palavras (12 ou 24).');
-        }
-        if (!password || password.length < 6) {
-            throw new Error('Crie uma senha ou PIN com pelo menos 6 caracteres.');
-        }
-
-        const hdWallet = ethers.Wallet.fromMnemonic(cleanMnemonic);
-        const address = hdWallet.address.toLowerCase();
-        const salt = crypto.getRandomValues(new Uint8Array(16));
-        const aesKey = await deriveAesKeyFromPassword(password, salt);
-        const encrypted = await encryptWithAesKey(aesKey, cleanMnemonic);
-
-        writeStoredVault({
-            version: 22,
-            address,
-            salt: bufToB64(salt),
-            iv: encrypted.iv,
-            cipher: encrypted.cipher,
-            biometric: { enabled: false }
-        });
-
-        walletState.mode = 'VAULT_UNLOCKED';
-        walletState.address = address;
-        walletState.localWallet = hdWallet;
-        walletState.injectedProvider = null;
-
-        if (enableBio) {
-            try {
-                await enrollBiometricsForMnemonic(cleanMnemonic, address);
-            } catch (bioErr) {
-                console.warn('Biometria não ativada:', bioErr.message);
-            }
-        }
-
-        closeModal('modal-wallet');
-        syncWalletUI();
-        await refreshMultiChainBalances();
-    }
-
-    // =========================================================================
-    // COTAÇÕES AO VIVO & SALDOS MULTI-REDE
-    // =========================================================================
-    async function refreshMarketPrices() {
-        try {
-            const [fxRes, binanceRes] = await Promise.all([
-                withTimeout(fetch('https://economia.awesomeapi.com.br/last/USD-BRL'), 4000).catch(() => null),
-                withTimeout(fetch('https://api.binance.com/api/v3/ticker/price?symbols=["POLUSDT","ETHUSDT","BTCUSDT"]'), 4000).catch(() => null)
-            ]);
-
-            if (fxRes && fxRes.ok) {
-                const fxJson = await fxRes.json();
-                if (fxJson?.USDBRL?.bid) walletState.prices.USD_BRL = parseFloat(fxJson.USDBRL.bid);
-            }
-
-            if (binanceRes && binanceRes.ok) {
-                const tickers = await binanceRes.json();
-                if (Array.isArray(tickers)) {
-                    tickers.forEach(t => {
-                        if (t.symbol === 'POLUSDT') walletState.prices.POL = parseFloat(t.price);
-                        if (t.symbol === 'ETHUSDT') walletState.prices.ETH = parseFloat(t.price);
-                        if (t.symbol === 'BTCUSDT') walletState.prices.BTC = parseFloat(t.price);
-                    });
-                }
+            if (currentView === 'list') {
+                renderModal();
             }
         } catch (e) {}
-
-        const oraclePill = document.getElementById('top-oracle-pill');
-        if (oraclePill) {
-            oraclePill.textContent = `Dólar: R$ ${walletState.prices.USD_BRL.toFixed(2).replace('.', ',')}`;
-        }
     }
 
-    function getUnitUsdPrice(priceKey) {
-        if (priceKey === 'USD') return 1.0;
-        if (priceKey === 'BRL') return 1.0 / (walletState.prices.USD_BRL || 5.65);
-        return walletState.prices[priceKey] || 0;
-    }
+    // =========================================================================
+    // 6. SINCRONIZAÇÃO COM A INTERFACE PRINCIPAL DO RDESK SENTINEL
+    // =========================================================================
+    function notifyAccountChanged() {
+        const acc = getActiveAccount();
+        const addr = acc ? acc.address : '';
 
-    async function getReadProviderForChain(chainId) {
-        const chain = CHAINS[chainId] || CHAINS[137];
-        for (const rpc of chain.rpcs) {
-            try {
-                const p = new ethers.providers.JsonRpcProvider(rpc);
-                await withTimeout(p.getBlockNumber(), 3000);
-                return p;
-            } catch (e) {}
-        }
-        return new ethers.providers.JsonRpcProvider(chain.rpcs[0]);
-    }
-
-    async function refreshMultiChainBalances() {
-        await refreshMarketPrices();
-
-        if (!walletState.address || !ethers.utils.isAddress(walletState.address)) {
-            walletState.balances = [];
-            renderHeroAndAssets();
-            return;
+        const legacyInput = document.getElementById('wallet-address');
+        if (legacyInput && addr) {
+            legacyInput.value = addr.toLowerCase();
         }
 
-        const addr = walletState.address;
-        const erc20Abi = ['function balanceOf(address) view returns (uint256)'];
-        const results = [];
-
-        await Promise.all(Object.keys(CHAINS).map(async (chainIdStr) => {
-            const chainId = Number(chainIdStr);
-            const chain = CHAINS[chainId];
-            const tokens = CHAIN_TOKENS[chainId] || [];
-
-            try {
-                const provider = await getReadProviderForChain(chainId);
-                await Promise.all(tokens.map(async (tok) => {
-                    try {
-                        let rawBN;
-                        if (tok.isNative) {
-                            rawBN = await withTimeout(provider.getBalance(addr), 4000);
-                        } else {
-                            const c = new ethers.Contract(tok.address, erc20Abi, provider);
-                            rawBN = await withTimeout(c.balanceOf(addr), 4000);
-                        }
-                        const amount = parseFloat(ethers.utils.formatUnits(rawBN, tok.decimals));
-                        const unitUsd = getUnitUsdPrice(tok.priceKey);
-                        const usdValue = amount * unitUsd;
-                        const brlValue = usdValue * walletState.prices.USD_BRL;
-
-                        results.push({
-                            chainId,
-                            chainName: chain.name,
-                            symbol: tok.symbol,
-                            name: tok.name,
-                            decimals: tok.decimals,
-                            address: tok.address || null,
-                            isNative: Boolean(tok.isNative),
-                            amount,
-                            usdValue,
-                            brlValue
-                        });
-                    } catch (e) {}
-                }));
-            } catch (e) {}
+        window.dispatchEvent(new CustomEvent('rdesk:walletChanged', {
+            detail: { address: addr, account: acc, isLocked: state.isLocked }
         }));
 
-        walletState.balances = results.sort((a, b) => b.brlValue - a.brlValue);
-        renderHeroAndAssets();
-        updateSendAvailableDisplay();
+        changeListeners.forEach((fn) => {
+            try { fn(addr, acc); } catch (e) {}
+        });
 
-        window.dispatchEvent(new CustomEvent('rdesk:wallet-updated', {
-            detail: {
-                address: walletState.address,
-                mode: walletState.mode,
-                balances: walletState.balances,
-                prices: walletState.prices
+        if (window.RdeskDefi) {
+            if (typeof window.RdeskDefi.refreshPoolAndPositions === 'function') {
+                window.RdeskDefi.refreshPoolAndPositions();
             }
-        }));
+            if (typeof window.RdeskDefi.runAudit === 'function') {
+                window.RdeskDefi.runAudit(false);
+            }
+        }
     }
 
-    // =========================================================================
-    // ATUALIZAÇÃO DA INTERFACE DA CARTEIRA (HERO + LISTA DE ATIVOS)
-    // =========================================================================
-    function syncWalletUI() {
-        const vault = readStoredVault();
-        const triggerBtn = document.getElementById('btn-wallet-trigger');
-        const lockBtn = document.getElementById('btn-lock-vault');
-        const lockedBar = document.getElementById('locked-vault-bar');
-        const modeBadge = document.getElementById('wallet-mode-badge');
-        const copyChip = document.getElementById('btn-copy-header-addr');
-        const shortEl = document.getElementById('wallet-short-addr');
-
-        if (walletState.mode === 'VAULT_LOCKED') {
-            lockedBar.style.display = 'flex';
-            lockBtn.style.display = 'none';
-            triggerBtn.textContent = `🔒 ${shortAddress(walletState.address)}`;
-            triggerBtn.classList.remove('connected');
-            modeBadge.textContent = 'Cofre Local Bloqueado (Modo Leitura)';
-            copyChip.style.display = 'inline-flex';
-            shortEl.textContent = shortAddress(walletState.address);
-        } else if (walletState.mode === 'VAULT_UNLOCKED') {
-            lockedBar.style.display = 'none';
-            lockBtn.style.display = 'inline-block';
-            triggerBtn.textContent = `● ${shortAddress(walletState.address)}`;
-            triggerBtn.classList.add('connected');
-            const bioTag = vault?.biometric?.enabled ? ' + Biometria' : '';
-            modeBadge.textContent = `Cofre Autocustódia Ativo${bioTag}`;
-            copyChip.style.display = 'inline-flex';
-            shortEl.textContent = shortAddress(walletState.address);
-        } else if (walletState.mode === 'INJECTED') {
-            lockedBar.style.display = 'none';
-            lockBtn.style.display = 'none';
-            triggerBtn.textContent = `● ${walletState.injectedName} ${shortAddress(walletState.address)}`;
-            triggerBtn.classList.add('connected');
-            modeBadge.textContent = `${walletState.injectedName} Conectada`;
-            copyChip.style.display = 'inline-flex';
-            shortEl.textContent = shortAddress(walletState.address);
-        } else if (walletState.mode === 'WATCH_ONLY') {
-            lockedBar.style.display = 'none';
-            lockBtn.style.display = 'none';
-            triggerBtn.textContent = `👁 ${shortAddress(walletState.address)}`;
-            triggerBtn.classList.remove('connected');
-            modeBadge.textContent = 'Modo Observação (Apenas Leitura)';
-            copyChip.style.display = 'inline-flex';
-            shortEl.textContent = shortAddress(walletState.address);
-        } else {
-            lockedBar.style.display = vault ? 'flex' : 'none';
-            lockBtn.style.display = 'none';
-            triggerBtn.textContent = 'Conectar / Criar Carteira';
-            triggerBtn.classList.remove('connected');
-            modeBadge.textContent = 'Nenhuma carteira ativa';
-            copyChip.style.display = 'none';
-        }
-
-        renderHeroAndAssets();
-    }
-
-    function renderHeroAndAssets() {
-        const freeUsd = walletState.balances.reduce((acc, b) => acc + b.usdValue, 0);
-        const freeBrl = freeUsd * walletState.prices.USD_BRL;
-        const lpUsd = walletState.lpUsdTotal || 0;
-        const lpBrl = lpUsd * walletState.prices.USD_BRL;
-
-        const totalUsd = freeUsd + lpUsd;
-        const totalBrl = freeBrl + lpBrl;
-
-        const heroBrlEl = document.getElementById('hero-total-brl');
-        const heroUsdEl = document.getElementById('hero-total-usd');
-        const heroBreakEl = document.getElementById('hero-breakdown');
-
-        if (heroBrlEl) heroBrlEl.textContent = formatBRL(totalBrl);
-        if (heroUsdEl) {
-            heroUsdEl.textContent = `${formatUSD(totalUsd)} • Cotação Dólar: R$ ${walletState.prices.USD_BRL.toFixed(3).replace('.', ',')}`;
-        }
-        if (heroBreakEl) {
-            heroBreakEl.textContent = `Livre na Carteira: ${formatBRL(freeBrl)}  •  Rendendo em Pools: ${formatBRL(lpBrl)}`;
-        }
-
-        const listEl = document.getElementById('wallet-assets-list');
-        if (!listEl) return;
-        listEl.replaceChildren();
-
-        if (!walletState.address) {
-            const empty = document.createElement('div');
-            empty.className = 'empty-state';
-            empty.textContent = 'Conecte ou crie sua carteira para visualizar seus saldos em Reais.';
-            listEl.appendChild(empty);
-            return;
-        }
-
-        const chainFilter = document.getElementById('wallet-chain-filter')?.value || 'ALL';
-        const filtered = walletState.balances.filter(b => {
-            if (chainFilter !== 'ALL' && String(b.chainId) !== chainFilter) return false;
-            return b.amount > 0.00001 || (b.chainId === 137 && (b.symbol === 'POL' || b.symbol === 'USDT'));
-        });
-
-        if (filtered.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'empty-state';
-            empty.textContent = 'Nenhum saldo encontrado nesta rede. Use o botão "Receber" para depositar.';
-            listEl.appendChild(empty);
-            return;
-        }
-
-        filtered.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'asset-row';
-
-            const left = document.createElement('div');
-            left.className = 'asset-left';
-
-            const icon = document.createElement('div');
-            icon.className = 'asset-icon';
-            icon.textContent = item.symbol.slice(0, 4);
-
-            const info = document.createElement('div');
-            info.className = 'asset-info';
-            const title = document.createElement('strong');
-            title.textContent = `${item.symbol} `;
-            const sub = document.createElement('span');
-            sub.textContent = `${item.name} • Rede ${item.chainName}`;
-            info.append(title, sub);
-            left.append(icon, info);
-
-            const right = document.createElement('div');
-            right.className = 'asset-right';
-            const brlStrong = document.createElement('strong');
-            brlStrong.textContent = formatBRL(item.brlValue);
-            const qtySpan = document.createElement('span');
-            qtySpan.textContent = `${item.amount.toFixed(4)} ${item.symbol}`;
-            right.append(brlStrong, qtySpan);
-
-            row.append(left, right);
-            listEl.appendChild(row);
-        });
-    }
-
-    // =========================================================================
-    // RECEBER MOEDAS (QR CODE LOCAL + COPIAR + COMPARTILHAR)
-    // =========================================================================
-    function openReceiveModal() {
-        const qrContainer = document.getElementById('receive-qrcode');
-        const addrBox = document.getElementById('receive-full-address');
-        qrContainer.replaceChildren();
-
-        if (!walletState.address || !ethers.utils.isAddress(walletState.address)) {
-            addrBox.textContent = 'Crie ou conecte sua carteira primeiro para gerar seu endereço.';
-            openModal('modal-receive');
-            return;
-        }
-
-        const checksumAddr = ethers.utils.getAddress(walletState.address);
-        addrBox.textContent = checksumAddr;
-
-        if (window.QRCode) {
-            new QRCode(qrContainer, {
-                text: checksumAddr,
-                width: 180,
-                height: 180,
-                colorDark: '#090b10',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        }
-        openModal('modal-receive');
-    }
-
-    // =========================================================================
-    // ENVIAR MOEDAS (VALIDAÇÃO, RESERVA DE GÁS & RECIBO EM REAIS)
-    // =========================================================================
-    function getAvailableBalanceForSend(chainId, symbol) {
-        const found = walletState.balances.find(b => b.chainId === Number(chainId) && b.symbol === symbol);
-        return found ? found.amount : 0;
-    }
-
-    function updateSendAvailableDisplay() {
-        const chainId = Number(document.getElementById('send-chain-select')?.value || 137);
-        const symbol = document.getElementById('send-token-select')?.value || 'USDT';
-        const avail = getAvailableBalanceForSend(chainId, symbol);
-
-        const availEl = document.getElementById('send-available-text');
-        if (availEl) availEl.textContent = `Saldo: ${avail.toFixed(4)} ${symbol}`;
-
-        const amt = parseFloat(document.getElementById('send-amount-input')?.value) || 0;
-        const tokMeta = (CHAIN_TOKENS[chainId] || []).find(t => t.symbol === symbol);
-        const unitUsd = tokMeta ? getUnitUsdPrice(tokMeta.priceKey) : 0;
-        const brlVal = amt * unitUsd * walletState.prices.USD_BRL;
-
-        const prevEl = document.getElementById('send-brl-preview');
-        if (prevEl) prevEl.textContent = `Equivalente: ${formatBRL(brlVal)}`;
-    }
-
-    async function getActiveSignerForChain(chainId) {
-        if (walletState.mode === 'VAULT_UNLOCKED' && walletState.localWallet) {
-            const readProvider = await getReadProviderForChain(chainId);
-            return walletState.localWallet.connect(readProvider);
-        }
-        if (walletState.mode === 'INJECTED' && walletState.injectedProvider) {
-            await switchProviderChain(walletState.injectedProvider, chainId);
-            const web3Provider = new ethers.providers.Web3Provider(walletState.injectedProvider);
-            return web3Provider.getSigner();
-        }
-        if (walletState.mode === 'VAULT_LOCKED') {
-            openModal('modal-wallet');
-            throw new Error('Desbloqueie seu cofre com Biometria ou Senha antes de enviar.');
-        }
-        openModal('modal-wallet');
-        throw new Error('Conecte a Rabby Wallet ou crie um cofre local para enviar.');
-    }
-
-    async function handleReviewAndExecuteSend() {
-        const statusEl = document.getElementById('send-status-msg');
-        statusEl.style.color = 'var(--accent)';
-        statusEl.textContent = '';
-
-        const chainId = Number(document.getElementById('send-chain-select').value);
-        const symbol = document.getElementById('send-token-select').value;
-        const toAddr = document.getElementById('send-recipient-input').value.trim();
-        const amount = parseFloat(document.getElementById('send-amount-input').value);
-
-        if (!ethers.utils.isAddress(toAddr)) {
-            statusEl.style.color = 'var(--red)';
-            statusEl.textContent = 'Endereço de destino inválido (deve começar com 0x...).';
-            return;
-        }
-        if (!Number.isFinite(amount) || amount <= 0) {
-            statusEl.style.color = 'var(--red)';
-            statusEl.textContent = 'Informe uma quantidade maior que zero.';
-            return;
-        }
-
-        const chain = CHAINS[chainId];
-        const tokMeta = (CHAIN_TOKENS[chainId] || []).find(t => t.symbol === symbol);
-        if (!tokMeta) {
-            statusEl.style.color = 'var(--red)';
-            statusEl.textContent = `${symbol} não está configurado na rede ${chain.name}.`;
-            return;
-        }
-
-        const avail = getAvailableBalanceForSend(chainId, symbol);
-        if (amount > avail) {
-            statusEl.style.color = 'var(--red)';
-            statusEl.textContent = `Saldo insuficiente (${avail.toFixed(4)} ${symbol} disponíveis).`;
-            return;
-        }
-
-        const unitUsd = getUnitUsdPrice(tokMeta.priceKey);
-        const brlVal = amount * unitUsd * walletState.prices.USD_BRL;
-
-        const confirmed = await requestHumanReceipt({
-            title: `Confirmar Envio (${chain.name})`,
-            sendVal: `${amount.toFixed(4)} ${symbol}`,
-            sendBrl: formatBRL(brlVal),
-            recvVal: `Para ${shortAddress(toAddr)}`,
-            recvBrl: formatBRL(brlVal),
-            route: `Transferência Direta • ${chain.name}`,
-            fee: 'R$ 0,00 (Sem taxa do app)',
-            gas: chainId === 137 ? '~R$ 0,02 (Polygon)' : 'Taxa padrão da rede',
-            shield: chainId === 137 ? '3.0 POL protegidos' : 'Reserva de gás verificada'
-        });
-
-        if (!confirmed) return;
-
-        try {
-            const signer = await getActiveSignerForChain(chainId);
-            const amountWei = ethers.utils.parseUnits(amount.toFixed(tokMeta.decimals), tokMeta.decimals);
-
-            statusEl.textContent = 'Assinando e transmitindo envio para a blockchain...';
-
-            let tx;
-            if (tokMeta.isNative) {
-                tx = await signer.sendTransaction({ to: toAddr, value: amountWei });
+    function syncTopBarAndBanner() {
+        const acc = getActiveAccount();
+        const topBtn = document.querySelector('#btn-wallet-trigger, #wallet-chip-btn, #btn-connect-wallet, [data-wallet-open]');
+        if (topBtn) {
+            if (!acc) {
+                topBtn.textContent = '🔑 Conectar / Criar Carteira';
             } else {
-                const erc20 = new ethers.Contract(
-                    tokMeta.address,
-                    ['function transfer(address to, uint256 value) returns (bool)'],
-                    signer
-                );
-                tx = await erc20.transfer(toAddr, amountWei);
+                const lockIcon = (acc.type === 'seed' || acc.type === 'pk')
+                    ? (state.isLocked ? '🔒' : '🔓')
+                    : (acc.type === 'rabby' ? '🦊' : '👁️');
+                topBtn.textContent = `${lockIcon} ${acc.name} (${acc.address.slice(0, 6)}..${acc.address.slice(-4)})`;
             }
+        }
 
-            statusEl.textContent = `Enviado (${tx.hash.slice(0, 10)}...) Aguardando confirmação...`;
-            await tx.wait();
-
-            statusEl.style.color = 'var(--green-bright)';
-            statusEl.textContent = `✓ Envio de ${amount} ${symbol} confirmado na rede ${chain.name}!`;
-            document.getElementById('send-amount-input').value = '';
-            await refreshMultiChainBalances();
-        } catch (err) {
-            statusEl.style.color = 'var(--red)';
-            statusEl.textContent = err?.reason || err?.message || 'Envio cancelado.';
+        const banner = document.getElementById('wallet-lock-banner');
+        if (banner) {
+            const needsUnlock = acc && (acc.type === 'seed' || acc.type === 'pk') && state.isLocked;
+            banner.style.display = needsUnlock ? 'flex' : 'none';
         }
     }
 
     // =========================================================================
-    // VINCULAÇÃO DOS EVENTOS DA INTERFACE
+    // 7. INTERFACE COMPLETA DO MODAL MULTI-CARTEIRA (ESTILO RABBY WALLET)
     // =========================================================================
-    function bindWalletEvents() {
-        // Fechar modais
-        document.querySelectorAll('[data-close-modal]').forEach(btn => {
-            btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close-modal')));
-        });
-        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    function injectMultiWalletStyles() {
+        if (document.getElementById('rdesk-multiwallet-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'rdesk-multiwallet-styles';
+        style.textContent = `
+            #rdesk-mw-overlay {
+                position: fixed; inset: 0; background: rgba(4, 6, 10, 0.86);
+                backdrop-filter: blur(8px); z-index: 9999; display: none;
+                align-items: flex-end; justify-content: center; padding: 12px;
+            }
+            #rdesk-mw-overlay.open { display: flex; }
+            @media (min-width: 640px) { #rdesk-mw-overlay { align-items: center; } }
+            .rmw-sheet {
+                width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
+                background: #11151f; border: 1px solid rgba(234, 179, 8, 0.28);
+                border-radius: 20px; padding: 18px; color: #f1f5f9;
+                box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            }
+            .rmw-header {
+                display: flex; align-items: center; justify-content: space-between;
+                margin-bottom: 14px; padding-bottom: 10px;
+                border-bottom: 1px solid rgba(255,255,255,0.08);
+            }
+            .rmw-title { font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+            .rmw-icon-btn {
+                background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+                color: #cbd5e1; border-radius: 10px; padding: 6px 10px; cursor: pointer; font-size: 0.85rem;
+            }
+            .rmw-icon-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+            .rmw-acc-card {
+                background: #181e2c; border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 14px; padding: 12px; margin-bottom: 10px;
+                display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                cursor: pointer; transition: border-color 0.2s, background 0.2s;
+            }
+            .rmw-acc-card.active {
+                border-color: #eab308; background: rgba(234, 179, 8, 0.08);
+            }
+            .rmw-avatar {
+                width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+                display: flex; align-items: center; justify-content: center;
+                font-weight: 800; font-size: 0.85rem; color: #090b10;
+            }
+            .rmw-badge {
+                font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 6px;
+                background: rgba(255,255,255,0.08); color: #94a3b8; text-transform: uppercase;
+            }
+            .rmw-badge.seed { background: rgba(0, 230, 118, 0.14); color: #00e676; }
+            .rmw-badge.pk { background: rgba(234, 179, 8, 0.16); color: #eab308; }
+            .rmw-badge.rabby { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+            .rmw-opt-btn {
+                width: 100%; background: #181e2c; border: 1px solid rgba(255,255,255,0.09);
+                border-radius: 14px; padding: 13px 14px; margin-bottom: 9px;
+                display: flex; align-items: center; gap: 12px; color: #f8fafc;
+                cursor: pointer; text-align: left; font-size: 0.94rem; font-weight: 600;
+            }
+            .rmw-opt-btn:hover { border-color: #eab308; background: #1e2638; }
+            .rmw-opt-ico {
+                width: 34px; height: 34px; border-radius: 10px; display: flex;
+                align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+            }
+            .rmw-btn-primary {
+                width: 100%; background: #eab308; color: #090b10; border: none;
+                border-radius: 12px; padding: 12px; font-weight: 800; font-size: 0.95rem;
+                cursor: pointer; margin-top: 6px;
+            }
+            .rmw-btn-primary:hover { filter: brightness(1.08); }
+            .rmw-btn-secondary {
+                width: 100%; background: rgba(255,255,255,0.07); color: #e2e8f0;
+                border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+                padding: 11px; font-weight: 600; font-size: 0.9rem; cursor: pointer; margin-top: 8px;
+            }
+            .rmw-btn-danger {
+                width: 100%; background: rgba(239, 68, 68, 0.14); color: #f87171;
+                border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px;
+                padding: 11px; font-weight: 700; font-size: 0.9rem; cursor: pointer; margin-top: 12px;
+            }
+            .rmw-input, .rmw-textarea, .rmw-select {
+                width: 100%; background: #0b0e14; border: 1px solid rgba(255,255,255,0.16);
+                border-radius: 11px; padding: 11px 12px; color: #fff; font-size: 0.92rem;
+                margin-top: 5px; margin-bottom: 10px; box-sizing: border-box;
+            }
+            .rmw-textarea { min-height: 76px; font-family: monospace; resize: vertical; }
+            .rmw-label { font-size: 0.8rem; color: #94a3b8; font-weight: 600; display: block; margin-top: 6px; }
+            .rmw-alert-err {
+                background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.4);
+                color: #fca5a5; border-radius: 10px; padding: 10px; font-size: 0.83rem; margin: 8px 0;
+            }
+            .rmw-alert-ok {
+                background: rgba(0, 230, 118, 0.12); border: 1px solid rgba(0, 230, 118, 0.35);
+                color: #6ee7b7; border-radius: 10px; padding: 10px; font-size: 0.83rem; margin: 8px 0;
+            }
+            .rmw-secret-box {
+                background: #090b10; border: 1px dashed #eab308; border-radius: 12px;
+                padding: 12px; font-family: monospace; font-size: 0.86rem; color: #fde047;
+                word-break: break-all; margin-top: 8px;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function getAvatarGradient(addr) {
+        const hex = (addr || '0x123456').slice(2, 8);
+        const h1 = parseInt(hex.slice(0, 2), 16) % 360;
+        const h2 = (h1 + 110) % 360;
+        return `linear-gradient(135deg, hsl(${h1}, 85%, 60%), hsl(${h2}, 85%, 52%))`;
+    }
+
+    function ensureModalContainer() {
+        injectMultiWalletStyles();
+        // Remove modal antigo se existir no index.html para evitar conflito de IDs
+        const legacyModal = document.getElementById('wallet-modal-overlay');
+        if (legacyModal) legacyModal.remove();
+
+        let overlay = document.getElementById('rdesk-mw-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'rdesk-mw-overlay';
+            overlay.innerHTML = `<div class="rmw-sheet" id="rdesk-mw-sheet"></div>`;
             overlay.addEventListener('click', (e) => {
-                if (e.target === overlay && overlay.id !== 'modal-receipt') {
-                    overlay.style.display = 'none';
-                }
+                if (e.target === overlay) closeWalletModal();
+            });
+            document.body.appendChild(overlay);
+        }
+        return overlay;
+    }
+
+    function openWalletModal(preferredView) {
+        const overlay = ensureModalContainer();
+        if (preferredView) {
+            currentView = preferredView;
+        } else if (state.hasLegacyCorrupted && !state.accounts.length) {
+            currentView = 'unlock';
+        } else if (!state.accounts.length) {
+            currentView = 'add';
+        } else if (state.isLocked && state.accounts.some((a) => a.type === 'seed' || a.type === 'pk')) {
+            currentView = 'unlock';
+        } else {
+            currentView = 'list';
+        }
+        overlay.classList.add('open');
+        renderModal();
+        refreshAllAccountsBalances();
+    }
+
+    function closeWalletModal() {
+        const overlay = document.getElementById('rdesk-mw-overlay');
+        if (overlay) overlay.classList.remove('open');
+    }
+
+    function renderModal() {
+        const sheet = document.getElementById('rdesk-mw-sheet');
+        if (!sheet) return;
+
+        if (currentView === 'unlock') {
+            renderUnlockView(sheet);
+        } else if (currentView === 'add') {
+            renderAddMethodView(sheet);
+        } else if (currentView === 'form') {
+            renderFormView(sheet);
+        } else if (currentView === 'detail') {
+            renderDetailView(sheet);
+        } else {
+            renderListView(sheet);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // TELA A: LISTA DE CARTEIRAS (IGUAL PRINT 150148.png DA RABBY)
+    // -------------------------------------------------------------------------
+    function renderListView(sheet) {
+        const activeAcc = getActiveAccount();
+        const hasVaultAccounts = state.accounts.some((a) => a.type === 'seed' || a.type === 'pk');
+
+        const cardsHtml = state.accounts.map((acc) => {
+            const isAct = activeAcc && activeAcc.id === acc.id;
+            const bal = state.balancesCache[acc.address.toLowerCase()];
+            const badgeClass = acc.type === 'seed' ? 'seed' : (acc.type === 'pk' ? 'pk' : (acc.type === 'rabby' ? 'rabby' : ''));
+            const badgeText = acc.type === 'seed'
+                ? `SEED #${(acc.hdIndex || 0) + 1}`
+                : (acc.type === 'pk' ? 'CHAVE PRIVADA' : (acc.type === 'rabby' ? 'RABBY' : 'OBSERVAÇÃO'));
+
+            return `
+                <div class="rmw-acc-card ${isAct ? 'active' : ''}" data-select-acc="${acc.id}">
+                    <div style="display:flex;align-items:center;gap:11px;min-width:0;">
+                        <div class="rmw-avatar" style="background:${getAvatarGradient(acc.address)};">
+                            ${acc.address.slice(2, 4).toUpperCase()}
+                        </div>
+                        <div style="min-width:0;">
+                            <div style="font-weight:700;font-size:0.95rem;display:flex;align-items:center;gap:6px;">
+                                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${acc.name}</span>
+                                <span class="rmw-badge ${badgeClass}">${badgeText}</span>
+                            </div>
+                            <div style="font-size:0.78rem;color:#94a3b8;font-family:monospace;margin-top:2px;">
+                                ${acc.address.slice(0, 8)}...${acc.address.slice(-6)}
+                            </div>
+                            <div style="font-size:0.76rem;color:#00e676;margin-top:2px;">
+                                ${bal ? `~R$ ${bal.brl.toFixed(2)} (${bal.summary})` : 'Consultando saldo...'}
+                            </div>
+                        </div>
+                    </div>
+                    <button class="rmw-icon-btn" data-detail-acc="${acc.id}" title="Detalhes, Seed e Chave Privada">•••</button>
+                </div>
+            `;
+        }).join('');
+
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">👛 Minhas Carteiras (${state.accounts.length})</div>
+                <div style="display:flex;gap:6px;">
+                    ${hasVaultAccounts ? `<button class="rmw-icon-btn" id="rmw-lock-btn">${state.isLocked ? '🔓 Desbloquear' : '🔒 Bloquear'}</button>` : ''}
+                    <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+                </div>
+            </div>
+
+            ${state.isLocked && hasVaultAccounts ? `
+                <div class="rmw-alert-err" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <span>🔒 Cofre bloqueado (modo leitura).</span>
+                    <button class="rmw-icon-btn" id="rmw-quick-unlock" style="background:#eab308;color:#000;font-weight:700;">Desbloquear</button>
+                </div>
+            ` : ''}
+
+            <div>${cardsHtml || '<p style="color:#94a3b8;text-align:center;padding:18px 0;">Nenhuma carteira adicionada ainda.</p>'}</div>
+
+            <button class="rmw-btn-primary" id="rmw-goto-add">+ Adicionar uma carteira</button>
+        `;
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-goto-add').onclick = () => { currentView = 'add'; renderModal(); };
+        sheet.querySelector('#rmw-lock-btn')?.addEventListener('click', () => {
+            if (state.isLocked) { currentView = 'unlock'; renderModal(); }
+            else lockVaultNow();
+        });
+        sheet.querySelector('#rmw-quick-unlock')?.addEventListener('click', () => {
+            currentView = 'unlock'; renderModal();
+        });
+
+        sheet.querySelectorAll('[data-select-acc]').forEach((el) => {
+            el.addEventListener('click', async (e) => {
+                if (e.target.closest('[data-detail-acc]')) return;
+                await switchActiveAccount(el.getAttribute('data-select-acc'));
+                closeWalletModal();
             });
         });
 
-        // Abrir modal de carteira
-        document.getElementById('btn-wallet-trigger')?.addEventListener('click', () => {
-            const vault = readStoredVault();
-            const targetTab = vault ? 'unlock' : 'create';
-            switchWalletModalTab(targetTab);
-            openModal('modal-wallet');
+        sheet.querySelectorAll('[data-detail-acc]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                inspectingAccountId = btn.getAttribute('data-detail-acc');
+                currentView = 'detail';
+                renderModal();
+            });
         });
+    }
 
-        // Bloquear cofre agora
-        document.getElementById('btn-lock-vault')?.addEventListener('click', lockLocalVault);
+    // -------------------------------------------------------------------------
+    // TELA B: DESBLOQUEIO DO COFRE (BIOMETRIA CORRIGIDA + PIN + RESET EMERGÊNCIA)
+    // -------------------------------------------------------------------------
+    function renderUnlockView(sheet) {
+        const bioReady = isBiometryRegistered();
 
-        // Faixa de desbloqueio rápido
-        document.getElementById('btn-quick-bio-unlock')?.addEventListener('click', async () => {
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">🔐 Desbloquear Cofre Local</div>
+                <div style="display:flex;gap:6px;">
+                    ${state.accounts.length ? '<button class="rmw-icon-btn" id="rmw-back-list">Carteiras</button>' : ''}
+                    <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+                </div>
+            </div>
+
+            ${state.hasLegacyCorrupted ? `
+                <div class="rmw-alert-err">
+                    <strong>⚠️ Cofre da versão anterior detectado:</strong> Encontramos um cofre antigo incompatível neste aparelho. Clique em <em>"Limpar Cofre Antigo"</em> abaixo para recomeçar limpo e importar sua seed ou chave privada.
+                </div>
+            ` : ''}
+
+            <div style="background:#181e2c;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;margin-bottom:12px;">
+                <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">👆 Acesso Rápido por Biometria / Windows Hello</div>
+                <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:10px;">
+                    ${bioReady
+                        ? 'Biometria ativa neste dispositivo. Toque abaixo para liberar suas carteiras.'
+                        : 'Desbloqueie com sua Senha/PIN abaixo e clique em "Ativar Biometria".'}
+                </div>
+                <button class="rmw-btn-primary" id="rmw-bio-unlock-btn" style="margin-top:0;">
+                    👆 Desbloquear com Biometria
+                </button>
+            </div>
+
+            <label class="rmw-label">Senha / PIN do Cofre Local</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="password" class="rmw-input" id="rmw-pass-input" placeholder="Digite sua senha/PIN..." style="margin:0;">
+                <button class="rmw-btn-primary" id="rmw-pass-unlock-btn" style="width:auto;padding:11px 16px;margin:0;">Entrar</button>
+            </div>
+
+            <div id="rmw-unlock-msg"></div>
+
+            <button class="rmw-btn-secondary" id="rmw-goto-add-from-unlock">+ Adicionar / Importar Outra Carteira</button>
+            <button class="rmw-btn-danger" id="rmw-reset-vault-btn">🗑️ Limpar Cofre Antigo / Corrompido e Recomeçar</button>
+        `;
+
+        const msgBox = sheet.querySelector('#rmw-unlock-msg');
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-back-list')?.addEventListener('click', () => { currentView = 'list'; renderModal(); });
+        sheet.querySelector('#rmw-goto-add-from-unlock').onclick = () => { currentView = 'add'; renderModal(); };
+
+        sheet.querySelector('#rmw-bio-unlock-btn').onclick = async () => {
+            msgBox.innerHTML = '';
             try {
-                await unlockVaultWithBiometrics();
+                await unlockWithBiometry();
+                currentView = 'list';
+                renderModal();
             } catch (err) {
-                alert(err.message);
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+            }
+        };
+
+        const doPasswordUnlock = async () => {
+            const pwd = sheet.querySelector('#rmw-pass-input').value;
+            msgBox.innerHTML = '';
+            try {
+                await unlockVaultWithPassword(pwd);
+                currentView = 'list';
+                renderModal();
+            } catch (err) {
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+            }
+        };
+
+        sheet.querySelector('#rmw-pass-unlock-btn').onclick = doPasswordUnlock;
+        sheet.querySelector('#rmw-pass-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doPasswordUnlock();
+        });
+
+        sheet.querySelector('#rmw-reset-vault-btn').onclick = () => {
+            if (confirm('Isso apagará apenas o cofre criptografado salvo neste navegador (seus fundos na blockchain continuam intactos na sua Seed/Chave Privada). Deseja limpar e recomeçar?')) {
+                hardResetCorruptedVault();
+                currentView = 'add';
+                renderModal();
+            }
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // TELA C: SELECIONAR MÉTODO PARA ADICIONAR (IGUAL PRINT 150147.png DA RABBY)
+    // -------------------------------------------------------------------------
+    function renderAddMethodView(sheet) {
+        const hasUnlockedSeed = state.unlockedSecrets && Object.keys(state.unlockedSecrets.masterSeedMap || {}).length > 0;
+
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">
+                    ${state.accounts.length ? '<button class="rmw-icon-btn" id="rmw-back-btn">←</button>' : ''}
+                    Selecionar método para adicionar
+                </div>
+                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+            </div>
+
+            <button class="rmw-opt-btn" data-mode="create-seed">
+                <div class="rmw-opt-ico" style="background:rgba(0,230,118,0.16);color:#00e676;">+</div>
+                <div>
+                    <div>Criar carteira</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Gera nova frase-semente de 12 ou 24 palavras</div>
+                </div>
+            </button>
+
+            ${hasUnlockedSeed ? `
+                <button class="rmw-opt-btn" id="rmw-derive-from-existing-seed">
+                    <div class="rmw-opt-ico" style="background:rgba(234,179,8,0.18);color:#eab308;">🌱</div>
+                    <div>
+                        <div>Adicionar conta da frase-semente atual</div>
+                        <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Deriva o próximo endereço HD (BIP44) em 1 clique</div>
+                    </div>
+                </button>
+            ` : ''}
+
+            <button class="rmw-opt-btn" data-mode="import-seed">
+                <div class="rmw-opt-ico" style="background:rgba(59,130,246,0.18);color:#60a5fa;">📝</div>
+                <div>
+                    <div>Importar frase-semente</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">12 ou 24 palavras (Rabby, MetaMask, Ledger)</div>
+                </div>
+            </button>
+
+            <button class="rmw-opt-btn" data-mode="import-pk">
+                <div class="rmw-opt-ico" style="background:rgba(245,158,11,0.18);color:#fbbf24;">🔑</div>
+                <div>
+                    <div>Importar chave privada</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Chave hexadecimal avulsa (0x...)</div>
+                </div>
+            </button>
+
+            <button class="rmw-opt-btn" id="rmw-opt-rabby">
+                <div class="rmw-opt-ico" style="background:rgba(99,102,241,0.2);color:#a5b4fc;">🦊</div>
+                <div>
+                    <div>Conectar Rabby Wallet / Extensão</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Assinatura externa via extensão ou navegador Rabby</div>
+                </div>
+            </button>
+
+            <button class="rmw-opt-btn" data-mode="watch-only">
+                <div class="rmw-opt-ico" style="background:rgba(148,163,184,0.16);color:#cbd5e1;">👁️</div>
+                <div>
+                    <div>Endereço de observação (Watch-Only)</div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Acompanhar saldos, pools e lucro real sem chave</div>
+                </div>
+            </button>
+
+            <div id="rmw-add-msg"></div>
+        `;
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-back-btn')?.addEventListener('click', () => { currentView = 'list'; renderModal(); });
+
+        sheet.querySelectorAll('[data-mode]').forEach((btn) => {
+            btn.onclick = () => {
+                activeFormMode = btn.getAttribute('data-mode');
+                currentView = 'form';
+                renderModal();
+            };
+        });
+
+        sheet.querySelector('#rmw-derive-from-existing-seed')?.addEventListener('click', async () => {
+            const firstSeedId = Object.keys(state.unlockedSecrets.masterSeedMap)[0];
+            try {
+                await deriveNextAccountFromSeed(firstSeedId);
+                currentView = 'list';
+                renderModal();
+            } catch (err) {
+                sheet.querySelector('#rmw-add-msg').innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
             }
         });
 
-        document.getElementById('btn-quick-pass-unlock')?.addEventListener('click', () => {
-            switchWalletModalTab('unlock');
-            openModal('modal-wallet');
-            setTimeout(() => document.getElementById('unlock-password-input')?.focus(), 100);
-        });
+        sheet.querySelector('#rmw-opt-rabby').onclick = async () => {
+            const msgBox = sheet.querySelector('#rmw-add-msg');
+            try {
+                await connectRabbyExtension();
+                currentView = 'list';
+                renderModal();
+            } catch (err) {
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+            }
+        };
+    }
 
-        // Abas internas do Modal de Carteira
-        function switchWalletModalTab(tabName) {
-            document.querySelectorAll('.wtab-btn').forEach(b => {
-                b.classList.toggle('active', b.getAttribute('data-wtab') === tabName);
-            });
-            document.querySelectorAll('.wpane').forEach(p => {
-                p.classList.toggle('active', p.id === `wpane-${tabName}`);
-                p.style.display = p.id === `wpane-${tabName}` ? 'flex' : 'none';
-            });
-            if (tabName === 'create' && draftMnemonicWords.length === 0) {
-                generateNewDraftMnemonic();
-            }
-            if (tabName === 'external') {
-                renderDetectedWalletsList();
-            }
+    // -------------------------------------------------------------------------
+    // TELA D: FORMULÁRIOS DE CRIAÇÃO / IMPORTAÇÃO
+    // -------------------------------------------------------------------------
+    function renderFormView(sheet) {
+        const needsPassword = requiresVaultPasswordSetup();
+        const isLockedExisting = !state.unlockedSecrets && Boolean(readVaultMetaFromStorage()?.encryptedSecrets);
+
+        let generatedMnemonic = '';
+        if (activeFormMode === 'create-seed') {
+            generatedMnemonic = ethers.Wallet.createRandom().mnemonic.phrase;
         }
 
-        document.querySelectorAll('.wtab-btn').forEach(btn => {
-            btn.addEventListener('click', () => switchWalletModalTab(btn.getAttribute('data-wtab')));
-        });
+        const titles = {
+            'create-seed': '✨ Criar Nova Carteira',
+            'import-seed': '📝 Importar Frase-Semente',
+            'import-pk': '🔑 Importar Chave Privada',
+            'watch-only': '👁️ Adicionar Endereço de Observação'
+        };
 
-        // Desbloqueio por Biometria dentro do modal
-        document.getElementById('btn-unlock-with-bio')?.addEventListener('click', async () => {
-            const errEl = document.getElementById('unlock-error-msg');
-            errEl.textContent = '';
-            try {
-                await unlockVaultWithBiometrics();
-            } catch (err) {
-                errEl.textContent = err.message;
-            }
-        });
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">
+                    <button class="rmw-icon-btn" id="rmw-form-back">←</button>
+                    ${titles[activeFormMode] || 'Adicionar Carteira'}
+                </div>
+                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+            </div>
 
-        // Ativar Biometria para cofre já existente
-        document.getElementById('btn-enable-biometrics')?.addEventListener('click', async () => {
-            const errEl = document.getElementById('unlock-error-msg');
-            errEl.textContent = '';
+            <label class="rmw-label">Apelido da Carteira</label>
+            <input type="text" class="rmw-input" id="rmw-f-name" placeholder="Ex: CAIXA FORTE, POOL V3, RESERVA...">
+
+            ${activeFormMode === 'create-seed' ? `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <label class="rmw-label">Sua Frase-Semente (Anote em local seguro)</label>
+                    <select id="rmw-f-words" class="rmw-select" style="width:auto;padding:4px 8px;margin:0;font-size:0.78rem;">
+                        <option value="12">12 palavras</option>
+                        <option value="24">24 palavras</option>
+                    </select>
+                </div>
+                <div class="rmw-secret-box" id="rmw-f-gen-phrase">${generatedMnemonic}</div>
+                <button type="button" class="rmw-btn-secondary" id="rmw-f-copy-gen" style="margin-top:6px;">📋 Copiar Palavras de Backup</button>
+            ` : ''}
+
+            ${activeFormMode === 'import-seed' ? `
+                <label class="rmw-label">Frase-Semente (12 ou 24 palavras separadas por espaço)</label>
+                <textarea class="rmw-textarea" id="rmw-f-seed-input" placeholder="word1 word2 word3 ..."></textarea>
+                <label class="rmw-label">Índice da Conta HD (BIP44 — padrão #0)</label>
+                <input type="number" class="rmw-input" id="rmw-f-hd-index" value="0" min="0" max="50">
+            ` : ''}
+
+            ${activeFormMode === 'import-pk' ? `
+                <label class="rmw-label">Chave Privada (64 caracteres hexadecimais)</label>
+                <input type="password" class="rmw-input" id="rmw-f-pk-input" placeholder="0x...">
+            ` : ''}
+
+            ${activeFormMode === 'watch-only' ? `
+                <label class="rmw-label">Endereço Público da Carteira (0x...)</label>
+                <input type="text" class="rmw-input" id="rmw-f-watch-input" placeholder="0x2833...">
+            ` : ''}
+
+            ${activeFormMode !== 'watch-only' && (needsPassword || isLockedExisting) ? `
+                <label class="rmw-label">${needsPassword ? 'Crie uma Senha/PIN para o Cofre Local' : 'Digite a Senha/PIN do seu Cofre Local'}</label>
+                <input type="password" class="rmw-input" id="rmw-f-pass" placeholder="Mínimo 4 caracteres">
+            ` : ''}
+
+            ${activeFormMode !== 'watch-only' && needsPassword ? `
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.84rem;color:#cbd5e1;margin:8px 0;cursor:pointer;">
+                    <input type="checkbox" id="rmw-f-bio" checked>
+                    <span>👆 Ativar desbloqueio rápido por Biometria / Windows Hello</span>
+                </label>
+            ` : ''}
+
+            <div id="rmw-form-msg"></div>
+            <button class="rmw-btn-primary" id="rmw-f-submit">Salvar e Ativar Carteira</button>
+        `;
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-form-back').onclick = () => { currentView = 'add'; renderModal(); };
+
+        if (activeFormMode === 'create-seed') {
+            sheet.querySelector('#rmw-f-words').onchange = (e) => {
+                const bits = e.target.value === '24' ? 32 : 16;
+                generatedMnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(bits));
+                sheet.querySelector('#rmw-f-gen-phrase').textContent = generatedMnemonic;
+            };
+            sheet.querySelector('#rmw-f-copy-gen').onclick = () => {
+                navigator.clipboard.writeText(generatedMnemonic);
+                sheet.querySelector('#rmw-f-copy-gen').textContent = '✅ Palavras Copiadas!';
+            };
+        }
+
+        sheet.querySelector('#rmw-f-submit').onclick = async () => {
+            const msgBox = sheet.querySelector('#rmw-form-msg');
+            msgBox.innerHTML = '';
+            const name = sheet.querySelector('#rmw-f-name').value;
+            const password = sheet.querySelector('#rmw-f-pass')?.value || '';
+            const enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked);
+
             try {
-                let mnemonic;
-                let address = walletState.address;
-                if (walletState.mode === 'VAULT_UNLOCKED' && walletState.localWallet) {
-                    mnemonic = walletState.localWallet.mnemonic.phrase;
-                } else {
-                    const pass = document.getElementById('unlock-password-input').value;
-                    if (!pass) throw new Error('Digite sua senha acima primeiro para vincular a biometria.');
-                    const res = await unlockVaultWithPassword(pass);
-                    mnemonic = res.mnemonic;
-                    address = res.hdWallet.address.toLowerCase();
+                if (activeFormMode === 'create-seed') {
+                    await addAccountFromMnemonic({ mnemonic: generatedMnemonic, name: name || 'CAIXA FORTE', hdIndex: 0, password, enableBio });
+                } else if (activeFormMode === 'import-seed') {
+                    const mnemonic = sheet.querySelector('#rmw-f-seed-input').value;
+                    const hdIndex = parseInt(sheet.querySelector('#rmw-f-hd-index').value || '0', 10);
+                    await addAccountFromMnemonic({ mnemonic, name, hdIndex, password, enableBio });
+                } else if (activeFormMode === 'import-pk') {
+                    const privateKey = sheet.querySelector('#rmw-f-pk-input').value;
+                    await addAccountFromPrivateKey({ privateKey, name, password, enableBio });
+                } else if (activeFormMode === 'watch-only') {
+                    const address = sheet.querySelector('#rmw-f-watch-input').value;
+                    await addWatchOnlyAccount({ address, name });
                 }
-                await enrollBiometricsForMnemonic(mnemonic, address);
-                syncWalletUI();
-                alert('✓ Biometria / Windows Hello ativada com sucesso neste aparelho!');
+                currentView = 'list';
+                renderModal();
             } catch (err) {
-                errEl.textContent = err.message;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+            }
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // TELA E: DETALHE DA CARTEIRA + BACKUP DE SEED & CHAVE PRIVADA (PRINT 150150)
+    // -------------------------------------------------------------------------
+    function renderDetailView(sheet) {
+        const acc = state.accounts.find((a) => a.id === inspectingAccountId) || getActiveAccount();
+        if (!acc) { currentView = 'list'; renderModal(); return; }
+
+        const isVaultAcc = acc.type === 'seed' || acc.type === 'pk';
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&bgcolor=0b0e14&color=ffffff&data=${encodeURIComponent(acc.address)}`;
+
+        sheet.innerHTML = `
+            <div class="rmw-header">
+                <div class="rmw-title">
+                    <button class="rmw-icon-btn" id="rmw-det-back">←</button>
+                    Detalhe da carteira
+                </div>
+                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                <div class="rmw-avatar" style="width:48px;height:48px;background:${getAvatarGradient(acc.address)};">
+                    ${acc.address.slice(2, 4).toUpperCase()}
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:6px;">
+                        <input type="text" class="rmw-input" id="rmw-det-name" value="${acc.name}" style="margin:0;padding:7px 10px;font-weight:700;">
+                        <button class="rmw-icon-btn" id="rmw-det-save-name">Salvar</button>
+                    </div>
+                    <div style="font-size:0.75rem;color:#94a3b8;font-family:monospace;word-break:break-all;margin-top:5px;">
+                        ${acc.address}
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:#181e2c;border-radius:14px;padding:12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="font-size:0.82rem;color:#cbd5e1;">
+                    <div><strong>Fonte:</strong> ${acc.type === 'seed' ? 'Frase-semente HD' : (acc.type === 'pk' ? 'Chave privada importada' : (acc.type === 'rabby' ? 'Rabby Externa' : 'Observação'))}</div>
+                    ${acc.type === 'seed' ? `<div style="margin-top:4px;"><strong>Caminho HD:</strong> BIP44 #${(acc.hdIndex || 0) + 1}</div>` : ''}
+                    <button class="rmw-btn-secondary" id="rmw-det-copy-addr" style="margin-top:10px;padding:7px 12px;">📋 Copiar Endereço</button>
+                </div>
+                <img src="${qrUrl}" alt="QR Code" style="width:92px;height:92px;border-radius:10px;border:1px solid rgba(255,255,255,0.12);">
+            </div>
+
+            ${acc.type === 'seed' ? `
+                <button class="rmw-opt-btn" id="rmw-det-derive-sibling">
+                    <div class="rmw-opt-ico" style="background:rgba(0,230,118,0.15);color:#00e676;">+</div>
+                    <div>Adicionar carteira a partir desta frase-semente</div>
+                </button>
+            ` : ''}
+
+            ${isVaultAcc ? `
+                <div style="font-size:0.78rem;color:#94a3b8;font-weight:700;margin:10px 0 6px;">CÓPIA DE SEGURANÇA & BIOMETRIA</div>
+
+                <button class="rmw-opt-btn" id="rmw-det-bio-btn">
+                    <div class="rmw-opt-ico" style="background:rgba(234,179,8,0.16);color:#eab308;">👆</div>
+                    <div>${isBiometryRegistered() ? 'Regravar Biometria / Digital neste aparelho' : 'Ativar Biometria / Digital neste aparelho'}</div>
+                </button>
+
+                ${acc.type === 'seed' ? `
+                    <button class="rmw-opt-btn" id="rmw-det-show-seed">
+                        <div class="rmw-opt-ico" style="background:rgba(59,130,246,0.16);color:#60a5fa;">📜</div>
+                        <div>Criar cópia de segurança da frase-semente</div>
+                    </button>
+                ` : ''}
+
+                <button class="rmw-opt-btn" id="rmw-det-show-pk">
+                    <div class="rmw-opt-ico" style="background:rgba(245,158,11,0.16);color:#fbbf24;">🗝️</div>
+                    <div>Criar cópia de segurança da chave privada</div>
+                </button>
+
+                <div id="rmw-det-secret-area"></div>
+            ` : ''}
+
+            <div id="rmw-det-msg"></div>
+            <button class="rmw-btn-danger" id="rmw-det-delete">🗑️ Apagar carteira</button>
+        `;
+
+        const msgBox = sheet.querySelector('#rmw-det-msg');
+        const secretArea = sheet.querySelector('#rmw-det-secret-area');
+
+        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+        sheet.querySelector('#rmw-det-back').onclick = () => { currentView = 'list'; renderModal(); };
+
+        sheet.querySelector('#rmw-det-save-name').onclick = async () => {
+            const newName = sheet.querySelector('#rmw-det-name').value.trim();
+            if (newName) {
+                acc.name = newName;
+                await persistVaultToStorage();
+                syncTopBarAndBanner();
+                msgBox.innerHTML = `<div class="rmw-alert-ok">Apelido atualizado!</div>`;
+            }
+        };
+
+        sheet.querySelector('#rmw-det-copy-addr').onclick = () => {
+            navigator.clipboard.writeText(acc.address);
+            sheet.querySelector('#rmw-det-copy-addr').textContent = '✅ Endereço Copiado!';
+        };
+
+        sheet.querySelector('#rmw-det-derive-sibling')?.addEventListener('click', async () => {
+            try {
+                await deriveNextAccountFromSeed(acc.seedGroupId);
+                currentView = 'list';
+                renderModal();
+            } catch (err) {
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
             }
         });
 
-        // Desbloqueio por Senha / PIN
-        document.getElementById('btn-unlock-with-pass')?.addEventListener('click', async () => {
-            const errEl = document.getElementById('unlock-error-msg');
-            errEl.textContent = '';
+        sheet.querySelector('#rmw-det-bio-btn')?.addEventListener('click', async () => {
             try {
-                const pass = document.getElementById('unlock-password-input').value;
-                await unlockVaultWithPassword(pass);
-                document.getElementById('unlock-password-input').value = '';
-                closeModal('modal-wallet');
-                syncWalletUI();
-                await refreshMultiChainBalances();
-            } catch (err) {
-                errEl.textContent = 'Senha incorreta ou cofre corrompido.';
-            }
-        });
-
-        // Revelar palavras de backup
-        document.getElementById('btn-reveal-backup-words')?.addEventListener('click', async () => {
-            const outEl = document.getElementById('revealed-words-output');
-            const pass = document.getElementById('reveal-pass-input').value;
-            try {
-                const res = await unlockVaultWithPassword(pass);
-                outEl.style.display = 'block';
-                outEl.textContent = res.mnemonic;
-                document.getElementById('reveal-pass-input').value = '';
-            } catch (err) {
-                outEl.style.display = 'block';
-                outEl.textContent = 'Senha incorreta.';
-            }
-        });
-
-        // Criar Nova Carteira (12 / 24 palavras)
-        document.getElementById('create-words-count')?.addEventListener('change', generateNewDraftMnemonic);
-        document.getElementById('btn-new-mnemonic')?.addEventListener('click', generateNewDraftMnemonic);
-
-        document.getElementById('btn-copy-mnemonic')?.addEventListener('click', async (e) => {
-            if (draftMnemonicWords.length === 0) return;
-            await navigator.clipboard.writeText(draftMnemonicWords.join(' ')).catch(() => {});
-            e.target.textContent = '✓ Copiado! Limpando em 45s...';
-            setTimeout(() => {
-                navigator.clipboard.writeText('').catch(() => {});
-                e.target.textContent = '📋 Copiar Palavras (Auto-limpa em 45s)';
-            }, 45000);
-        });
-
-        document.getElementById('btn-confirm-create-vault')?.addEventListener('click', async () => {
-            const errEl = document.getElementById('create-error-msg');
-            errEl.textContent = '';
-            try {
-                const inputs = document.querySelectorAll('#verify-challenges-box input');
-                for (const inp of inputs) {
-                    const idx = Number(inp.dataset.challengeIdx);
-                    const typed = inp.value.trim().toLowerCase();
-                    if (typed !== draftMnemonicWords[idx]) {
-                        throw new Error(`A palavra #${idx + 1} não confere com a frase gerada acima.`);
-                    }
+                if (!state.unlockedSecrets?.password) {
+                    throw new Error('Desbloqueie o cofre com sua senha primeiro para vincular a biometria.');
                 }
-                const p1 = document.getElementById('create-password-input').value;
-                const p2 = document.getElementById('create-password-confirm').value;
-                if (p1 !== p2) throw new Error('As duas senhas digitadas não são iguais.');
-
-                const enableBio = document.getElementById('create-enable-bio-check').checked;
-                await saveNewEncryptedVault(draftMnemonicWords.join(' '), p1, enableBio);
-                draftMnemonicWords = [];
+                await registerDeviceBiometry(state.unlockedSecrets.password);
+                msgBox.innerHTML = `<div class="rmw-alert-ok">✅ Biometria ativada com sucesso neste dispositivo!</div>`;
             } catch (err) {
-                errEl.textContent = err.message;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
             }
         });
 
-        // Importar Seed existente
-        document.getElementById('btn-confirm-import-vault')?.addEventListener('click', async () => {
-            const errEl = document.getElementById('import-error-msg');
-            errEl.textContent = '';
+        const revealSecret = (kind) => {
             try {
-                const seed = document.getElementById('import-mnemonic-input').value;
-                const pass = document.getElementById('import-password-input').value;
-                const enableBio = document.getElementById('import-enable-bio-check').checked;
-                await saveNewEncryptedVault(seed, pass, enableBio);
-                document.getElementById('import-mnemonic-input').value = '';
-                document.getElementById('import-password-input').value = '';
+                const { privateKey, mnemonic } = exportAccountSecrets(acc.id);
+                const value = kind === 'seed' ? mnemonic : privateKey;
+                const title = kind === 'seed' ? 'Frase-Semente (12/24 palavras)' : 'Chave Privada (0x...)';
+                secretArea.innerHTML = `
+                    <div class="rmw-secret-box">
+                        <div style="font-size:0.74rem;color:#94a3b8;margin-bottom:4px;">${title} — Nunca compartilhe:</div>
+                        <div>${value}</div>
+                        <button class="rmw-btn-secondary" id="rmw-copy-secret-val" style="margin-top:8px;padding:7px;">📋 Copiar ${title}</button>
+                    </div>
+                `;
+                secretArea.querySelector('#rmw-copy-secret-val').onclick = () => {
+                    navigator.clipboard.writeText(value);
+                    secretArea.querySelector('#rmw-copy-secret-val').textContent = '✅ Copiado para área de transferência!';
+                };
             } catch (err) {
-                errEl.textContent = err.message;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
             }
-        });
+        };
 
-        // Rabby Wallet (Desktop EIP-6963 & Mobile Assistido)
-        document.getElementById('btn-connect-rabby-desktop')?.addEventListener('click', () => connectInjectedProvider());
+        sheet.querySelector('#rmw-det-show-seed')?.addEventListener('click', () => revealSecret('seed'));
+        sheet.querySelector('#rmw-det-show-pk')?.addEventListener('click', () => revealSecret('pk'));
 
-        document.getElementById('btn-copy-rabby-mobile-url')?.addEventListener('click', async (e) => {
-            await navigator.clipboard.writeText(window.location.href).catch(() => {});
-            e.target.textContent = '✓ Link Copiado! Abra no app Rabby';
-            setTimeout(() => {
-                e.target.textContent = '📋 Copiar Link p/ Rabby Mobile';
-            }, 3000);
-        });
-
-        // Modo Observação (0x...)
-        document.getElementById('btn-activate-watch-only')?.addEventListener('click', async () => {
-            const addr = document.getElementById('watch-address-input').value.trim();
-            if (!ethers.utils.isAddress(addr)) {
-                alert('Informe um endereço público válido (0x...).');
-                return;
+        sheet.querySelector('#rmw-det-delete').onclick = async () => {
+            if (confirm(`Remover "${acc.name}" (${acc.address.slice(0, 6)}...${acc.address.slice(-4)}) desta lista?`)) {
+                await deleteSingleAccount(acc.id);
+                currentView = state.accounts.length ? 'list' : 'add';
+                renderModal();
             }
-            walletState.mode = 'WATCH_ONLY';
-            walletState.address = addr.toLowerCase();
-            walletState.localWallet = null;
-            walletState.injectedProvider = null;
-            closeModal('modal-wallet');
-            syncWalletUI();
-            await refreshMultiChainBalances();
-        });
-
-        // Copiar endereço no cabeçalho
-        document.getElementById('btn-copy-header-addr')?.addEventListener('click', async () => {
-            if (!walletState.address) return;
-            await navigator.clipboard.writeText(ethers.utils.getAddress(walletState.address)).catch(() => {});
-            const shortEl = document.getElementById('wallet-short-addr');
-            shortEl.textContent = '✓ Copiado!';
-            setTimeout(() => { shortEl.textContent = shortAddress(walletState.address); }, 1800);
-        });
-
-        // Filtro por rede na lista de moedas
-        document.getElementById('wallet-chain-filter')?.addEventListener('change', renderHeroAndAssets);
-
-        // Botões Receber & Enviar
-        document.getElementById('btn-action-receive')?.addEventListener('click', openReceiveModal);
-
-        document.getElementById('btn-copy-receive')?.addEventListener('click', async (e) => {
-            if (!walletState.address) return;
-            await navigator.clipboard.writeText(ethers.utils.getAddress(walletState.address)).catch(() => {});
-            e.target.textContent = '✓ Endereço Copiado!';
-            setTimeout(() => { e.target.textContent = '📋 Copiar Endereço'; }, 2200);
-        });
-
-        document.getElementById('btn-share-receive')?.addEventListener('click', async () => {
-            if (!walletState.address) return;
-            const addr = ethers.utils.getAddress(walletState.address);
-            if (navigator.share) {
-                await navigator.share({ title: 'Meu Endereço Cripto', text: addr }).catch(() => {});
-            } else {
-                await navigator.clipboard.writeText(addr).catch(() => {});
-                alert('Endereço copiado: ' + addr);
-            }
-        });
-
-        document.getElementById('btn-action-send')?.addEventListener('click', () => {
-            if (!walletState.address) {
-                openModal('modal-wallet');
-                return;
-            }
-            document.getElementById('send-status-msg').textContent = '';
-            updateSendAvailableDisplay();
-            openModal('modal-send');
-        });
-
-        document.getElementById('send-chain-select')?.addEventListener('change', updateSendAvailableDisplay);
-        document.getElementById('send-token-select')?.addEventListener('change', updateSendAvailableDisplay);
-        document.getElementById('send-amount-input')?.addEventListener('input', updateSendAvailableDisplay);
-
-        document.getElementById('btn-paste-recipient')?.addEventListener('click', async () => {
-            try {
-                const txt = await navigator.clipboard.readText();
-                if (txt) document.getElementById('send-recipient-input').value = txt.trim();
-            } catch (e) {
-                alert('Cole o endereço manualmente no campo acima.');
-            }
-        });
-
-        document.querySelectorAll('[data-pct]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const pct = parseFloat(btn.getAttribute('data-pct'));
-                const chainId = Number(document.getElementById('send-chain-select').value);
-                const symbol = document.getElementById('send-token-select').value;
-                const avail = getAvailableBalanceForSend(chainId, symbol);
-
-                let maxSendable = avail;
-                if (symbol === 'POL') maxSendable = Math.max(0, avail - GAS_RESERVE_POL);
-                else if (symbol === 'ETH') maxSendable = Math.max(0, avail - GAS_RESERVE_ETH);
-
-                document.getElementById('send-amount-input').value = (maxSendable * pct).toFixed(4);
-                updateSendAvailableDisplay();
-            });
-        });
-
-        document.getElementById('btn-review-send')?.addEventListener('click', handleReviewAndExecuteSend);
+        };
     }
 
     // =========================================================================
-    // INICIALIZAÇÃO & API GLOBAL PARA OS OUTROS MÓDULOS
+    // 8. INICIALIZAÇÃO E API PÚBLICA (window.RdeskWallet)
     // =========================================================================
-    window.RdeskWallet = {
-        CHAINS,
-        CHAIN_TOKENS,
-        GAS_RESERVE_POL,
-        getAddress: () => walletState.address,
-        getMode: () => walletState.mode,
-        getBalances: () => walletState.balances,
-        getPrices: () => walletState.prices,
-        getReadProvider: getReadProviderForChain,
-        getSigner: getActiveSignerForChain,
-        refreshBalances: refreshMultiChainBalances,
-        setLpUsdTotal: (usd) => {
-            walletState.lpUsdTotal = Number(usd) || 0;
-            renderHeroAndAssets();
-        },
-        openWalletModal: () => openModal('modal-wallet'),
-        formatBRL,
-        formatUSD,
-        shortAddress
-    };
-
-    window.RdeskReceipt = {
-        confirm: requestHumanReceipt
-    };
-
-    document.addEventListener('DOMContentLoaded', async () => {
-        initEip6963Discovery();
-        bindWalletEvents();
-
-        const stored = readStoredVault();
-        if (stored && stored.address) {
-            walletState.mode = 'VAULT_LOCKED';
-            walletState.address = stored.address.toLowerCase();
+    function initWalletEngine() {
+        const meta = readVaultMetaFromStorage();
+        if (meta && Array.isArray(meta.accounts)) {
+            state.accounts = meta.accounts;
+            state.activeAccountId = meta.activeAccountId || meta.accounts[0]?.id || null;
+            state.isLocked = Boolean(meta.encryptedSecrets);
         }
-        syncWalletUI();
-        await refreshMultiChainBalances();
 
-        // Atualiza cotações e saldos a cada 25 segundos
-        setInterval(refreshMultiChainBalances, 25000);
-    });
+        // Descoberta EIP-6963 (Rabby Wallet)
+        window.addEventListener('eip6963:announceProvider', (event) => {
+            const info = event.detail?.info;
+            if (info && (info.rdns?.includes('rabby') || info.name?.toLowerCase().includes('rabby'))) {
+                state.rabbyProvider = event.detail.provider;
+            }
+        });
+        window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+        // Vincula botões do topo e banner de bloqueio
+        document.querySelectorAll('#btn-wallet-trigger, #wallet-chip-btn, #btn-connect-wallet, [data-wallet-open]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openWalletModal();
+            });
+        });
+
+        document.getElementById('btn-banner-bio')?.addEventListener('click', async () => {
+            try {
+                await unlockWithBiometry();
+            } catch (err) {
+                openWalletModal('unlock');
+            }
+        });
+
+        document.getElementById('btn-banner-pass')?.addEventListener('click', () => {
+            openWalletModal('unlock');
+        });
+
+        syncTopBarAndBanner();
+        notifyAccountChanged();
+        refreshAllAccountsBalances();
+    }
+
+    window.RdeskWallet = {
+        getAddress: () => getActiveAccount()?.address || '',
+        getActiveAccount,
+        getAccounts: () => [...state.accounts],
+        getSigner: getActiveSigner,
+        getProvider: getReadProvider,
+        isUnlocked: () => !state.isLocked,
+        isWatchOnly: () => getActiveAccount()?.type === 'watch',
+        openModal: openWalletModal,
+        closeModal: closeWalletModal,
+        switchAccount: switchActiveAccount,
+        lockVault: lockVaultNow,
+        unlockWithBiometrics: unlockWithBiometry,
+        onAccountChange: (cb) => { if (typeof cb === 'function') changeListeners.push(cb); }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initWalletEngine);
+    } else {
+        initWalletEngine();
+    }
 })();
