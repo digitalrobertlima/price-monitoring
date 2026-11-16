@@ -4,30 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090b10">
-    <meta name="description" content="RDESK SENTINEL — Carteira de Autocustódia com Biometria, Rendimento Uniswap V3, PIX Líquido e Auditoria Real.">
+    <meta name="description" content="RDESK SENTINEL — Carteira Web3 de autocustódia multi-conta com biometria, pools Uniswap V3, PIX líquido e auditoria forense.">
     <title>RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido</title>
 
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="./manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="./styles.css">
 
-    <!-- Bibliotecas Auditadas (Web3, Gráficos e QR Code Local) -->
+    <!-- Bibliotecas Auditadas (Ethers v5 & Chart.js) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
-    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
 
-    <!-- Núcleo Modular RDESK -->
-    <script src="wallet-service.js" defer></script>
-    <script src="defi-pix-service.js" defer></script>
-    <script src="app.js" defer></script>
+    <!-- Núcleo Modular RDESK SENTINEL (Ordem exata de dependências) -->
+    <script src="./vault-core.js" defer></script>
+    <script src="./ledger-advisor.js" defer></script>
+    <script src="./sentinel-engine.js" defer></script>
 </head>
 <body>
 
     <!-- =====================================================================
-         CABEÇALHO LIMPO & STATUS EM TEMPO REAL
+         CABEÇALHO SUPERIOR
          ===================================================================== -->
     <header class="app-header">
         <div class="header-left">
@@ -35,80 +33,74 @@
                 <span class="brand-dot"></span>
                 <span class="brand-name">RDESK SENTINEL</span>
             </div>
-            <span id="top-status-pill" class="pill-badge safe"
-                  data-tip-title="Status da Carteira e Pools"
-                  data-tip-body="Mostra se suas posições na Uniswap V3 estão dentro da faixa de lucro."
-                  data-tip-tip="Verde: rendendo tarifas normalmente. Amarelo: perto da borda.">PRONTO</span>
+            <span class="pill-badge">POLYGON • V22</span>
         </div>
 
         <div class="header-right">
-            <span id="top-oracle-pill" class="oracle-chip">Dólar: R$ 5,65</span>
-            <button type="button" id="btn-install-pwa" class="btn-ghost" style="display:none;">📲 Instalar</button>
-            <button type="button" id="btn-lock-vault" class="btn-ghost" style="display:none;" title="Bloquear cofre agora">🔒 Bloquear</button>
-            <button type="button" id="btn-wallet-trigger" class="btn-wallet-pill">Conectar / Criar Carteira</button>
+            <button type="button" id="btn-install-pwa" class="btn-ghost" style="display:none;">📲 Instalar App</button>
+            <button type="button" id="btn-wallet-trigger" class="btn-wallet-pill">🔑 Conectar / Criar Carteira</button>
         </div>
     </header>
 
-    <!-- FAIXA DE DESBLOQUEIO RÁPIDO (EXIBIDA QUANDO HÁ COFRE SALVO BLOQUEADO) -->
-    <div id="locked-vault-bar" class="locked-banner" style="display:none;">
+    <!-- FAIXA DE COFRE BLOQUEADO (EXIBIDA QUANDO HÁ SEED/CHAVE SALVA) -->
+    <div id="wallet-lock-banner" class="locked-banner">
         <div class="locked-banner-text">
-            <strong>🔒 Cofre protegido neste dispositivo</strong>
-            <span>Use sua impressão digital, Windows Hello ou senha para liberar envios e pools.</span>
+            <strong>🔒 Cofre Local Protegido (Modo Leitura)</strong>
+            <span>Desbloqueie com Biometria ou Senha/PIN para assinar transações e gerenciar pools.</span>
         </div>
         <div class="locked-banner-actions">
-            <button type="button" id="btn-quick-bio-unlock" class="btn-primary-sm">👆 Biometria</button>
-            <button type="button" id="btn-quick-pass-unlock" class="btn-ghost">🔑 Senha</button>
+            <button type="button" id="btn-banner-bio" class="btn-primary-sm">👆 Biometria</button>
+            <button type="button" id="btn-banner-pass" class="btn-ghost">🔑 Senha</button>
         </div>
     </div>
 
     <!-- =====================================================================
-         CONTEÚDO PRINCIPAL (4 PILARES CLAROS)
+         CONTEÚDO PRINCIPAL (4 PILARES INTEGRADOS)
          ===================================================================== -->
     <main class="app-container">
 
-        <!-- NAVEGAÇÃO PRINCIPAL (DESKTOP E MOBILE) -->
+        <!-- NAVEGAÇÃO PRINCIPAL (DESKTOP E BARRA INFERIOR MOBILE) -->
         <nav class="main-nav" aria-label="Navegação Principal">
-            <button type="button" class="nav-tab-btn active" data-tab="wallet">
+            <button type="button" class="nav-tab-btn active" data-tab-target="wallet">
                 <span class="nav-ico">💳</span>
                 <span>Carteira</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab="earn">
+            <button type="button" class="nav-tab-btn" data-tab-target="pools">
                 <span class="nav-ico">⚡</span>
-                <span>Render V3</span>
+                <span>Pools V3</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab="pixswap">
+            <button type="button" class="nav-tab-btn" data-tab-target="swap">
                 <span class="nav-ico">🇧🇷</span>
-                <span>PIX & Trocas</span>
+                <span>Trocar & PIX</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab="audit">
+            <button type="button" class="nav-tab-btn" data-tab-target="audit">
                 <span class="nav-ico">📊</span>
                 <span>Lucro Real</span>
             </button>
         </nav>
 
         <!-- =================================================================
-             TELA 1: CARTEIRA (SALDO CONSOLIDADO, RECEBER, ENVIAR & ATIVOS)
+             ABA 1: CARTEIRA & PATRIMÔNIO CONSOLIDADO
              ================================================================= -->
-        <section id="tab-panel-wallet" class="tab-panel active">
+        <section data-tab-panel="wallet" class="tab-panel active">
             <div class="hero-card">
                 <div class="hero-top-row">
-                    <span id="wallet-mode-badge" class="soft-tag">Nenhuma carteira ativa</span>
-                    <button type="button" id="btn-copy-header-addr" class="addr-copy-chip" style="display:none;">
-                        <span id="wallet-short-addr">0x0000...0000</span>
-                        <span>📋</span>
-                    </button>
+                    <span id="hero-wallet-badge" class="soft-tag">Nenhuma carteira ativa</span>
+                    <button type="button" class="btn-ghost" data-wallet-open>👛 Trocar / Adicionar Conta</button>
                 </div>
 
                 <div class="hero-balance-block">
                     <span class="hero-label">Patrimônio Total Consolidado</span>
                     <h1 id="hero-total-brl" class="hero-amount">R$ 0,00</h1>
                     <div id="hero-total-usd" class="hero-sub">$ 0.00 • Cotação Dólar: R$ 5,650</div>
-                    <div id="hero-breakdown" class="hero-breakdown">
-                        Livre na Carteira: R$ 0,00  •  Rendendo em Pools: R$ 0,00
+
+                    <div class="hero-breakdown-row">
+                        <span id="hero-free-brl" class="breakdown-pill">Livre na Carteira: R$ 0,00</span>
+                        <span id="hero-pools-brl" class="breakdown-pill pools">Em Pools V3: R$ 0,00</span>
                     </div>
                 </div>
 
-                <!-- 4 AÇÕES ESSENCIAIS EM 1 TOQUE -->
+                <!-- 4 AÇÕES PRINCIPAIS -->
                 <div class="primary-actions-grid">
                     <button type="button" id="btn-action-receive" class="action-tile receive">
                         <span class="action-tile-ico">↓</span>
@@ -118,603 +110,277 @@
                         <span class="action-tile-ico">↑</span>
                         <span class="action-tile-lbl">Enviar</span>
                     </button>
-                    <button type="button" id="btn-action-pix" class="action-tile pix">
+                    <button type="button" class="action-tile pix" data-tab-target="swap">
                         <span class="action-tile-ico">🇧🇷</span>
-                        <span class="action-tile-lbl">PIX</span>
+                        <span class="action-tile-lbl">PIX Líquido</span>
                     </button>
-                    <button type="button" id="btn-action-swap" class="action-tile swap">
-                        <span class="action-tile-ico">⇄</span>
-                        <span class="action-tile-lbl">Trocar</span>
+                    <button type="button" class="action-tile swap" data-tab-target="pools">
+                        <span class="action-tile-ico">⚡</span>
+                        <span class="action-tile-lbl">Pools V3</span>
                     </button>
                 </div>
             </div>
 
-            <!-- LISTA DE MOEDAS MULTI-REDE -->
+            <!-- RESUMO DOS ATIVOS NA POLYGON -->
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">Suas Moedas</h2>
-                        <p class="card-subtitle">Saldos somados nas redes Polygon, Arbitrum, Base, Optimism e Ethereum</p>
+                        <h2 class="card-title">Ativos na Rede Polygon (Mainnet)</h2>
+                        <p class="card-subtitle">Saldos lidos diretamente via RPC on-chain sem intermediários</p>
                     </div>
-                    <select id="wallet-chain-filter" class="compact-select" aria-label="Filtrar por rede">
-                        <option value="ALL">Todas as Redes</option>
-                        <option value="137">Polygon</option>
-                        <option value="42161">Arbitrum</option>
-                        <option value="8453">Base</option>
-                        <option value="10">Optimism</option>
-                        <option value="1">Ethereum</option>
-                    </select>
+                    <button type="button" class="btn-ghost" onclick="window.RdeskVault?.refreshBalances()">↻ Atualizar</button>
                 </div>
 
-                <div id="wallet-assets-list" class="assets-list">
-                    <div class="empty-state">Conecte ou crie sua carteira para visualizar seus saldos em Reais.</div>
+                <div id="wallet-tokens-summary" class="assets-list">
+                    <div class="asset-row">
+                        <div class="asset-left">
+                            <div class="asset-icon">POL</div>
+                            <div class="asset-info">
+                                <strong>POL / WPOL</strong>
+                                <span>Token nativo e wrapped da rede Polygon</span>
+                            </div>
+                        </div>
+                        <div class="asset-right">
+                            <strong id="home-bal-pol">0.0000 POL</strong>
+                            <span id="home-bal-wpol">WPOL: 0.0000</span>
+                        </div>
+                    </div>
+
+                    <div class="asset-row">
+                        <div class="asset-left">
+                            <div class="asset-icon">USD</div>
+                            <div class="asset-info">
+                                <strong>USDT0 / USDC</strong>
+                                <span>Stablecoins lastreadas em Dólar Americano</span>
+                            </div>
+                        </div>
+                        <div class="asset-right">
+                            <strong id="home-bal-usdt">0.00 USDT0</strong>
+                            <span id="home-bal-usdc">USDC: 0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="asset-row">
+                        <div class="asset-left">
+                            <div class="asset-icon">BRL</div>
+                            <div class="asset-info">
+                                <strong>BRZ / BRLA</strong>
+                                <span>Stablecoins pareadas ao Real Brasileiro</span>
+                            </div>
+                        </div>
+                        <div class="asset-right">
+                            <strong id="home-bal-brz">0.00 BRZ</strong>
+                            <span id="home-bal-brla">BRLA: 0.00</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <!-- =================================================================
-             TELA 2: RENDER V3 (PILOTO AUTOMÁTICO UNISWAP V3 & POSIÇÕES)
+             ABA 2: POOLS DE LIQUIDEZ CONCENTRADA UNISWAP V3
              ================================================================= -->
-        <section id="tab-panel-earn" class="tab-panel">
+        <section data-tab-panel="pools" class="tab-panel">
             <div class="surface-card highlight-border">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">⚡ Piloto Automático Uniswap V3</h2>
-                        <p class="card-subtitle">Pool POL / USDT0 (0.05%) na Polygon • Reserva automática de 3.0 POL para gás</p>
+                        <h2 class="card-title">⚡ Nova Posição Uniswap V3 (WPOL / USDT0)</h2>
+                        <p id="pool-live-price" class="card-subtitle">1 WPOL = $0.08800 (Carregando pool 0.05%...)</p>
                     </div>
-                    <span class="help-dot"
-                          data-tip-title="Como funciona o rendimento na Uniswap V3?"
-                          data-tip-body="Você empresta seus tokens dentro de uma faixa de preço. Toda vez que alguém compra ou vende POL nessa faixa, você ganha uma fatia das tarifas."
-                          data-tip-tip="O sistema sempre deixa 3.0 POL livres na carteira para você nunca ficar sem gás.">?</span>
+                    <button type="button" id="btn-refresh-pools" class="btn-ghost">↻ Sincronizar NFTs</button>
                 </div>
 
-                <div class="earn-metrics-row">
-                    <div class="mini-stat-box">
-                        <span>Saldo Livre p/ Investir</span>
-                        <strong id="earn-free-brl">R$ 0,00</strong>
+                <div class="three-col-inputs">
+                    <div class="field-group">
+                        <label for="pool-input-wpol">Quantidade WPOL / POL</label>
+                        <input type="number" id="pool-input-wpol" class="field-input" value="10" min="0" step="0.1">
                     </div>
-                    <div class="mini-stat-box">
-                        <span>Estimativa de Ganho</span>
-                        <strong id="earn-est-rate" style="color:var(--green);">R$ 0,0000/min</strong>
+                    <div class="field-group">
+                        <label for="pool-input-usdt">Quantidade USDT0</label>
+                        <input type="number" id="pool-input-usdt" class="field-input" value="1.00" min="0" step="0.1">
                     </div>
-                    <div class="mini-stat-box">
-                        <span>Faixa Sniper (15m)</span>
-                        <strong id="earn-range-preview">--</strong>
+                    <div class="field-group">
+                        <label for="pool-input-range">Faixa de Concentração</label>
+                        <select id="pool-input-range" class="field-input">
+                            <option value="2">±2% (Agressivo / Alta Taxa)</option>
+                            <option value="5" selected>±5% (Equilibrado)</option>
+                            <option value="10">±10% (Conservador)</option>
+                            <option value="20">±20% (Amplo)</option>
+                        </select>
                     </div>
                 </div>
 
-                <div class="input-inline-group">
-                    <input type="number" id="earn-target-brl-min" class="field-input" placeholder="Meta opcional em R$/min (ex: 0.05)" step="0.001" min="0">
-                    <button type="button" id="btn-earn-reset-sniper" class="btn-ghost">Faixa Ideal</button>
-                </div>
-
-                <button type="button" id="btn-start-autopilot" class="btn-cta-full">
-                    ⚡ Colocar Saldo Livre para Render
+                <button type="button" id="btn-create-pool" class="btn-cta-full">
+                    ⚡ Abrir Pool Concentrada na Uniswap V3
                 </button>
-                <div id="autopilot-feedback" class="feedback-text"></div>
+                <div id="pool-action-status" class="feedback-text" style="display:none;"></div>
             </div>
 
-            <!-- GRÁFICO DE PREÇO E FAIXAS -->
-            <div class="surface-card">
-                <div class="card-header-row">
-                    <h2 class="card-title">Preço POL / USDT & Suas Faixas</h2>
-                    <div class="chip-group">
-                        <button type="button" class="tf-chip active" data-tf="15m">15m</button>
-                        <button type="button" class="tf-chip" data-tf="1h">1H</button>
-                        <button type="button" class="tf-chip" data-tf="4h">4H</button>
-                    </div>
-                </div>
-                <div id="earn-chart-container" class="chart-box-tv"></div>
-            </div>
-
-            <!-- POSIÇÕES ATIVAS -->
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">Suas Posições Ativas</h2>
-                        <p class="card-subtitle">Acompanhe o lucro líquido real (já descontando gás) e rebalanceie em 1 toque</p>
+                        <h2 class="card-title">Suas Posições NFT Ativas & Break-Even</h2>
+                        <p class="card-subtitle">Cálculo líquido real descontando gás de abertura e fechamento</p>
                     </div>
                 </div>
-                <div id="active-positions-list" class="positions-stack">
-                    <div class="empty-state">Nenhuma posição ativa na Uniswap V3 encontrada.</div>
-                </div>
-
-                <details class="advanced-fold">
-                    <summary>Simular faixa de estudo (Modo Offline)</summary>
-                    <div class="fold-content">
-                        <div class="sim-grid">
-                            <input type="number" id="sim-min" class="field-input" placeholder="Preço Mínimo" step="0.00001">
-                            <input type="number" id="sim-max" class="field-input" placeholder="Preço Máximo" step="0.00001">
-                            <input type="text" id="sim-label" class="field-input" placeholder="Nome (ex: Teste 1)">
-                            <button type="button" id="btn-add-sim" class="btn-primary-sm">Simular</button>
-                        </div>
-                    </div>
-                </details>
+                <div id="pools-positions-list"></div>
             </div>
         </section>
 
         <!-- =================================================================
-             TELA 3: PIX LÍQUIDO & TROCAS / PONTES MULTI-REDE
+             ABA 3: SWAP ON-CHAIN & COMPARADOR PIX LÍQUIDO
              ================================================================= -->
-        <section id="tab-panel-pixswap" class="tab-panel">
-            <div class="segmented-bar">
-                <button type="button" class="submode-btn active" data-sub="pix-buy">Comprar com PIX</button>
-                <button type="button" class="submode-btn" data-sub="pix-sell">Sacar PIX (Banco)</button>
-                <button type="button" class="submode-btn" data-sub="dex-swap">Trocar / Ponte</button>
-            </div>
-
-            <!-- SUB-TELA A: COMPRAR CRIPTO COM PIX -->
-            <div id="subpanel-pix-buy" class="surface-card subpanel active">
-                <h2 class="card-title">🇧🇷 Comprar Cripto via PIX (Direto na Carteira)</h2>
-                <p class="card-subtitle">Informe quanto vai pagar em Reais e veja quanto cai líquido na sua autocustódia.</p>
-
-                <div class="two-col-inputs">
-                    <div class="field-group">
-                        <label for="pix-buy-brl">Valor em Reais (R$)</label>
-                        <input type="number" id="pix-buy-brl" class="field-input" value="200" min="10" step="10">
-                    </div>
-                    <div class="field-group">
-                        <label for="pix-buy-token">Moeda desejada</label>
-                        <select id="pix-buy-token" class="field-input">
-                            <option value="USDT">USDT (Dólar)</option>
-                            <option value="POL">POL (Polygon)</option>
-                            <option value="BRZ">BRZ (Real Digital)</option>
-                            <option value="BRLA">BRLA (Real Digital)</option>
-                            <option value="USDC">USDC (Dólar)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div id="pix-buy-routes" class="routes-stack"></div>
-            </div>
-
-            <!-- SUB-TELA B: SACAR CRIPTO PARA PIX BANCÁRIO -->
-            <div id="subpanel-pix-sell" class="surface-card subpanel" style="display:none;">
+        <section data-tab-panel="swap" class="tab-panel">
+            <!-- SWAP UNISWAP V3 -->
+            <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">💸 Sacar para Conta Bancária via PIX</h2>
-                        <p class="card-subtitle">Ranking ordenado do maior valor líquido em R$ (descontando taxas e spread).</p>
-                    </div>
-                    <button type="button" id="btn-toggle-nokyc" class="btn-ghost">Filtro: Todas</button>
-                </div>
-
-                <div class="two-col-inputs">
-                    <div class="field-group">
-                        <label for="pix-sell-token">Moeda a sacar</label>
-                        <select id="pix-sell-token" class="field-input">
-                            <option value="USDT">USDT</option>
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="BRZ">BRZ</option>
-                            <option value="BRLA">BRLA</option>
-                        </select>
-                    </div>
-                    <div class="field-group">
-                        <label for="pix-sell-amount">Quantidade</label>
-                        <input type="number" id="pix-sell-amount" class="field-input" value="50" min="0.01" step="0.01">
+                        <h2 class="card-title">⇄ Troca Direta (Uniswap V3 Polygon)</h2>
+                        <p class="card-subtitle">Sem taxas extras de interface — assinatura direta na sua carteira</p>
                     </div>
                 </div>
-
-                <div id="pix-sell-routes" class="routes-stack"></div>
-            </div>
-
-            <!-- SUB-TELA C: TROCAR (SWAP DEX) OU ENVIAR ENTRE REDES (BRIDGE) -->
-            <div id="subpanel-dex-swap" class="surface-card subpanel" style="display:none;">
-                <h2 class="card-title">⇄ Trocar Moedas ou Mudar de Rede</h2>
-                <p class="card-subtitle">Mesma rede usa Uniswap V3 direto; redes diferentes usam roteador cross-chain LI.FI.</p>
 
                 <div class="swap-box-clean">
                     <div class="swap-row-head">
                         <span>Você envia</span>
-                        <span>Disponível: <strong id="swap-from-bal">0.00</strong> <button type="button" id="btn-swap-max" class="mini-link-btn">Máx</button></span>
+                        <span>Disponível: <strong id="swap-available-amount">0.0000</strong> <button type="button" id="btn-swap-max" class="mini-link-btn">MÁX</button></span>
                     </div>
                     <div class="two-col-inputs">
-                        <select id="swap-from-chain" class="field-input">
-                            <option value="137">Polygon</option>
-                            <option value="42161">Arbitrum</option>
-                            <option value="8453">Base</option>
-                            <option value="10">Optimism</option>
-                            <option value="1">Ethereum</option>
-                        </select>
                         <select id="swap-from-token" class="field-input">
-                            <option value="POL">POL</option>
+                            <option value="POL">POL (Nativo)</option>
                             <option value="WPOL">WPOL</option>
-                            <option value="USDT">USDT</option>
+                            <option value="USDT0">USDT0</option>
                             <option value="USDC">USDC</option>
                             <option value="BRZ">BRZ</option>
                             <option value="BRLA">BRLA</option>
-                            <option value="ETH">ETH</option>
-                            <option value="WBTC">WBTC</option>
                         </select>
+                        <input type="number" id="swap-from-amount" class="field-input big-num" value="5" min="0" step="0.01" placeholder="0.00">
                     </div>
-                    <input type="number" id="swap-amount-in" class="field-input big-num" value="25" min="0" step="0.01" placeholder="0.00">
-                </div>
-
-                <div class="swap-divider">
-                    <button type="button" id="btn-swap-flip" class="circle-flip-btn" title="Inverter moedas">⇅</button>
                 </div>
 
                 <div class="swap-box-clean">
                     <div class="swap-row-head">
                         <span>Você recebe (estimado)</span>
-                        <span id="swap-quote-info">Cotação em tempo real</span>
+                        <strong id="swap-to-estimate" style="color:var(--green-bright);">0.0000</strong>
                     </div>
-                    <div class="two-col-inputs">
-                        <select id="swap-to-chain" class="field-input">
-                            <option value="137">Polygon</option>
-                            <option value="42161">Arbitrum</option>
-                            <option value="8453">Base</option>
-                            <option value="10">Optimism</option>
-                            <option value="1">Ethereum</option>
-                        </select>
+                    <div class="field-group">
                         <select id="swap-to-token" class="field-input">
-                            <option value="USDT">USDT</option>
+                            <option value="USDT0" selected>USDT0</option>
+                            <option value="WPOL">WPOL</option>
+                            <option value="POL">POL (Nativo)</option>
+                            <option value="USDC">USDC</option>
                             <option value="BRZ">BRZ</option>
                             <option value="BRLA">BRLA</option>
-                            <option value="USDC">USDC</option>
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="ETH">ETH</option>
-                            <option value="WBTC">WBTC</option>
                         </select>
                     </div>
-                    <input type="text" id="swap-amount-out" class="field-input big-num" readonly value="0.00">
                 </div>
 
-                <button type="button" id="btn-execute-swap" class="btn-cta-full">Revisar Troca em Reais (R$)</button>
-                <div id="swap-feedback" class="feedback-text"></div>
+                <button type="button" id="btn-exec-swap" class="btn-cta-full">Assinar e Trocar Agora</button>
+                <div id="swap-exec-status" class="feedback-text" style="display:none;"></div>
             </div>
-        </section>
 
-        <!-- =================================================================
-             TELA 4: AUDITORIA DE LUCRO REAL (DESDE A 1ª TRANSAÇÃO)
-             ================================================================= -->
-        <section id="tab-panel-audit" class="tab-panel">
+            <!-- COMPARADOR PIX LÍQUIDO -->
             <div class="surface-card">
                 <div class="card-header-row">
                     <div>
-                        <h2 class="card-title">📊 Auditoria Contábil desde a 1ª Transação</h2>
-                        <p id="audit-status-text" class="card-subtitle">Separa aportes e saques reais de movimentações internas em pools.</p>
-                    </div>
-                    <div class="chip-group">
-                        <span id="audit-trend-pill" class="pill-badge">Aguardando</span>
-                        <button type="button" id="btn-audit-currency" class="btn-ghost">BRL / USD</button>
-                        <button type="button" id="btn-audit-refresh" class="btn-ghost">Atualizar</button>
+                        <h2 class="card-title">🇧🇷 Comparador PIX Líquido (R$ → USDT0)</h2>
+                        <p class="card-subtitle">Veja quanto cai líquido na sua carteira após spread e taxa PIX</p>
                     </div>
                 </div>
 
-                <div id="audit-progress-wrap" class="progress-line-wrap" style="display:none;">
-                    <div id="audit-progress-bar" class="progress-line-fill"></div>
+                <div class="field-group">
+                    <label for="pix-amount-brl">Valor do aporte via PIX (R$)</label>
+                    <input type="number" id="pix-amount-brl" class="field-input big-num" value="500" min="10" step="10">
                 </div>
 
-                <div class="audit-kpis-grid">
-                    <div class="mini-stat-box">
-                        <span>Total Aportado (Entradas)</span>
-                        <strong id="audit-kpi-in">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Total Sacado (Saídas)</span>
-                        <strong id="audit-kpi-out">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Patrimônio Atual</span>
-                        <strong id="audit-kpi-equity">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box highlight">
-                        <span>Lucro / Prejuízo Líquido</span>
-                        <strong id="audit-kpi-pnl">R$ 0,00</strong>
-                    </div>
-                </div>
-
-                <div class="chart-box-audit">
-                    <canvas id="audit-chart-canvas"></canvas>
-                </div>
-
-                <div class="card-header-row">
-                    <div class="chip-group">
-                        <button type="button" class="audit-filter-btn active" data-afilter="ALL">Todas</button>
-                        <button type="button" class="audit-filter-btn" data-afilter="EXTERNAL">Aportes & Saques</button>
-                        <button type="button" class="audit-filter-btn" data-afilter="DEFI">Pools & Swaps</button>
-                    </div>
-                    <button type="button" id="btn-export-audit-csv" class="btn-ghost">Exportar CSV</button>
-                </div>
-
-                <div class="table-scroll">
-                    <table class="clean-table">
+                <div style="overflow-x:auto;">
+                    <table class="pix-table">
                         <thead>
                             <tr>
-                                <th>Data</th>
-                                <th>Classificação</th>
-                                <th>Movimento</th>
-                                <th>Valor na Data</th>
-                                <th>Ajustar</th>
+                                <th>Rota / Provedor</th>
+                                <th style="text-align:right;">Spread + Taxa</th>
+                                <th style="text-align:right;">Líquido na Carteira</th>
                             </tr>
                         </thead>
-                        <tbody id="audit-events-tbody">
-                            <tr>
-                                <td colspan="5" class="empty-cell">Conecte ou cole uma carteira para auditar desde o primeiro dia.</td>
-                            </tr>
-                        </tbody>
+                        <tbody id="pix-routes-tbody"></tbody>
                     </table>
                 </div>
             </div>
         </section>
+
+        <!-- =================================================================
+             ABA 4: AUDITORIA FORENSE DESDE A 1ª TRANSAÇÃO
+             ================================================================= -->
+        <section data-tab-panel="audit" class="tab-panel">
+            <div class="surface-card">
+                <div class="card-header-row">
+                    <div>
+                        <h2 class="card-title">📊 Auditoria Contábil Real (Desde a 1ª TX)</h2>
+                        <p class="card-subtitle">Separa aportes e saques externos de movimentações internas em pools</p>
+                    </div>
+                    <div class="chip-group">
+                        <button type="button" id="btn-audit-brl" class="btn-ghost">R$ BRL</button>
+                        <button type="button" id="btn-audit-usd" class="btn-ghost">$ USD</button>
+                        <button type="button" id="btn-audit-rescan" class="btn-primary-sm">↻ Auditar 1ª TX</button>
+                    </div>
+                </div>
+
+                <div id="audit-scan-progress" class="progress-line-wrap" style="display:none;">
+                    <div id="audit-scan-text" style="font-size:0.78rem;color:var(--accent);">Lendo histórico...</div>
+                    <div class="progress-track">
+                        <div id="audit-scan-bar" class="progress-line-fill"></div>
+                    </div>
+                </div>
+
+                <div class="audit-kpis-grid">
+                    <div class="mini-stat-box">
+                        <span>Total Aportado</span>
+                        <strong id="audit-total-in">R$ 0,00</strong>
+                    </div>
+                    <div class="mini-stat-box">
+                        <span>Total Sacado</span>
+                        <strong id="audit-total-out">R$ 0,00</strong>
+                    </div>
+                    <div class="mini-stat-box">
+                        <span>Patrimônio Atual</span>
+                        <strong id="audit-current-equity">R$ 0,00</strong>
+                    </div>
+                    <div class="mini-stat-box highlight">
+                        <span>Lucro / Prejuízo Real</span>
+                        <strong id="audit-real-pnl">R$ 0,00</strong>
+                    </div>
+                </div>
+
+                <div style="font-size:0.76rem;color:var(--text-secondary);">
+                    Gás acumulado na rede: <strong id="audit-total-gas" style="color:var(--text-primary);">R$ 0,00</strong>
+                </div>
+
+                <div class="chart-box-audit">
+                    <canvas id="equity-curve-chart"></canvas>
+                </div>
+
+                <div>
+                    <h3 class="card-title" style="font-size:0.92rem;margin-bottom:8px;">Extrato Classificado (Ajustável)</h3>
+                    <div id="audit-events-list"></div>
+                </div>
+            </div>
+        </section>
+
     </main>
 
-    <!-- =====================================================================
-         MODAL 1: CARTEIRA, BIOMETRIA (WEBAUTHN), COFRE BIP-39 & RABBY WALLET
-         ===================================================================== -->
-    <div id="modal-wallet" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>🔐 Carteira & Autocustódia</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-wallet">✕</button>
-            </div>
-
-            <div class="modal-tabs">
-                <button type="button" class="wtab-btn active" data-wtab="unlock">Cofre / Biometria</button>
-                <button type="button" class="wtab-btn" data-wtab="create">Criar Nova</button>
-                <button type="button" class="wtab-btn" data-wtab="import">Importar Seed</button>
-                <button type="button" class="wtab-btn" data-wtab="external">Rabby / Observar</button>
-            </div>
-
-            <!-- ABA MODAL 1: DESBLOQUEAR & CONFIGURAR BIOMETRIA -->
-            <div id="wpane-unlock" class="wpane active">
-                <div id="bio-setup-card" class="bio-card">
-                    <div>
-                        <strong>👆 Acesso Rápido por Biometria / Windows Hello</strong>
-                        <p class="muted-sm">Desbloqueie sua carteira com impressão digital, rosto ou PIN do aparelho sem digitar senha toda hora.</p>
-                    </div>
-                    <div class="two-col-inputs">
-                        <button type="button" id="btn-unlock-with-bio" class="btn-primary-sm">Desbloquear c/ Biometria</button>
-                        <button type="button" id="btn-enable-biometrics" class="btn-ghost">Ativar Biometria</button>
-                    </div>
-                </div>
-
-                <div class="field-group">
-                    <label for="unlock-password-input">Senha / PIN do Cofre Local</label>
-                    <div class="input-inline-group">
-                        <input type="password" id="unlock-password-input" class="field-input" placeholder="Digite sua senha">
-                        <button type="button" id="btn-unlock-with-pass" class="btn-primary-sm">Desbloquear</button>
-                    </div>
-                </div>
-                <div id="unlock-error-msg" class="error-text"></div>
-
-                <details class="advanced-fold">
-                    <summary>Ver palavras de recuperação (Backup)</summary>
-                    <div class="fold-content">
-                        <div class="input-inline-group">
-                            <input type="password" id="reveal-pass-input" class="field-input" placeholder="Confirme sua senha">
-                            <button type="button" id="btn-reveal-backup-words" class="btn-ghost">Mostrar</button>
-                        </div>
-                        <div id="revealed-words-output" class="seed-reveal-box" style="display:none;"></div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- ABA MODAL 2: CRIAR CARTEIRA (12 OU 24 PALAVRAS) -->
-            <div id="wpane-create" class="wpane" style="display:none;">
-                <div class="input-inline-group">
-                    <select id="create-words-count" class="field-input">
-                        <option value="12">12 Palavras (Padrão)</option>
-                        <option value="24">24 Palavras (Segurança Máxima)</option>
-                    </select>
-                    <button type="button" id="btn-new-mnemonic" class="btn-ghost">Gerar Outra</button>
-                </div>
-
-                <p class="muted-sm">Anote estas palavras na ordem exata. Elas nunca saem do seu celular/PC e funcionam também na Rabby e MetaMask.</p>
-                <div id="create-words-grid" class="words-grid"></div>
-
-                <button type="button" id="btn-copy-mnemonic" class="btn-ghost" style="width:100%;">📋 Copiar Palavras (Auto-limpa em 45s)</button>
-
-                <div id="verify-challenges-box" class="challenge-stack"></div>
-
-                <div class="two-col-inputs">
-                    <input type="password" id="create-password-input" class="field-input" placeholder="Senha ou PIN (mín. 6 dígitos)">
-                    <input type="password" id="create-password-confirm" class="field-input" placeholder="Repita a Senha / PIN">
-                </div>
-
-                <label class="check-row">
-                    <input type="checkbox" id="create-enable-bio-check" checked>
-                    <span>Ativar desbloqueio rápido por Biometria / Windows Hello após criar</span>
-                </label>
-
-                <div id="create-error-msg" class="error-text"></div>
-                <button type="button" id="btn-confirm-create-vault" class="btn-cta-full">Criar e Ativar Minha Carteira</button>
-            </div>
-
-            <!-- ABA MODAL 3: IMPORTAR FRASE DE 12 OU 24 PALAVRAS -->
-            <div id="wpane-import" class="wpane" style="display:none;">
-                <div class="field-group">
-                    <label for="import-mnemonic-input">Frase de Recuperação (12 ou 24 palavras)</label>
-                    <textarea id="import-mnemonic-input" class="field-input" rows="3" placeholder="palavra1 palavra2 palavra3 ..."></textarea>
-                </div>
-                <div class="field-group">
-                    <label for="import-password-input">Crie uma Senha ou PIN local</label>
-                    <input type="password" id="import-password-input" class="field-input" placeholder="Mínimo 6 caracteres">
-                </div>
-                <label class="check-row">
-                    <input type="checkbox" id="import-enable-bio-check" checked>
-                    <span>Ativar Biometria / Windows Hello neste aparelho</span>
-                </label>
-                <div id="import-error-msg" class="error-text"></div>
-                <button type="button" id="btn-confirm-import-vault" class="btn-cta-full">Importar Carteira</button>
-            </div>
-
-            <!-- ABA MODAL 4: RABBY WALLET (DESKTOP & MOBILE) + MODO OBSERVAR -->
-            <div id="wpane-external" class="wpane" style="display:none;">
-                <div class="info-callout">
-                    <strong>🦊 Conectar com Rabby Wallet</strong>
-                    <p class="muted-sm">No computador, conecta direto pela extensão. No celular Android, copie o link abaixo e abra na aba <b>DApps / Navegador</b> dentro do próprio app Rabby (sem abrir a Play Store).</p>
-                    <div id="detected-wallets-list" class="routes-stack"></div>
-                    <div class="two-col-inputs" style="margin-top:8px;">
-                        <button type="button" id="btn-connect-rabby-desktop" class="btn-primary-sm">Conectar Extensão</button>
-                        <button type="button" id="btn-copy-rabby-mobile-url" class="btn-ghost">📋 Copiar Link p/ Rabby Mobile</button>
-                    </div>
-                </div>
-
-                <div class="field-group">
-                    <label for="watch-address-input">Apenas Observar Endereço Público (0x...)</label>
-                    <div class="input-inline-group">
-                        <input type="text" id="watch-address-input" class="field-input" placeholder="Cole qualquer endereço 0x...">
-                        <button type="button" id="btn-activate-watch-only" class="btn-ghost">Observar</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================================
-         MODAL 2: RECEBER MOEDAS (QR CODE & ENDEREÇO ÚNICO EVM)
-         ===================================================================== -->
-    <div id="modal-receive" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>↓ Receber Criptomoedas</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-receive">✕</button>
-            </div>
-
-            <div class="field-group">
-                <label for="receive-chain-select">Rede de Recebimento</label>
-                <select id="receive-chain-select" class="field-input">
-                    <option value="137">Polygon (POL, USDT0, BRZ, BRLA, USDC)</option>
-                    <option value="42161">Arbitrum One (ETH, USDT, USDC, WBTC)</option>
-                    <option value="8453">Base (ETH, USDC)</option>
-                    <option value="10">Optimism (ETH, USDT, USDC)</option>
-                    <option value="1">Ethereum Mainnet (ETH, USDT, USDC, WBTC)</option>
-                </select>
-            </div>
-
-            <div class="qr-wrapper">
-                <div id="receive-qrcode"></div>
-            </div>
-
-            <div id="receive-full-address" class="address-display-box">Conecte ou crie uma carteira primeiro</div>
-
-            <div class="two-col-inputs">
-                <button type="button" id="btn-copy-receive" class="btn-cta-full">📋 Copiar Endereço</button>
-                <button type="button" id="btn-share-receive" class="btn-ghost">Compartilhar</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================================
-         MODAL 3: ENVIAR MOEDAS (FLUXO SIMPLES EM 3 PASSOS)
-         ===================================================================== -->
-    <div id="modal-send" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>↑ Enviar Criptomoedas</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-send">✕</button>
-            </div>
-
-            <div class="two-col-inputs">
-                <div class="field-group">
-                    <label for="send-chain-select">Rede</label>
-                    <select id="send-chain-select" class="field-input">
-                        <option value="137">Polygon</option>
-                        <option value="42161">Arbitrum</option>
-                        <option value="8453">Base</option>
-                        <option value="10">Optimism</option>
-                        <option value="1">Ethereum</option>
-                    </select>
-                </div>
-                <div class="field-group">
-                    <label for="send-token-select">Moeda</label>
-                    <select id="send-token-select" class="field-input">
-                        <option value="USDT">USDT</option>
-                        <option value="POL">POL</option>
-                        <option value="BRZ">BRZ</option>
-                        <option value="BRLA">BRLA</option>
-                        <option value="USDC">USDC</option>
-                        <option value="WPOL">WPOL</option>
-                        <option value="ETH">ETH</option>
-                        <option value="WBTC">WBTC</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="field-group">
-                <div class="swap-row-head">
-                    <label for="send-recipient-input">Para quem (Endereço 0x...)</label>
-                    <button type="button" id="btn-paste-recipient" class="mini-link-btn">Colar</button>
-                </div>
-                <input type="text" id="send-recipient-input" class="field-input" placeholder="0x...">
-            </div>
-
-            <div class="field-group">
-                <div class="swap-row-head">
-                    <label for="send-amount-input">Quantidade (<span id="send-available-text">Saldo: 0.00</span>)</label>
-                    <div class="chip-group">
-                        <button type="button" class="mini-link-btn" data-pct="0.25">25%</button>
-                        <button type="button" class="mini-link-btn" data-pct="0.5">50%</button>
-                        <button type="button" class="mini-link-btn" data-pct="1">Máx</button>
-                    </div>
-                </div>
-                <input type="number" id="send-amount-input" class="field-input big-num" placeholder="0.00" step="0.0001" min="0">
-                <span id="send-brl-preview" class="muted-sm">Equivalente: R$ 0,00</span>
-            </div>
-
-            <button type="button" id="btn-review-send" class="btn-cta-full">Revisar Envio em Reais (R$)</button>
-            <div id="send-status-msg" class="feedback-text"></div>
-        </div>
-    </div>
-
-    <!-- =====================================================================
-         MODAL 4: RECIBO HUMANO PRÉ-ASSINATURA EM REAIS (R$)
-         ===================================================================== -->
-    <div id="modal-receipt" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3 id="rcp-title">Confirmar Operação</h3>
-            </div>
-
-            <div class="receipt-summary-box">
-                <div class="rcp-line">
-                    <span>Você envia</span>
-                    <div class="rcp-right">
-                        <strong id="rcp-send-val">--</strong>
-                        <small id="rcp-send-brl">R$ 0,00</small>
-                    </div>
-                </div>
-                <div class="rcp-line">
-                    <span>Você recebe (estimado)</span>
-                    <div class="rcp-right">
-                        <strong id="rcp-recv-val" style="color:var(--green);">--</strong>
-                        <small id="rcp-recv-brl" style="color:var(--green);">R$ 0,00</small>
-                    </div>
-                </div>
-                <div class="rcp-line">
-                    <span>Rota / Contrato</span>
-                    <strong id="rcp-route">--</strong>
-                </div>
-                <div class="rcp-line">
-                    <span>Taxa do Aplicativo</span>
-                    <strong id="rcp-fee" style="color:var(--green);">R$ 0,00</strong>
-                </div>
-                <div class="rcp-line">
-                    <span>Gás da Rede</span>
-                    <strong id="rcp-gas">--</strong>
-                </div>
-                <div class="rcp-line">
-                    <span>Proteção de Reserva</span>
-                    <strong id="rcp-shield" style="color:var(--accent);">3.0 POL protegidos</strong>
-                </div>
-            </div>
-
-            <div class="two-col-inputs">
-                <button type="button" id="btn-rcp-cancel" class="btn-ghost">Cancelar</button>
-                <button type="button" id="btn-rcp-confirm" class="btn-cta-full">Confirmar e Assinar</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- BALÃO EDUCATIVO MICRO-MENTOR -->
-    <div id="micro-mentor-popover" class="mentor-popover" role="tooltip">
-        <strong id="mm-head"></strong>
-        <p id="mm-body"></p>
-        <small id="mm-tip"></small>
-    </div>
+    <!-- Sincronização leve dos saldos individuais na Aba 1 -->
+    <script>
+        window.addEventListener('rdesk:balancesUpdated', function (e) {
+            const b = e.detail && e.detail.balances ? e.detail.balances : {};
+            const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            setTxt('home-bal-pol',  Number(b.pol  || 0).toFixed(4) + ' POL');
+            setTxt('home-bal-wpol', 'WPOL: ' + Number(b.wpol || 0).toFixed(4));
+            setTxt('home-bal-usdt', Number(b.usdt0 || 0).toFixed(2) + ' USDT0');
+            setTxt('home-bal-usdc', 'USDC: ' + Number(b.usdc || 0).toFixed(2));
+            setTxt('home-bal-brz',  Number(b.brz  || 0).toFixed(2) + ' BRZ');
+            setTxt('home-bal-brla', 'BRLA: ' + Number(b.brla || 0).toFixed(2));
+        });
+    </script>
 
 </body>
 </html>
