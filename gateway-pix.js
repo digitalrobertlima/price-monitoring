@@ -13,7 +13,7 @@
     // =========================================================================
     // 1. CONFIGURAÇÃO DE RECEITA DO INTEGRADOR E ISENÇÃO TOTAL PARA O DONO
     // =========================================================================
-    const OWNER_TREASURY_ADDRESS = '0x2833c7c0a42080a9407f82524c79c8442a7e0fe3';
+    const OWNER_TREASURY_ADDRESS = '0x2833a1c3dde3b5d2265f057301a89bef1bb50fe3';
     const INTEGRATOR_ID = 'rdesk-sentinel-v22';
     const EXTERNAL_USER_FEE_RATIO = 0.002; // 0.20% cobrado apenas de terceiros em pontes/rotas LI.FI
 

@@ -373,8 +373,23 @@
         switchWalletModalTab(initialSubTab);
     }
 
+    // Apaga da tela a frase revelada e as senhas digitadas (nunca ficam visíveis após fechar ou bloquear).
+    function wipeSensitiveModalFields() {
+        const box = document.getElementById('revealed-seed-box');
+        if (box) {
+            box.textContent = '';
+            box.style.display = 'none';
+        }
+        ['reveal-seed-pass', 'vault-unlock-pass', 'create-vault-pass', 'create-vault-pass-confirm', 'import-vault-pass', 'import-seed-input']
+            .forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+    }
+
     function closeWalletModal() {
         document.getElementById('wallet-modal')?.classList.remove('open');
+        wipeSensitiveModalFields();
     }
 
     function switchWalletModalTab(tabKey) {
@@ -453,6 +468,8 @@
 
         const order = ['POL', 'USDT', 'USDC', 'BRZ', 'BRLA', 'ETH', 'WBTC', 'WETH'];
         const totals = vaultSnap.totalByAsset || {};
+        // WPOL entra no total do patrimônio; mostra o cartão quando há saldo (ex.: após sacar uma pool)
+        if ((totals.WPOL?.amount || 0) > 0.000001) order.splice(1, 0, 'WPOL');
         const byChain = vaultSnap.balancesByChain || {};
         const nets = global.RdeskVault.NETWORKS;
 
@@ -555,6 +572,15 @@
 
         if (lockIndicator) {
             lockIndicator.style.display = vaultSnap.mode === 'VAULT_LOCKED' ? 'flex' : 'none';
+        }
+
+        // Bloqueio manual ou automático (10 min): remove a frase da tela na hora
+        if (vaultSnap.mode !== 'VAULT_UNLOCKED') {
+            const seedBox = document.getElementById('revealed-seed-box');
+            if (seedBox && seedBox.textContent) {
+                seedBox.textContent = '';
+                seedBox.style.display = 'none';
+            }
         }
 
         // Atualiza saldos Polygon locais usados pelo Piloto V3
@@ -1185,7 +1211,7 @@
             playBeep(1318, 0.3, 'sine');
             updateChartPreviewLines(0, 0, false);
 
-            await scanWeb3Positions();
+            await refreshAfterTransaction();
             if (appState.focusedId) {
                 appState.pnlOverrides[appState.focusedId] = {
                     initBrz: Number((autoPilotPlan.totalDeployableUsd * getMotherRate()).toFixed(2)),
@@ -1387,7 +1413,7 @@
             const oldOv = appState.pnlOverrides[`web3-${tokenId}`] || {};
             delete appState.pnlOverrides[`web3-${tokenId}`];
 
-            await scanWeb3Positions();
+            await refreshAfterTransaction();
             if (appState.focusedId) {
                 appState.pnlOverrides[appState.focusedId] = {
                     initBrz: oldOv.initBrz || Number((combinedUsd * getMotherRate()).toFixed(2)),
@@ -1454,7 +1480,7 @@
                 feedbackEl.style.color = 'var(--success-green)';
                 feedbackEl.textContent = `Tarifas do NFT #${tokenId} colhidas para sua carteira!`;
             }
-            await scanWeb3Positions();
+            await refreshAfterTransaction();
         } catch (err) {
             if (feedbackEl) {
                 feedbackEl.style.color = 'var(--danger-red)';
@@ -1533,7 +1559,7 @@
                 feedbackEl.style.color = 'var(--success-green)';
                 feedbackEl.textContent = `Posição #${tokenId} encerrada e fundos devolvidos à carteira!`;
             }
-            await scanWeb3Positions();
+            await refreshAfterTransaction();
         } catch (err) {
             if (feedbackEl) {
                 feedbackEl.style.color = 'var(--danger-red)';
@@ -1606,6 +1632,15 @@
         }
 
         return (raw0 / 1e18) * price + (raw1 / 1e6);
+    }
+
+    // Depois de qualquer transação: relê posições e saldos para a tela nunca mostrar valores antigos.
+    async function refreshAfterTransaction() {
+        await scanWeb3Positions();
+        try {
+            await global.RdeskVault.refreshAllBalancesAndPrices();
+        } catch (e) {}
+        updateConsolidationHero();
     }
 
     async function scanWeb3Positions() {

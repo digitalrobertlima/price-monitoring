@@ -1,0 +1,38 @@
+name: Testes
+
+on:
+  push:
+    branches: [main, 'ci/**', 'fix/**', 'feat/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Carregamento, cofre e leitura on-chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node --check vault-core.js && node --check ledger-advisor.js && node --check gateway-pix.js && node --check sentinel-engine.js && node --check sw.js
+      - run: npm run test:smoke
+
+  fluxo:
+    name: Interface do cofre e fluxo de pool (Polygon simulada)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test

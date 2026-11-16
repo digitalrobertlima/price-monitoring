@@ -11,7 +11,7 @@
     // 1. CARTEIRAS DO PROPRIETÁRIO (ISENÇÃO AUTOMÁTICA DE TAXA DE INTEGRADOR)
     // =========================================================================
     const OWNER_EXEMPT_WALLETS = new Set([
-        '0x2833c7c0a42080a9407f82524c79c8442a7e0fe3'
+        '0x2833a1c3dde3b5d2265f057301a89bef1bb50fe3'
     ]);
 
     const DERIVATION_PATH_EVM = "m/44'/60'/0'/0/0";
@@ -505,8 +505,8 @@
             throw new Error('Frase de recuperação BIP-39 inválida. Verifique a ortografia e a ordem das palavras.');
         }
 
-        if (!password || String(password).length < 6) {
-            throw new Error('Defina uma senha de pelo menos 6 caracteres para proteger o cofre neste aparelho.');
+        if (!password || String(password).length < 8) {
+            throw new Error('Defina uma senha de pelo menos 8 caracteres para proteger o cofre neste aparelho.');
         }
 
         // Valida a prova dedicada das 3 palavras aleatórias antes de liberar o cofre
@@ -837,7 +837,7 @@
                         (a) => a.contracts[chainId]
                     );
 
-                    const results = await Promise.all(assetsOnChain.map(async (asset) => {
+                    const settled = await Promise.allSettled(assetsOnChain.map(async (asset) => {
                         const meta = asset.contracts[chainId];
                         if (meta.isNative) {
                             const raw = await provider.getBalance(addr);
@@ -848,8 +848,16 @@
                         return { symbol: asset.symbol, amount: parseFloat(ethers.utils.formatUnits(raw, meta.decimals)) };
                     }));
 
-                    results.forEach((r) => {
-                        newBalancesByChain[chainId][r.symbol] = r.amount;
+                    // Se o nó inteiro falhou, tenta o próximo RPC; se só um token falhou,
+                    // mantém a leitura anterior dele em vez de descartar a rede toda.
+                    if (settled.every((r) => r.status === 'rejected')) throw settled[0].reason;
+                    settled.forEach((r, idx) => {
+                        const sym = assetsOnChain[idx].symbol;
+                        if (r.status === 'fulfilled') {
+                            newBalancesByChain[chainId][sym] = r.value.amount;
+                        } else if (_publicState.balancesByChain[chainId]?.[sym] !== undefined) {
+                            newBalancesByChain[chainId][sym] = _publicState.balancesByChain[chainId][sym];
+                        }
                     });
                 }, 5000);
             } catch (err) {
@@ -910,16 +918,58 @@
         return nativeBal >= Math.min(0.05, net.gasReserve * 0.02);
     }
 
+    // Gorjeta mínima (gwei) que os validadores aceitam. Na Polygon, o padrão do ethers v5
+    // (1,5 gwei) é recusado com "transaction underpriced", então aplicamos um piso.
+    const MIN_PRIORITY_FEE_GWEI = { 137: 30 };
+
+    // Escolhe o primeiro RPC que responde e ajusta o cálculo de taxa EIP-1559 da rede.
+    async function pickHealthySigningProvider(net) {
+        let provider = null;
+        for (const rpcUrl of net.rpcs) {
+            const candidate = new ethers.providers.StaticJsonRpcProvider(rpcUrl, {
+                name: net.key,
+                chainId: net.chainId
+            });
+            try {
+                await withTimeout(candidate.getBlockNumber(), 4000);
+                provider = candidate;
+                break;
+            } catch (e) {}
+        }
+        if (!provider) {
+            throw new Error(`Nenhum servidor da rede ${net.name} respondeu. Verifique sua conexão e tente de novo.`);
+        }
+
+        const baseGetFeeData = provider.getFeeData.bind(provider);
+        provider.getFeeData = async () => {
+            const [block, gasPrice, suggestedTipHex] = await Promise.all([
+                provider.getBlock('latest'),
+                provider.getGasPrice().catch(() => null),
+                provider.send('eth_maxPriorityFeePerGas', []).catch(() => null)
+            ]);
+            if (!block || !block.baseFeePerGas) return baseGetFeeData();
+
+            const floor = ethers.utils.parseUnits(String(MIN_PRIORITY_FEE_GWEI[net.chainId] || 0), 'gwei');
+            let tip = suggestedTipHex ? ethers.BigNumber.from(suggestedTipHex) : ethers.utils.parseUnits('1.5', 'gwei');
+            if (tip.lt(floor)) tip = floor;
+
+            return {
+                lastBaseFeePerGas: block.baseFeePerGas,
+                maxPriorityFeePerGas: tip,
+                maxFeePerGas: block.baseFeePerGas.mul(2).add(tip),
+                gasPrice
+            };
+        };
+        return provider;
+    }
+
     async function getSignerForChain(chainId) {
         const net = NETWORKS[chainId];
         if (!net) throw new Error(`Rede ${chainId} não suportada.`);
 
         if (_publicState.mode === 'VAULT_UNLOCKED' && _privateKey) {
             resetAutoLockTimer();
-            const provider = new ethers.providers.JsonRpcProvider(net.rpcs[0], {
-                name: net.key,
-                chainId: net.chainId
-            });
+            const provider = await pickHealthySigningProvider(net);
             return new ethers.Wallet(_privateKey, provider);
         }
 

@@ -13,10 +13,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+    <!-- Bibliotecas servidas do próprio repositório, com hash de integridade real (sem CDN de terceiros) -->
+    <script src="vendor/ethers-5.7.2.umd.min.js" integrity="sha384-Htz1SE4Sl5aitpvFgr2j0sfsGUIuSXI6t8hEyrlQ93zflEF3a29bH2AvkUROUw7J" defer></script>
+    <script src="vendor/qrcode-1.0.0.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" defer></script>
+    <script src="vendor/chart-4.4.1.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" defer></script>
+    <!-- Único script externo restante (gráfico de velas); a mover para vendor/ -->
     <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
     <script src="vault-core.js" defer></script>
     <script src="ledger-advisor.js" defer></script>
     <script src="gateway-pix.js" defer></script>
