@@ -1040,7 +1040,18 @@
     }
 
     // Calcula a cotação do formulário atual. Devolve a cotação (ou null) e atualiza a tela.
-    async function refreshSwapQuote() {
+    // Uma cotação por vez para a mesma troca: atualizações periódicas não cancelam a que está em
+    // andamento (senão, com RPC lento, cada nova atualização descartava a anterior e a tela ficava
+    // presa em "Buscando…").
+    let swapInFlight = null;
+    function refreshSwapQuote() {
+        const key = swapKey(readSwapForm());
+        if (swapInFlight && swapInFlight.key === key) return swapInFlight.promise;
+        const promise = computeSwapQuote().finally(() => { if (swapInFlight && swapInFlight.promise === promise) swapInFlight = null; });
+        swapInFlight = { key, promise };
+        return promise;
+    }
+    async function computeSwapQuote() {
         const seq = ++swapQuoteSeq;
         const e = swapEls();
         const f = readSwapForm();
@@ -1106,7 +1117,7 @@
                 fromToken: fromMeta.isNative ? ZERO : fromMeta.address, toToken: toMeta.isNative ? ZERO : toMeta.address,
                 fromAmount: rawIn.toString(), fromAddress: userAddr, slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: 'rdesk-sentinel'
             });
-            const res = await fetch(`https://li.quest/v1/quote?${params}`);
+            const res = await withTimeout(fetch(`https://li.quest/v1/quote?${params}`), 25000);
             const data = await res.json();
             if (!res.ok || !data?.estimate?.toAmount) throw new Error(data?.message || 'sem rota');
             const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, toMeta.decimals));

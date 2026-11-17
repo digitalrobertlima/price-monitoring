@@ -1438,7 +1438,10 @@
         viewParams = pendingViewParams || {};
         pendingViewParams = null;
         if (!overlay.classList.contains('open')) {
-            try { history.pushState({ rdeskModal: true }, ''); } catch (e) {}
+            // Se o "voltar" disparado pelo fechamento anterior ainda não chegou, a entrada nova
+            // só é criada depois dele (senão aquele voltar fecharia esta janela recém-aberta).
+            if (pendingSelfBack) pushAfterSelfBack = true;
+            else { try { history.pushState({ rdeskModal: true }, ''); } catch (e) {} }
         }
         overlay.classList.add('open');
         renderModal();
@@ -1469,7 +1472,7 @@
         if (overlay) overlay.classList.remove('open');
         viewTrail = [];
         if (wasOpen && fromHistory !== true && history.state && history.state.rdeskModal) {
-            try { history.back(); } catch (e) {}
+            try { pendingSelfBack = true; pushAfterSelfBack = false; history.back(); } catch (e) { pendingSelfBack = false; }
         }
         // Nada sensível (frase em criação, chave revelada, senha digitada) fica na página depois de fechar.
         createSeedDraft = null;
@@ -1536,8 +1539,15 @@
         title.prepend(btn);
     }
     // Botão "voltar" do celular/navegador fecha a tela atual do modal em vez de sair do app.
+    let pendingSelfBack = false, pushAfterSelfBack = false;
     window.addEventListener('popstate', () => {
         const overlay = document.getElementById('rdesk-mw-overlay');
+        if (pendingSelfBack) { // voltar que nós mesmos pedimos ao fechar a janela
+            pendingSelfBack = false;
+            if (pushAfterSelfBack && overlay && overlay.classList.contains('open')) { try { history.pushState({ rdeskModal: true }, ''); } catch (e) {} }
+            pushAfterSelfBack = false;
+            return;
+        }
         if (!overlay || !overlay.classList.contains('open')) return;
         if (viewTrail.length > 1) {
             history.pushState({ rdeskModal: true }, '');
