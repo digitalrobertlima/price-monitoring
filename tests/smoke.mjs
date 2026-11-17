@@ -114,6 +114,18 @@ try {
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
     if (process.env.HIST_DEBUG === 'true') {
+        console.log('INTERNAS:', await page.evaluate(async (w) => {
+            let all = [], next = null;
+            for (let i = 0; i < 40; i++) {
+                const u = new URL(`https://polygon.blockscout.com/api/v2/addresses/${w}/internal-transactions`);
+                if (next) Object.entries(next).forEach(([k, v]) => u.searchParams.set(k, v));
+                const r = await fetch(u); if (!r.ok) { all.push('HTTP ' + r.status); break; }
+                const j = await r.json(); all.push(...j.items); if (!j.next_page_params) break; next = j.next_page_params;
+            }
+            const items = all.filter((x) => typeof x === 'object');
+            const toW = items.filter((x) => (x.to?.hash || '').toLowerCase() === w.toLowerCase());
+            return `total=${items.length} paginas~${Math.ceil(items.length / 50)} paraCarteira=${toW.length} comValor=${toW.filter((x) => x.value !== '0').length} amostra=${JSON.stringify(toW[0] || items[0]).slice(0, 600)} ${all.filter((x) => typeof x === 'string').join(',')}`;
+        }, WATCH_ADDRESS));
         console.log(await page.evaluate(() => window.RdeskHistory.getSeries().map((p) => `${p.key} US$${p.usd.toFixed(0)} hold ${Object.entries(p.dbg.hold).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')} | pool ${Object.entries(p.dbg.pool).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')}`).join('\n')));
         console.log(await page.evaluate(() => window.RdeskHistory.getEvents().filter((e) => e.items.length).slice(0, 400).map((e) => `${e.type} ${e.items.map((i) => (i.dir > 0 ? '+' : '-') + i.amt.toFixed(2) + i.sym + (i.peerC ? 'C' : '')).join(' ')}`).join('\n')));
     }
