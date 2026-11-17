@@ -114,6 +114,17 @@ try {
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
     if (process.env.HIST_DEBUG === 'true') {
+        console.log('INTERNAS2:', await page.evaluate(async (w) => {
+            const out = [];
+            try { const r = await fetch(`https://polygon.blockscout.com/api?module=account&action=txlistinternal&address=${w}&offset=1000&page=1`); const j = await r.json(); out.push(`v1 status=${j.status} n=${(j.result || []).length} ex=${String(JSON.stringify((j.result || [])[0] || j.message)).slice(0, 300)}`); } catch (e) { out.push('v1 erro ' + e.message); }
+            try {
+                const r = await fetch(`https://polygon.blockscout.com/api/v2/addresses/${w}/transactions`); const j = await r.json();
+                const tx = j.items.find((x) => /multicall|exactInput/i.test(x.method || '')) || j.items[0];
+                const r2 = await fetch(`https://polygon.blockscout.com/api/v2/transactions/${tx.hash}/internal-transactions`); const j2 = await r2.json();
+                out.push(`tx ${tx.method} internas=${(j2.items || []).length} ex=${String(JSON.stringify((j2.items || [])[0] || j2)).slice(0, 300)}`);
+            } catch (e) { out.push('tx erro ' + e.message); }
+            return out.join(' || ');
+        }, WATCH_ADDRESS));
         console.log('INTERNAS:', await page.evaluate(async (w) => {
             let all = [], next = null;
             for (let i = 0; i < 40; i++) {
