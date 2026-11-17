@@ -408,7 +408,7 @@
             });
             let usd = 0;
             Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
-            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
+            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut, dbg: { hold: { ...hold }, pool: { ...pool } } });
             if (key >= today) break;
             if (pts.length > 2000) break;
         }
