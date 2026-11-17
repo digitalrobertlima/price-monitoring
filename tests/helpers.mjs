@@ -181,6 +181,19 @@ export async function mockNetwork(page, chains, opts = {}) {
             for (let d = 60; d >= 0; d--) value.push({ cotacaoVenda: USD_BRL, dataHoraCotacao: `${new Date(Date.now() - d * 86400000).toISOString().slice(0, 10)} 13:00:00.000` });
             return json({ value });
         }
+        if (/coins\.llama\.fi\/batchHistorical/.test(u)) {
+            const q = JSON.parse(new URL(u).searchParams.get('coins'));
+            const coins = {};
+            const todayStart = Math.floor(Date.now() / 86400000) * 86400;
+            Object.entries(q).forEach(([k, list]) => {
+                coins[k] = { prices: list.map((ts) => {
+                    const d = Math.max(0, Math.round((todayStart - Math.floor(ts / 86400) * 86400) / 86400));
+                    const base = k === 'coingecko:bitcoin' ? histPrice('0x1bfd6703', d) : k === 'coingecko:ethereum' ? 3000 : histPrice(k, d);
+                    return { timestamp: ts + 60, price: base * (opts.exactBump || 1), confidence: 0.99 };
+                }) };
+            });
+            return json({ coins });
+        }
         if (/coins\.llama\.fi\/percentage\//.test(u)) {
             const keys = decodeURIComponent(u.split('/percentage/')[1].split('?')[0]).split(',');
             const coins = {};

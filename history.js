@@ -51,6 +51,7 @@
         overrides: {},
         ptax: {},
         llama: {}, // addr -> { 'YYYY-MM-DD': usd }
+        exact: {}, // hash -> { POL, BTC, ETH } preço no minuto da transação (entradas e saídas)
         seriesReady: false,
         loading: false,
         progress: '',
@@ -310,11 +311,40 @@
     function valued(e) {
         const key = dayKey(e.unix);
         const fx = fxOn(key);
+        const ex = st.exact[e.hash];
+        // Preço no momento exato da transação quando disponível; senão, o preço do dia
+        const price = (kind) => (ex && ex[kind] > 0 ? ex[kind] : usdOn(kind, key));
         let inUsd = 0, outUsd = 0;
-        e.items.forEach((i) => { const u = i.amt * usdOn(i.kind, key); if (i.dir > 0) inUsd += u; else outUsd += u; });
-        const gasUsd = e.gasPol * usdOn('POL', key);
+        e.items.forEach((i) => { const u = i.amt * price(i.kind); if (i.dir > 0) inUsd += u; else outUsd += u; });
+        const gasUsd = e.gasPol * price('POL');
         const cls = st.overrides[e.hash] || e.auto;
-        return { key, fx, inUsd, outUsd, gasUsd, cls, refUsd: refUsdOn(key) };
+        const refUsd = st.ref === 'USD' ? 1 : st.ref === 'BRL' ? 1 / fx : price(st.ref);
+        return { key, fx, inUsd, outUsd, gasUsd, cls, refUsd };
+    }
+
+    // Entradas e saídas valem pelo preço do minuto em que aconteceram (POL oscila muito no mesmo dia)
+    async function loadExactPrices() {
+        const targets = st.events.filter((e) => e.items.length && ((st.overrides[e.hash] || e.auto) !== 'DEFI' || e.type === 'RECEIVE_C' || e.type === 'SEND_C'));
+        if (!targets.length) return;
+        const coins = { POL: `polygon:${WPOL}`, BTC: 'coingecko:bitcoin', ETH: 'coingecko:ethereum' };
+        const ts = [...new Set(targets.map((e) => e.unix))].slice(-150);
+        const q = {};
+        Object.values(coins).forEach((c) => { q[c] = ts; });
+        try {
+            const res = await fetch(`https://coins.llama.fi/batchHistorical?coins=${encodeURIComponent(JSON.stringify(q))}&searchWidth=1h`);
+            if (!res.ok) return;
+            const data = (await res.json())?.coins || {};
+            const nearest = (list, t) => {
+                let best = null;
+                (list || []).forEach((p) => { if (!best || Math.abs(p.timestamp - t) < Math.abs(best.timestamp - t)) best = p; });
+                return best && Math.abs(best.timestamp - t) <= 3600 ? Number(best.price) : null;
+            };
+            targets.forEach((e) => {
+                const ex = {};
+                Object.entries(coins).forEach(([kind, c]) => { const p = nearest(data[c]?.prices, e.unix); if (p > 0) ex[kind] = p; });
+                if (Object.keys(ex).length) st.exact[e.hash] = ex;
+            });
+        } catch (err) {}
     }
 
     // ------------------------------------------------------------------ cálculo: resultado e série
@@ -424,7 +454,7 @@
                 st.events = events;
                 st.savedAt = Date.now();
                 setProgress('Buscando os preços de cada dia…');
-                await loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400);
+                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices()]);
                 saveCache();
             } catch (err) {
                 st.error = 'Não deu para ler o histórico agora (o serviço de histórico não respondeu). Toque em Atualizar para tentar de novo.';
@@ -794,7 +824,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };

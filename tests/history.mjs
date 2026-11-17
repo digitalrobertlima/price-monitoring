@@ -32,6 +32,8 @@ try {
     check('só transferências com pessoas contam como entrada/saída de dinheiro',
         evs.filter((e) => e.auto === 'IN').map((e) => e.title).join(',') === 'Recebeu POL,Recebeu USDT' && evs.filter((e) => e.auto === 'OUT').map((e) => e.title).join(',') === 'Enviou POL');
 
+    check('entradas e saídas usam o preço do minuto da transação (não só o do dia)', (await ui(() => window.RdeskHistory.getState().exactPrices)) >= 3);
+
     // ================================================================ 2. Resultado conferido à mão
     await ui(() => window.RdeskHistory.setRef('USD'));
     const liveUsd = await ui(() => window.RdeskWallet.getBalances().reduce((s, b) => s + b.usdValue, 0));
