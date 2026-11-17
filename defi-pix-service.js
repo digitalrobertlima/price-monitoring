@@ -1711,6 +1711,7 @@
 
         // Ordena da 1ª transação até hoje
         const sorted = Array.from(txMap.values()).sort((a, b) => a.unix - b.unix);
+        defiState.audit.debugTxs = sorted;
         const events = sorted.map(tx => {
             const fxRate = getHistoricalUsdBrl(tx.dateKey);
             const polHistUsd = getHistoricalAssetUsd('POL', tx.dateKey, fxRate);
@@ -2152,6 +2153,7 @@
             refreshSwapQuote();
         },
         runAudit: (force = false) => runAuditSafely(force),
+        getAuditDebug: () => ({ txs: defiState.audit.debugTxs || [], events: defiState.audit.events }),
         isBusy: () => Boolean(defiState.busy),
         refreshSwapQuote: () => refreshSwapQuote(),
         getSwapQuote: () => defiState.swapQuote ? { type: defiState.swapQuote.type, amountOut: defiState.swapQuote.amountOut, routeLabel: defiState.swapQuote.routeLabel, impact: defiState.swapQuote.impact, hops: defiState.swapQuote.hops || null } : null,
