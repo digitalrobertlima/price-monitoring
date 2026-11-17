@@ -110,6 +110,7 @@ try {
         await page.fill('#swap-amount-in', '');
         await page.waitForTimeout(300);
         await page.fill('#swap-amount-in', String(amount));
+        await page.waitForTimeout(700); // a cotação começa 350 ms depois de digitar
         await waitFn(page, () => {
             const info = document.getElementById('swap-quote-info').textContent;
             const out = document.getElementById('swap-amount-out').value;

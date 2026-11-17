@@ -999,42 +999,58 @@
         const best = { out: ethers.constants.Zero, hops: null };
         const consider = (out, hops) => { if (out.gt(best.out)) { best.out = out; best.hops = hops; } };
 
-        // Todas as rotas candidatas (diretas em cada tarifa + dois saltos via USDT/WPOL/USDC) vão numa
-        // ÚNICA consulta à rede (Multicall3). Dezenas de consultas soltas fazem o RPC público limitar
-        // e a cotação ficava "Buscando…" por mais de um minuto.
-        const candidates = SWAP_FEE_TIERS.map((fee) => ({
+        // Rotas candidatas vão em poucas consultas agrupadas (Multicall3), cada uma enviada a todos os
+        // servidores da Polygon ao mesmo tempo (vale a primeira resposta). Grupos pequenos: servidores
+        // públicos limitam o gás de uma consulta, e um grupo grande demais é recusado inteiro.
+        const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
+        const rpcs = (REG.getChain(137)?.rpcs || []);
+        const providers = rpcs.map((url) => new ethers.providers.StaticJsonRpcProvider(url, 137));
+        const runGroup = async (group) => {
+            const payload = group.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }));
+            const attempts = providers.map((p, i) => withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(payload, { gasLimit: 15000000 }), 9000)
+                .then((res) => ({ res, i })));
+            attempts.forEach((pr, i) => pr.catch((err) => console.debug('[cotação] servidor', i, 'falhou:', String(err && (err.reason || err.message)).slice(0, 120))));
+            const won = await firstSuccess(attempts);
+            return won.res.map((r, k) => { if (!r.success) return null; try { return decodeOut(group[k], r.returnData); } catch (e) { return null; } });
+        };
+        const runAll = async (cands, size) => {
+            const groups = [];
+            for (let i = 0; i < cands.length; i += size) groups.push(cands.slice(i, i + size));
+            const settled = await Promise.allSettled(groups.map(runGroup));
+            if (settled.every((s) => s.status === 'rejected')) throw new Error('Rede indisponível para cotar agora.');
+            return settled.flatMap((s, gi) => (s.status === 'fulfilled' ? s.value : groups[gi].map(() => null)));
+        };
+        const started = Date.now();
+
+        const directCands = SWAP_FEE_TIERS.map((fee) => ({
             hops: [{ tokenIn: addrIn, fee, tokenOut: addrOut }],
             data: quoterIface.encodeFunctionData('quoteExactInputSingle', [{ tokenIn: addrIn, tokenOut: addrOut, amountIn: rawIn, fee, sqrtPriceLimitX96: 0 }])
         }));
-        const mids = ['USDT', 'WPOL', 'USDC'].map((s) => getTokenMeta(137, s)).filter(Boolean)
-            .map((m) => m.address).filter((a) => a.toLowerCase() !== addrIn.toLowerCase() && a.toLowerCase() !== addrOut.toLowerCase());
-        mids.forEach((mid) => HOP_FEE_TIERS.forEach((f1) => HOP_FEE_TIERS.forEach((f2) => candidates.push({
-            hops: [{ tokenIn: addrIn, fee: f1, tokenOut: mid }, { tokenIn: mid, fee: f2, tokenOut: addrOut }],
-            data: quoterIface.encodeFunctionData('quoteExactInput', [ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'], [addrIn, f1, mid, f2, addrOut]), rawIn])
-        }))));
-        const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
+        let candidates = directCands;
+        let results = await runAll(directCands, 2);
+        results.forEach((out, i) => { if (out && !out.isZero()) consider(out, directCands[i].hops); });
 
-        // A mesma consulta vai a todos os servidores da Polygon ao mesmo tempo; vale a primeira resposta.
-        // (Um servidor público lento ou limitando pedidos não trava mais a cotação.)
-        const started = Date.now();
-        const payload = candidates.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }));
-        const rpcs = (REG.getChain(137)?.rpcs || []);
-        const attempts = rpcs.map((url) => {
-            const p = new ethers.providers.StaticJsonRpcProvider(url, 137);
-            return withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(payload), 9000)
-                .then((res) => ({ res, url }));
-        });
-        let won;
-        attempts.forEach((p, i) => p.catch((err) => console.debug('[cotação] servidor', i, 'falhou:', String(err && (err.reason || err.message)).slice(0, 160))));
-        try { won = await firstSuccess(attempts); } catch (err) {
-            console.debug('[cotação] nenhum servidor respondeu', Date.now() - started, 'ms');
-            throw new Error('Rede indisponível para cotar agora.');
+        // Dois saltos (via USDT, WPOL ou USDC) só quando não há pool direta ou ela paga mal frente ao mercado
+        const unitIn = tokenUnitUsd(137, fromMeta), unitOut = tokenUnitUsd(137, toMeta);
+        const directValueRatio = best.hops && unitIn > 0 && unitOut > 0
+            ? (parseFloat(ethers.utils.formatUnits(best.out, toMeta.decimals)) * unitOut) / (parseFloat(ethers.utils.formatUnits(rawIn, fromMeta.decimals)) * unitIn)
+            : 0;
+        if (!best.hops || directValueRatio < 0.99) {
+            const mids = ['USDT', 'WPOL', 'USDC'].map((s) => getTokenMeta(137, s)).filter(Boolean)
+                .map((m) => m.address).filter((x) => x.toLowerCase() !== addrIn.toLowerCase() && x.toLowerCase() !== addrOut.toLowerCase());
+            const hopCands = [];
+            mids.forEach((mid) => HOP_FEE_TIERS.forEach((f1) => HOP_FEE_TIERS.forEach((f2) => hopCands.push({
+                hops: [{ tokenIn: addrIn, fee: f1, tokenOut: mid }, { tokenIn: mid, fee: f2, tokenOut: addrOut }],
+                data: quoterIface.encodeFunctionData('quoteExactInput', [ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'], [addrIn, f1, mid, f2, addrOut]), rawIn])
+            }))));
+            if (hopCands.length) {
+                let hopResults = [];
+                try { hopResults = await runAll(hopCands, 3); } catch (err) { if (!best.hops) throw err; }
+                candidates = directCands.concat(hopCands);
+                results = results.concat(hopResults);
+            }
         }
-        console.debug('[cotação]', candidates.length, 'rotas em', Date.now() - started, 'ms via', won.url);
-        const results = won.res.map((r, i) => {
-            if (!r.success) return null;
-            try { return decodeOut(candidates[i], r.returnData); } catch (e) { return null; }
-        });
+        console.debug('[cotação]', candidates.length, 'rotas em', Date.now() - started, 'ms');
         // Prefere a rota direta quando ela paga praticamente o mesmo (menos contratos envolvidos).
         results.forEach((out, i) => {
             if (!out || out.isZero()) return;
