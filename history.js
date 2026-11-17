@@ -38,7 +38,7 @@
         ETH: { id: 'ETH', name: 'Ether', unit: 'ETH', llama: 'coingecko:ethereum', hint: 'Mostra se você ficou mais rico ou mais pobre em ether.' }
     };
     const REF_KEY = 'rdesk_ref_currency_v1';
-    const CACHE_PREFIX = 'rdesk_history_v2_';
+    const CACHE_PREFIX = 'rdesk_history_v3_'; // v3: inclui o POL devolvido pelos contratos
     const PAGE_SIZE = 40;
 
     const W = () => global.RdeskWallet;
@@ -277,7 +277,63 @@
             if (to === wallet && from !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: 1, peerC: Boolean(tr.from?.is_contract) }); if (tr.from?.is_contract) e.contractTouched = true; }
             else if (from === wallet && to !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: -1, peerC: Boolean(tr.to?.is_contract) }); if (tr.to?.is_contract) e.contractTouched = true; }
         }
-        return [...map.values()].sort((a, b) => a.unix - b.unix).map(classify);
+        const list = [...map.values()].sort((a, b) => a.unix - b.unix);
+        await addNativeReturns(list, wallet);
+        return list.map(classify);
+    }
+
+    // POL nativo que volta de contratos (troca que paga em POL, tirar do render, sobra devolvida)
+    // não aparece no serviço de histórico da Polygon (transações internas não processadas).
+    // Ele é deduzido dos recibos de cada transação: o contrato desembrulha WPOL (evento Withdrawal)
+    // e manda o POL para você; e o que você mandou a mais e não foi embrulhado (Deposit) volta.
+    const T_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c';
+    const T_WITHDRAWAL = '0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65';
+    async function fetchReceipts(hashes) {
+        const urls = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const out = {};
+        for (let i = 0; i < hashes.length; i += 20) {
+            const chunk = hashes.slice(i, i + 20);
+            const body = chunk.map((h, k) => ({ jsonrpc: '2.0', id: k, method: 'eth_getTransactionReceipt', params: [h] }));
+            for (const u of urls) {
+                try {
+                    const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+                    const j = await r.json();
+                    if (!Array.isArray(j)) throw new Error('sem lote');
+                    j.forEach((x) => { if (x && x.result) out[chunk[x.id]] = x.result; });
+                    if (chunk.every((h) => out[h])) break;
+                } catch (e) { /* tenta o próximo servidor */ }
+            }
+            setProgress(`Conferindo POL devolvido pelos contratos: ${Math.min(i + 20, hashes.length)} de ${hashes.length}…`);
+        }
+        return out;
+    }
+    async function addNativeReturns(list, wallet) {
+        const need = list.filter((e) => e.ok && e.fromSelf && e.to && e.contractTouched && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
+        if (!need.length) return;
+        const receipts = await fetchReceipts(need.map((e) => e.hash));
+        const word = (hex) => Number(global.ethers.utils.formatEther(global.ethers.BigNumber.from(hex || '0x0')));
+        need.forEach((e) => {
+            const rc = receipts[e.hash];
+            if (!rc) return;
+            let wrapped = 0, unwrapped = 0;
+            (rc.logs || []).forEach((lg) => {
+                if (lower(lg.address) !== WPOL || !lg.topics || lg.topics.length < 2) return;
+                const who = `0x${lg.topics[1].slice(26)}`.toLowerCase();
+                // contrato que embrulha/desembrulha: o próprio destino da transação; se foi direto no WPOL, é você
+                if (who !== (e.to === WPOL ? wallet : e.to)) return;
+                if (lg.topics[0] === T_DEPOSIT) wrapped += word(lg.data);
+                if (lg.topics[0] === T_WITHDRAWAL) unwrapped += word(lg.data);
+            });
+            const sentNative = e.items.filter((i) => i.sym === 'POL' && i.dir < 0).reduce((s, i) => s + i.amt, 0);
+            const refund = sentNative > 0 ? sentNative - wrapped : 0;
+            if (refund > 1e-9) { // o que não foi usado voltou: o envio real foi menor
+                const outItem = e.items.find((i) => i.sym === 'POL' && i.dir < 0);
+                outItem.amt = Math.max(0, outItem.amt - refund);
+                if (outItem.amt < 1e-12) e.items.splice(e.items.indexOf(outItem), 1);
+            }
+            if (unwrapped > 1e-9) e.items.push({ sym: 'POL', kind: 'POL', amt: unwrapped, dir: 1, peerC: true });
+            e.nativeChecked = true;
+        });
     }
 
     // Tipo e título em linguagem simples
@@ -408,7 +464,7 @@
             });
             let usd = 0;
             Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
-            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut, dbg: { hold: { ...hold }, pool: { ...pool } } });
+            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
             if (key >= today) break;
             if (pts.length > 2000) break;
         }
@@ -423,7 +479,7 @@
     function cacheKey(w) { return CACHE_PREFIX + w; }
     function saveCache() {
         try {
-            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
+            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, f: e.fromSelf ? 1 : 0, n: e.nativeChecked ? 1 : 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
             localStorage.setItem(cacheKey(st.wallet), JSON.stringify({ at: st.savedAt, ev: slim }));
         } catch (e) {}
     }
@@ -431,7 +487,7 @@
         try {
             const raw = JSON.parse(localStorage.getItem(cacheKey(w)) || 'null');
             if (!raw || !Array.isArray(raw.ev)) return false;
-            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
+            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), fromSelf: Boolean(x.f), nativeChecked: Boolean(x.n), items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
             st.savedAt = raw.at || 0;
             return true;
         } catch (e) { return false; }

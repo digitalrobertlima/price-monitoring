@@ -113,10 +113,6 @@ try {
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
-    if (process.env.HIST_DEBUG === 'true') {
-        console.log(await page.evaluate(() => window.RdeskHistory.getSeries().map((p) => `${p.key} US$${p.usd.toFixed(0)} hold ${Object.entries(p.dbg.hold).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')} | pool ${Object.entries(p.dbg.pool).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')}`).join('\n')));
-        console.log(await page.evaluate(() => window.RdeskHistory.getEvents().filter((e) => e.items.length).slice(0, 400).map((e) => `${e.type} ${e.items.map((i) => (i.dir > 0 ? '+' : '-') + i.amt.toFixed(2) + i.sym + (i.peerC ? 'C' : '')).join(' ')}`).join('\n')));
-    }
     check('patrimônio do gráfico nunca passa muito do que realmente entrou (sem saldo fantasma)', maxBrl <= hs.r.inBrl * 1.3, `máximo R$ ${maxBrl.toFixed(2)} vs entradas R$ ${hs.r.inBrl.toFixed(2)}`);
     check('gráfico do patrimônio desenhado com o histórico real', hs.st.chart.points > 2 && hs.st.chart.last > 0, JSON.stringify(hs.st.chart));
     await page.click('.nav-tab-btn[data-tab="audit"]');
