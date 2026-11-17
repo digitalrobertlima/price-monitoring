@@ -119,6 +119,25 @@ try {
         await page.waitForTimeout(500);
         return { out: parseFloat(await page.inputValue('#swap-amount-out')), info: (await page.textContent('#swap-quote-info')).replace(/\s+/g, ' ').trim() };
     };
+    // Diagnóstico: quanto tempo a consulta agrupada leva na rede real
+    const diag = await page.evaluate(async () => {
+        const provider = await window.RdeskWallet.getHealthyProvider(137);
+        const iface = new ethers.utils.Interface(['function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160, uint32, uint256)']);
+        const mc = new ethers.Contract('0xcA11bde05977b3631167028862bE2a173976CA11', ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)'], provider);
+        const WPOL = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+        const calls = [100, 500, 3000, 10000].map((fee) => ({ target: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e', allowFailure: true,
+            callData: iface.encodeFunctionData('quoteExactInputSingle', [{ tokenIn: WPOL, tokenOut: USDT, amountIn: ethers.utils.parseEther('100'), fee, sqrtPriceLimitX96: 0 }]) }));
+        const t0 = Date.now();
+        try {
+            const r = await mc.callStatic.aggregate3(calls);
+            return { ms: Date.now() - t0, url: provider.connection?.url, ok: r.map((x) => x.success) };
+        } catch (e) { return { ms: Date.now() - t0, url: provider.connection?.url, error: String(e.message).slice(0, 300) }; }
+    });
+    console.log('   diagnóstico multicall:', JSON.stringify(diag));
+    page.on('console', (m) => { if (/swap|cota|quote/i.test(m.text())) console.log('   [console]', m.text().slice(0, 200)); });
+    const t1 = Date.now();
+    const direct = await page.evaluate(async () => { try { const q = await window.RdeskDefi.refreshSwapQuote(); return q ? { out: q.amountOut, route: q.routeLabel || q.label } : 'null'; } catch (e) { return 'erro ' + e.message; } });
+    console.log('   refreshSwapQuote direto:', Date.now() - t1, 'ms', JSON.stringify(direct));
     const q1 = await quote(137, 'POL', 137, 'USDT', 100);
     check('cotação real POL → USDT bate com o mercado (±3%)', q1.out > 0 && Math.abs(q1.out / (100 * live.POL) - 1) < 0.03, `100 POL → ${q1.out} USDT | ${q1.info}`);
     const q2 = await quote(137, 'USDT', 137, 'USDC', 50);
