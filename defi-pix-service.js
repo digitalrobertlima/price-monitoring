@@ -55,20 +55,9 @@
         simPositions: [],
         swapQuote: null,
         pixOnlyNoKyc: false,
-        audit: {
-            currency: 'BRL',
-            filter: 'ALL',
-            events: [],
-            overrides: {},
-            ptaxMap: {},
-            llamaDaily: {},
-            contractCache: new Map(),
-            lastWalletAudited: ''
-        }
     };
 
     let rangeChart = null;
-    let auditChart = null;
     let swapQuoteTimer = null;
 
     // =========================================================================
@@ -603,24 +592,40 @@
     // =========================================================================
     // EXECUÇÃO ON-CHAIN UNISWAP V3 (APROVAÇÃO EXATA & SIMULAÇÃO CALLSTATIC)
     // =========================================================================
-    async function ensureExactErc20Approval(tokenAddress, spender, requiredAmountBN, signer) {
+    async function ensureExactErc20Approval(tokenAddress, spender, requiredAmountBN, signer, chainId = POLYGON_ID) {
         const owner = await signer.getAddress();
-        const erc20 = new ethers.Contract(
-            tokenAddress,
-            [
-                'function allowance(address owner, address spender) view returns (uint256)',
-                'function approve(address spender, uint256 value) returns (bool)'
-            ],
-            signer
-        );
-        const currentAllowance = await erc20.allowance(owner, spender);
+        const ABI = ['function allowance(address owner, address spender) view returns (uint256)', 'function approve(address spender, uint256 value) returns (bool)'];
+        const erc20 = new ethers.Contract(tokenAddress, ABI, signer);
+        // Leitura pelos nossos servidores (o da carteira conectada pode estar atrasado)
+        const reader = new ethers.Contract(tokenAddress, ABI, window.RdeskWallet.getProvider(chainId));
+        const currentAllowance = await reader.allowance(owner, spender).catch(() => erc20.allowance(owner, spender));
         if (currentAllowance.gte(requiredAmountBN)) return;
         if (!currentAllowance.isZero()) {
             const txReset = await erc20.approve(spender, 0);
-            await txReset.wait();
+            await window.RdeskWallet.confirmTx(txReset, chainId);
         }
         const tx = await erc20.approve(spender, requiredAmountBN);
-        await tx.wait();
+        await window.RdeskWallet.confirmTx(tx, chainId);
+        // Espera a autorização aparecer para a rede antes de seguir (evita "cannot estimate gas")
+        for (let i = 0; i < 12; i++) {
+            const seen = await reader.allowance(owner, spender).catch(() => null);
+            if (seen && seen.gte(requiredAmountBN)) return;
+            await new Promise((r) => setTimeout(r, 1500));
+        }
+    }
+
+    // Limite de gás calculado pelos nossos servidores (com folga), para a carteira não precisar estimar
+    async function gasLimitFor(contract, method, args, overrides, chainId = POLYGON_ID) {
+        const from = await contract.signer.getAddress();
+        const reader = contract.connect(window.RdeskWallet.getProvider(chainId));
+        let lastErr;
+        for (let i = 0; i < 3; i++) {
+            try {
+                const est = await reader.estimateGas[method](...args, { ...overrides, from });
+                return est.mul(125).div(100);
+            } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 2000)); }
+        }
+        throw lastErr;
     }
 
     // Lê o preço atual direto da pool (referência para proporção e proteção de slippage).
@@ -694,7 +699,7 @@
                 const wpolContract = new ethers.Contract(ADDR_WPOL, ['function deposit() payable'], signer);
                 const wrapWei = ethers.utils.parseEther(cap.polFree.toFixed(6));
                 const txWrap = await wpolContract.deposit({ value: wrapWei });
-                await txWrap.wait();
+                await window.RdeskWallet.confirmTx(txWrap, POLYGON_ID);
             }
 
             // Lê saldos atualizados de WPOL e USDT0
@@ -736,7 +741,7 @@
                             amountOutMinimum: minOut,
                             sqrtPriceLimitX96: 0
                         });
-                        await txSwap.wait();
+                        await window.RdeskWallet.confirmTx(txSwap, POLYGON_ID);
                     }
                 } else {
                     const usdtToSell = Math.abs(diffUsd);
@@ -753,7 +758,7 @@
                             amountOutMinimum: minOut,
                             sqrtPriceLimitX96: 0
                         });
-                        await txSwap.wait();
+                        await window.RdeskWallet.confirmTx(txSwap, POLYGON_ID);
                     }
                 }
             }
@@ -793,7 +798,7 @@
             mintParams.amount1Min = applySlippage(sim.amount1);
 
             const txMint = await nfpm.mint(mintParams);
-            await txMint.wait();
+            await window.RdeskWallet.confirmTx(txMint, POLYGON_ID);
 
             fb.style.color = 'var(--green-bright)';
             fb.textContent = '✓ Posição aberta e rendendo tarifas na Uniswap V3!';
@@ -802,7 +807,7 @@
             await refreshUniswapPositions();
         } catch (err) {
             fb.style.color = 'var(--red)';
-            fb.textContent = err?.reason || err?.message || 'Operação cancelada.';
+            fb.textContent = window.RdeskWallet.friendlyTxError(err, { native: 'POL' });
         } finally {
             btn.disabled = false;
             defiState.busy = false;
@@ -839,11 +844,11 @@
                 amount0Max: MAX_U128,
                 amount1Max: MAX_U128
             });
-            await tx.wait();
+            await window.RdeskWallet.confirmTx(tx, POLYGON_ID);
             await window.RdeskWallet.refreshBalances();
             await refreshUniswapPositions();
         } catch (err) {
-            alert(err?.reason || err?.message || 'Erro ao colher tarifas.');
+            alert(window.RdeskWallet.friendlyTxError(err, { native: 'POL' }));
         }
     }
 
@@ -901,13 +906,13 @@
             }]));
 
             const txClose = await nfpm.multicall(calls);
-            await txClose.wait();
+            await window.RdeskWallet.confirmTx(txClose, POLYGON_ID);
 
             await window.RdeskWallet.refreshBalances();
             await refreshUniswapPositions();
             return true;
         } catch (err) {
-            alert(err?.reason || err?.message || 'Erro ao encerrar posição.');
+            alert(window.RdeskWallet.friendlyTxError(err, { native: 'POL' }));
             return false;
         }
     }
@@ -1147,7 +1152,7 @@
         };
         const fail = (info) => { if (seq === swapQuoteSeq) defiState.swapQuote = null; setOut('--', info); return null; };
 
-        if (!(f.amountIn > 0)) { defiState.swapQuote = null; setOut('0.00', 'Digite a quantidade'); return null; }
+        if (!(f.amountIn > 0)) { defiState.swapQuote = null; setOut('0', 'Digite a quantidade'); return null; }
         const fromMeta = getTokenMeta(f.fromChain, f.fromSym);
         const toMeta = getTokenMeta(f.toChain, f.toSym);
         if (!fromMeta || !toMeta) return fail('Moeda indisponível nesta rede');
@@ -1171,7 +1176,7 @@
             }
             defiState.swapQuote = quote;
             const warn = quote.impact !== null && quote.impact > IMPACT_WARN ? ` • ⚠️ ${(quote.impact * 100).toFixed(1)}% abaixo do mercado` : '';
-            setOut(quote.amountOut.toLocaleString('en-US', { maximumFractionDigits: 6, useGrouping: false }), info + warn);
+            setOut(quote.amountOut.toLocaleString('pt-BR', { maximumFractionDigits: quote.amountOut >= 1000 ? 2 : 6, useGrouping: false }), info + warn);
             return quote;
         };
 
@@ -1255,7 +1260,7 @@
                 const wpol = new ethers.Contract(ADDR_WPOL, ['function deposit() payable', 'function withdraw(uint256 wad)'], signer);
                 say('Assinando conversão 1:1...');
                 const tx = q.fromSym === 'POL' ? await wpol.deposit({ value: q.rawIn }) : await wpol.withdraw(q.rawIn);
-                await tx.wait();
+                await window.RdeskWallet.confirmTx(tx, POLYGON_ID);
             } else if (q.type === 'UNISWAP_V3') {
                 const payWithNative = Boolean(q.fromMeta.isNative);
                 const receiveNative = Boolean(q.toMeta.isNative);
@@ -1270,14 +1275,19 @@
                 const router = new ethers.Contract(SWAP_ROUTER_02, ROUTER_ABI, signer);
                 const overrides = payWithNative ? { value: q.rawIn } : {};
                 let txSwap;
+                let method, args;
                 if (q.hops.length === 1) {
-                    txSwap = await router.exactInputSingle({ tokenIn: q.hops[0].tokenIn, tokenOut: q.hops[0].tokenOut, fee: q.hops[0].fee, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }, overrides);
+                    method = 'exactInputSingle';
+                    args = [{ tokenIn: q.hops[0].tokenIn, tokenOut: q.hops[0].tokenOut, fee: q.hops[0].fee, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }];
                 } else {
                     const path = ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'],
                         [q.hops[0].tokenIn, q.hops[0].fee, q.hops[0].tokenOut, q.hops[1].fee, q.hops[1].tokenOut]);
-                    txSwap = await router.exactInput({ path, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut }, overrides);
+                    method = 'exactInput';
+                    args = [{ path, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut }];
                 }
-                await txSwap.wait();
+                overrides.gasLimit = await gasLimitFor(router, method, args, overrides, POLYGON_ID);
+                txSwap = await router[method](...args, overrides);
+                await window.RdeskWallet.confirmTx(txSwap, POLYGON_ID);
 
                 if (receiveNative) {
                     // O router entrega WPOL: converte o que chegou em POL nativo.
@@ -1285,7 +1295,7 @@
                     const got = (await wpolRead.balanceOf(owner)).sub(wpolBefore);
                     if (got.gt(0)) {
                         const txUnwrap = await wpolRead.withdraw(got);
-                        await txUnwrap.wait();
+                        await window.RdeskWallet.confirmTx(txUnwrap, POLYGON_ID);
                     }
                 }
             } else if (q.type === 'LIFI') {
@@ -1295,11 +1305,11 @@
                     const spender = q.lifiData.estimate?.approvalAddress;
                     if (!spender) throw new Error('A rota não informou o contrato a aprovar. Operação cancelada.');
                     say(`Aprovando exatamente ${q.amountIn} ${q.fromSym}...`);
-                    await ensureExactErc20Approval(q.fromMeta.address, spender, q.rawIn, signer);
+                    await ensureExactErc20Approval(q.fromMeta.address, spender, q.rawIn, signer, q.fromChain);
                 }
                 say('Enviando a transação...');
                 const tx = await signer.sendTransaction({ to: txReq.to, data: txReq.data, value: txReq.value ? ethers.BigNumber.from(txReq.value) : 0 });
-                await tx.wait();
+                await window.RdeskWallet.confirmTx(tx, q.fromChain);
             }
 
             defiState.swapQuote = null;
@@ -1310,9 +1320,9 @@
             await window.RdeskWallet.refreshBalances();
             updateSwapFromBalanceDisplay();
         } catch (err) {
-            const raw = err?.reason || err?.error?.message || err?.message || 'Troca cancelada.';
-            say(/Too little received|STF|slippage/i.test(raw) ? 'O preço mudou além da proteção de 1,5%. Nada foi trocado; peça a cotação de novo.'
-                : /insufficient funds/i.test(raw) ? `Saldo de ${nativeSym} insuficiente para pagar a taxa da rede.` : raw, 'var(--red)');
+            say(window.RdeskWallet.friendlyTxError(err, { native: nativeSym }), 'var(--red)');
+            // Mesmo com erro de comunicação, a troca pode ter acontecido: atualiza os saldos para conferir
+            window.RdeskWallet.refreshBalances().then(updateSwapFromBalanceDisplay).catch(() => {});
         } finally {
             btn.disabled = false;
             defiState.busy = false;
@@ -1457,546 +1467,12 @@
     // =========================================================================
     // AUDITORIA CONTÁBIL REAL DESDE A 1ª TRANSAÇÃO (EOA vs. SMART CONTRACT)
     // =========================================================================
-    function setAuditProgress(visible, text, pct) {
-        const wrap = document.getElementById('audit-progress-wrap');
-        const bar = document.getElementById('audit-progress-bar');
-        const status = document.getElementById('audit-status-text');
-        if (wrap) wrap.style.display = visible ? 'block' : 'none';
-        if (bar && typeof pct === 'number') bar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-        if (status && text) status.textContent = text;
-    }
-
-    async function loadHistoricalPtaxAndLlamaSeries() {
-        // 1. PTAX BCB dos últimos 730 dias + AwesomeAPI para cotação atual
-        try {
-            const end = new Date();
-            const start = new Date(end.getTime() - 730 * 86400000);
-            const fmtBcb = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
-            const bcbUrl = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@di,dataFinalCotacao=@df)?@di='${fmtBcb(start)}'&@df='${fmtBcb(end)}'&$format=json&$select=cotacaoVenda,dataHoraCotacao`;
-
-            const [bcbRes, llamaRes] = await Promise.all([
-                fetch(bcbUrl).catch(() => null),
-                fetch(`https://coins.llama.fi/chart/polygon:${ADDR_WPOL},polygon:${ADDR_WBTC},polygon:0x7ceb23fd6bc0add59e62ac25578270cff1b9f619?span=500&period=1d`).catch(() => null)
-            ]);
-
-            if (bcbRes && bcbRes.ok) {
-                const bcbJson = await bcbRes.json();
-                (bcbJson?.value || []).forEach(row => {
-                    const dayKey = String(row.dataHoraCotacao || '').slice(0, 10);
-                    if (dayKey && row.cotacaoVenda) {
-                        defiState.audit.ptaxMap[dayKey] = parseFloat(row.cotacaoVenda);
-                    }
-                });
-            }
-
-            if (llamaRes && llamaRes.ok) {
-                const lJson = await llamaRes.json();
-                const coins = lJson?.coins || {};
-                Object.entries(coins).forEach(([key, obj]) => {
-                    const addr = key.split(':')[1]?.toLowerCase();
-                    if (!addr || !Array.isArray(obj.prices)) return;
-                    defiState.audit.llamaDaily[addr] = {};
-                    obj.prices.forEach(pt => {
-                        const dKey = new Date(pt.timestamp * 1000).toISOString().slice(0, 10);
-                        defiState.audit.llamaDaily[addr][dKey] = pt.price;
-                    });
-                });
-            }
-        } catch (e) {}
-    }
-
-    function getHistoricalUsdBrl(dateKey) {
-        const map = defiState.audit.ptaxMap;
-        if (map[dateKey]) return map[dateKey];
-        const base = new Date(`${dateKey}T12:00:00Z`).getTime();
-        for (let i = 1; i <= 7; i++) {
-            const prev = new Date(base - i * 86400000).toISOString().slice(0, 10);
-            if (map[prev]) return map[prev];
-        }
-        return window.RdeskWallet.getPrices().USD_BRL || 5.65;
-    }
-
-    function getHistoricalAssetUsd(kind, dateKey, fxRate) {
-        const prices = window.RdeskWallet.getPrices();
-        if (kind === 'USD') return 1.0;
-        if (kind === 'BRL') return 1.0 / fxRate;
-
-        const addrMap = {
-            POL: ADDR_WPOL.toLowerCase(),
-            BTC: ADDR_WBTC.toLowerCase(),
-            ETH: '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619'
-        };
-        const addr = addrMap[kind];
-        const series = addr ? defiState.audit.llamaDaily[addr] : null;
-        if (series) {
-            if (series[dateKey]) return series[dateKey];
-            const base = new Date(`${dateKey}T12:00:00Z`).getTime();
-            for (let i = 1; i <= 5; i++) {
-                const prev = new Date(base - i * 86400000).toISOString().slice(0, 10);
-                if (series[prev]) return series[prev];
-            }
-        }
-        return prices[kind] || prices.POL || 0.088;
-    }
-
-    async function isAddressSmartContract(addrLower, apiHint, provider) {
-        if (!addrLower) return false;
-        if (typeof apiHint === 'boolean') {
-            defiState.audit.contractCache.set(addrLower, apiHint);
-            return apiHint;
-        }
-        if (defiState.audit.contractCache.has(addrLower)) {
-            return defiState.audit.contractCache.get(addrLower);
-        }
-        try {
-            const code = await provider.getCode(addrLower);
-            const isC = Boolean(code && code !== '0x');
-            defiState.audit.contractCache.set(addrLower, isC);
-            return isC;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    async function fetchBlockscoutPages(urlBase, label, startPct, spanPct) {
-        const all = [];
-        let nextParams = null;
-        let page = 1;
-
-        while (page <= 25) {
-            const url = new URL(urlBase);
-            if (nextParams) {
-                Object.entries(nextParams).forEach(([k, v]) => url.searchParams.set(k, v));
-            }
-            const res = await fetch(url.toString());
-            if (!res.ok) break;
-            const json = await res.json();
-            if (Array.isArray(json.items)) all.push(...json.items);
-
-            setAuditProgress(true, `${label}: ${all.length} registros lidos...`, startPct + Math.min(spanPct, page * 2));
-            if (!json.next_page_params) break;
-            nextParams = json.next_page_params;
-            page++;
-        }
-        return all;
-    }
-
     // Falha de rede na auditoria vira um aviso na tela, nunca um erro solto.
-    async function runAuditSafely(forceRefresh = false) {
-        try {
-            await runFullHistoryAudit(forceRefresh);
-        } catch (err) {
-            setAuditProgress(true, 'Não foi possível ler o histórico agora (servidor de histórico indisponível). Toque em Atualizar para tentar de novo.', 0);
-        }
+    // O histórico, o extrato e o resultado ficam em history.js (RdeskHistory)
+    function runAuditSafely(forceRefresh = false) {
+        return window.RdeskHistory ? window.RdeskHistory.load(forceRefresh) : Promise.resolve();
     }
 
-    async function runFullHistoryAudit(forceRefresh = false) {
-        // Endereços da API vêm em minúsculas: comparar com o endereço em minúsculas (antes, nenhuma
-        // entrada ou saída batia e tudo virava "DeFi" — por isso o lucro aparecia errado).
-        const wallet = (window.RdeskWallet.getAddress() || '').toLowerCase();
-        if (!wallet) return;
-        if (!forceRefresh && defiState.audit.lastWalletAudited === wallet && defiState.audit.events.length > 0) {
-            renderAuditView();
-            return;
-        }
-
-        try {
-            const savedOv = localStorage.getItem(`rdesk_v22_audit_ov_${wallet}`);
-            defiState.audit.overrides = savedOv ? JSON.parse(savedOv) : {};
-        } catch (e) {
-            defiState.audit.overrides = {};
-        }
-
-        setAuditProgress(true, 'Carregando cotações históricas (BCB PTAX & DefiLlama)...', 10);
-        await loadHistoricalPtaxAndLlamaSeries();
-
-        const provider = await window.RdeskWallet.getReadProvider(POLYGON_ID);
-
-        const [txs, transfers, internals] = await Promise.all([
-            fetchBlockscoutPages(`${BLOCKSCOUT_V2}/addresses/${wallet}/transactions`, 'Transações', 18, 22),
-            fetchBlockscoutPages(`${BLOCKSCOUT_V2}/addresses/${wallet}/token-transfers`, 'Tokens', 40, 22),
-            fetchBlockscoutPages(`${BLOCKSCOUT_V2}/addresses/${wallet}/internal-transactions`, 'Transações internas', 62, 18)
-        ]);
-
-        setAuditProgress(true, 'Separando movimentações DeFi de aportes e saques reais...', 84);
-
-        const txMap = new Map();
-        const ensureTx = (hash, isoTime) => {
-            const h = hash.toLowerCase();
-            if (!txMap.has(h)) {
-                const unix = Math.floor(new Date(isoTime).getTime() / 1000);
-                txMap.set(h, {
-                    hash: h,
-                    unix,
-                    dateKey: new Date(unix * 1000).toISOString().slice(0, 10),
-                    inflows: [],
-                    outflows: [],
-                    gasPol: 0,
-                    touchedContract: false
-                });
-            }
-            return txMap.get(h);
-        };
-
-        // 1. Transações principais & gás (inclusive transações revertidas!)
-        for (const tx of txs) {
-            const entry = ensureTx(tx.hash, tx.timestamp);
-            const fromAddr = tx.from?.hash?.toLowerCase() || '';
-            const toAddr = tx.to?.hash?.toLowerCase() || '';
-
-            if (fromAddr === wallet && tx.fee?.value) {
-                entry.gasPol += parseFloat(ethers.utils.formatEther(tx.fee.value));
-            }
-            if (tx.status !== 'ok') continue;
-
-            if (toAddr && toAddr !== wallet) {
-                if (await isAddressSmartContract(toAddr, tx.to?.is_contract, provider)) {
-                    entry.touchedContract = true;
-                }
-            }
-
-            const polVal = tx.value ? parseFloat(ethers.utils.formatEther(tx.value)) : 0;
-            if (polVal > 0) {
-                if (toAddr === wallet && fromAddr !== wallet) {
-                    const fromIsC = await isAddressSmartContract(fromAddr, tx.from?.is_contract, provider);
-                    if (fromIsC) entry.touchedContract = true;
-                    entry.inflows.push({ symbol: 'POL', kind: 'POL', amount: polVal, fromIsC });
-                } else if (fromAddr === wallet && toAddr !== wallet) {
-                    const toIsC = await isAddressSmartContract(toAddr, tx.to?.is_contract, provider);
-                    if (toIsC) entry.touchedContract = true;
-                    entry.outflows.push({ symbol: 'POL', kind: 'POL', amount: polVal, toIsC });
-                }
-            }
-        }
-
-        // 2. Transações internas (ex: unwrap WPOL -> POL)
-        for (const itx of internals) {
-            if (!itx.transaction_hash) continue;
-            const entry = ensureTx(itx.transaction_hash, itx.timestamp);
-            const fromAddr = itx.from?.hash?.toLowerCase() || '';
-            const toAddr = itx.to?.hash?.toLowerCase() || '';
-            const polVal = itx.value ? parseFloat(ethers.utils.formatEther(itx.value)) : 0;
-            if (polVal <= 0) continue;
-
-            if (toAddr === wallet && fromAddr !== wallet) {
-                const fromIsC = await isAddressSmartContract(fromAddr, itx.from?.is_contract, provider);
-                if (fromIsC) entry.touchedContract = true;
-                entry.inflows.push({ symbol: 'POL', kind: 'POL', amount: polVal, fromIsC });
-            }
-        }
-
-        // 3. Transferências ERC-20 verificadas (ignorando spam airdrops)
-        for (const tr of transfers) {
-            if (!tr.transaction_hash || tr.token?.type !== 'ERC-20') continue;
-            if (tr.token?.is_spam === true) continue;
-
-            const tokenAddr = (tr.token?.address_hash || tr.token?.address || '').toLowerCase();
-            const meta = VERIFIED_AUDIT_TOKENS[tokenAddr];
-            if (!meta) continue; // Ignora tokens não verificados para evitar inflação falsa
-
-            const entry = ensureTx(tr.transaction_hash, tr.timestamp);
-            const fromAddr = tr.from?.hash?.toLowerCase() || '';
-            const toAddr = tr.to?.hash?.toLowerCase() || '';
-            const amount = parseFloat(ethers.utils.formatUnits(tr.total?.value || '0', meta.decimals));
-            if (amount <= 0) continue;
-
-            if (toAddr === wallet && fromAddr !== wallet) {
-                const fromIsC = await isAddressSmartContract(fromAddr, tr.from?.is_contract, provider);
-                if (fromIsC) entry.touchedContract = true;
-                entry.inflows.push({ symbol: meta.symbol, kind: meta.kind, amount, fromIsC });
-            } else if (fromAddr === wallet && toAddr !== wallet) {
-                const toIsC = await isAddressSmartContract(toAddr, tr.to?.is_contract, provider);
-                if (toIsC) entry.touchedContract = true;
-                entry.outflows.push({ symbol: meta.symbol, kind: meta.kind, amount, toIsC });
-            }
-        }
-
-        // Ordena da 1ª transação até hoje
-        const sorted = Array.from(txMap.values()).sort((a, b) => a.unix - b.unix);
-        defiState.audit.debugTxs = sorted;
-        const events = sorted.map(tx => {
-            const fxRate = getHistoricalUsdBrl(tx.dateKey);
-            const polHistUsd = getHistoricalAssetUsd('POL', tx.dateKey, fxRate);
-            const gasUsd = tx.gasPol * polHistUsd;
-            const gasBrl = gasUsd * fxRate;
-
-            let inUsd = 0, inBrl = 0;
-            const desc = [];
-
-            tx.inflows.forEach(item => {
-                const pUsd = getHistoricalAssetUsd(item.kind, tx.dateKey, fxRate);
-                const u = item.amount * pUsd;
-                inUsd += u;
-                inBrl += u * fxRate;
-                desc.push(`+${item.amount.toFixed(2)} ${item.symbol}`);
-            });
-
-            let outUsd = 0, outBrl = 0;
-            tx.outflows.forEach(item => {
-                const pUsd = getHistoricalAssetUsd(item.kind, tx.dateKey, fxRate);
-                const u = item.amount * pUsd;
-                outUsd += u;
-                outBrl += u * fxRate;
-                desc.push(`-${item.amount.toFixed(2)} ${item.symbol}`);
-            });
-
-            // Classificação contábil: somente transferência direta com EOA (não-contrato) é Aporte ou Saque
-            let autoClass = 'DEFI';
-            if (!tx.touchedContract && inUsd > 0.05 && outUsd === 0) {
-                autoClass = 'IN';
-            } else if (!tx.touchedContract && outUsd > 0.05 && inUsd === 0) {
-                autoClass = 'OUT';
-            }
-
-            return {
-                hash: tx.hash,
-                dateKey: tx.dateKey,
-                autoClass,
-                inUsd,
-                inBrl,
-                outUsd,
-                outBrl,
-                gasUsd,
-                gasBrl,
-                summary: desc.length > 0 ? desc.join(' | ') : 'Contrato / Aprovação / Gás'
-            };
-        });
-
-        defiState.audit.events = events;
-        defiState.audit.lastWalletAudited = wallet;
-        setAuditProgress(false, `Auditoria concluída: ${events.length} transações desde a 1ª operação.`, 100);
-        renderAuditView();
-    }
-
-    function renderAuditView() {
-        const prices = window.RdeskWallet.getPrices();
-        const isBrl = defiState.audit.currency === 'BRL';
-        const fmt = (brl, usd) => isBrl ? window.RdeskWallet.formatBRL(brl) : window.RdeskWallet.formatUSD(usd);
-
-        let totalInBrl = 0, totalInUsd = 0;
-        let totalOutBrl = 0, totalOutUsd = 0;
-        let totalGasBrl = 0, totalGasUsd = 0;
-
-        const dailyMap = new Map();
-
-        defiState.audit.events.forEach(ev => {
-            const eff = defiState.audit.overrides[ev.hash] || ev.autoClass;
-            ev.effectiveClass = eff;
-
-            totalGasBrl += ev.gasBrl;
-            totalGasUsd += ev.gasUsd;
-
-            if (!dailyMap.has(ev.dateKey)) {
-                dailyMap.set(ev.dateKey, { date: ev.dateKey, inBrl: 0, outBrl: 0, inUsd: 0, outUsd: 0 });
-            }
-            const day = dailyMap.get(ev.dateKey);
-
-            if (eff === 'IN') {
-                const vBrl = ev.inBrl || ev.outBrl;
-                const vUsd = ev.inUsd || ev.outUsd;
-                totalInBrl += vBrl;
-                totalInUsd += vUsd;
-                day.inBrl += vBrl;
-                day.inUsd += vUsd;
-            } else if (eff === 'OUT') {
-                const vBrl = ev.outBrl || ev.inBrl;
-                const vUsd = ev.outUsd || ev.inUsd;
-                totalOutBrl += vBrl;
-                totalOutUsd += vUsd;
-                day.outBrl += vBrl;
-                day.outUsd += vUsd;
-            }
-        });
-
-        // Patrimônio atual ao vivo (Saldos Livres + Pools Uniswap V3)
-        const freeUsd = window.RdeskWallet.getBalances().reduce((acc, b) => acc + b.usdValue, 0);
-        const lpUsd = defiState.livePositions.reduce((acc, p) => acc + p.totalUsd, 0);
-        const equityUsd = freeUsd + lpUsd;
-        const equityBrl = equityUsd * (prices.USD_BRL || 5.65);
-
-        const pnlBrl = (equityBrl + totalOutBrl) - totalInBrl;
-        const pnlUsd = (equityUsd + totalOutUsd) - totalInUsd;
-        const activePnl = isBrl ? pnlBrl : pnlUsd;
-        const baseCap = isBrl ? totalInBrl : totalInUsd;
-        const roiPct = baseCap > 0 ? (activePnl / baseCap) * 100 : 0;
-
-        document.getElementById('audit-kpi-in').textContent = fmt(totalInBrl, totalInUsd);
-        document.getElementById('audit-kpi-out').textContent = fmt(totalOutBrl, totalOutUsd);
-        document.getElementById('audit-kpi-equity').textContent = fmt(equityBrl, equityUsd);
-
-        const pnlEl = document.getElementById('audit-kpi-pnl');
-        pnlEl.textContent = `${activePnl >= 0 ? '+' : ''}${fmt(pnlBrl, pnlUsd)} (${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%)`;
-        pnlEl.style.color = activePnl >= 0 ? 'var(--green-bright)' : 'var(--red)';
-
-        const trendPill = document.getElementById('audit-trend-pill');
-        if (trendPill) {
-            trendPill.className = 'pill-badge ' + (activePnl >= 0 ? 'safe' : 'danger');
-            trendPill.textContent = activePnl >= 0 ? 'NO LUCRO' : 'NO PREJUÍZO';
-        }
-
-        // Tabela de eventos
-        const tbody = document.getElementById('audit-events-tbody');
-        if (tbody) {
-            tbody.replaceChildren();
-            const filtered = defiState.audit.events.filter(ev => {
-                if (defiState.audit.filter === 'EXTERNAL') return ev.effectiveClass === 'IN' || ev.effectiveClass === 'OUT';
-                if (defiState.audit.filter === 'DEFI') return ev.effectiveClass === 'DEFI';
-                return true;
-            }).slice().reverse();
-
-            if (filtered.length === 0) {
-                const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="5" class="empty-cell">Nenhuma transação encontrada para este filtro.</td>';
-                tbody.appendChild(tr);
-            } else {
-                filtered.forEach(ev => {
-                    const tr = document.createElement('tr');
-
-                    const tdDate = document.createElement('td');
-                    tdDate.textContent = ev.dateKey;
-
-                    const tdClass = document.createElement('td');
-                    const badge = document.createElement('span');
-                    if (ev.effectiveClass === 'IN') { badge.className = 'badge-in'; badge.textContent = 'APORTE'; }
-                    else if (ev.effectiveClass === 'OUT') { badge.className = 'badge-out'; badge.textContent = 'SAQUE'; }
-                    else if (ev.effectiveClass === 'IGNORE') { badge.className = 'badge-ignore'; badge.textContent = 'IGNORADO'; }
-                    else { badge.className = 'badge-defi'; badge.textContent = 'POOL / DEFI'; }
-                    tdClass.appendChild(badge);
-
-                    const tdDesc = document.createElement('td');
-                    tdDesc.textContent = ev.summary;
-
-                    const tdVal = document.createElement('td');
-                    const vBrl = ev.effectiveClass === 'OUT' ? ev.outBrl : (ev.inBrl || ev.outBrl);
-                    const vUsd = ev.effectiveClass === 'OUT' ? ev.outUsd : (ev.inUsd || ev.outUsd);
-                    tdVal.textContent = vUsd > 0 ? fmt(vBrl, vUsd) : `Gás ${fmt(ev.gasBrl, ev.gasUsd)}`;
-
-                    const tdBtn = document.createElement('td');
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'mini-link-btn';
-                    btn.textContent = 'Alterar';
-                    btn.addEventListener('click', () => {
-                        const cycle = ['IN', 'OUT', 'DEFI', 'IGNORE'];
-                        const next = cycle[(cycle.indexOf(ev.effectiveClass) + 1) % cycle.length];
-                        const w = window.RdeskWallet.getAddress();
-                        defiState.audit.overrides[ev.hash] = next;
-                        localStorage.setItem(`rdesk_v22_audit_ov_${w}`, JSON.stringify(defiState.audit.overrides));
-                        renderAuditView();
-                    });
-                    tdBtn.appendChild(btn);
-
-                    tr.append(tdDate, tdClass, tdDesc, tdVal, tdBtn);
-                    tbody.appendChild(tr);
-                });
-            }
-        }
-
-        renderAuditCashflowChart(Array.from(dailyMap.values()), equityBrl, equityUsd);
-    }
-
-    function renderAuditCashflowChart(dailySeries, equityBrl, equityUsd) {
-        const canvas = document.getElementById('audit-chart-canvas');
-        if (!canvas || !window.Chart) return;
-
-        const isBrl = defiState.audit.currency === 'BRL';
-        const today = new Date().toISOString().slice(0, 10);
-        if (dailySeries.length === 0 || dailySeries[dailySeries.length - 1].date !== today) {
-            dailySeries.push({ date: today, inBrl: 0, outBrl: 0, inUsd: 0, outUsd: 0 });
-        }
-
-        const labels = [];
-        const inBars = [];
-        const outBars = [];
-        const netInvestedLine = [];
-        const equityLine = [];
-
-        let runningNet = 0;
-        dailySeries.forEach((d, i) => {
-            const vIn = isBrl ? d.inBrl : d.inUsd;
-            const vOut = isBrl ? d.outBrl : d.outUsd;
-            runningNet += (vIn - vOut);
-
-            labels.push(d.date);
-            inBars.push(Number(vIn.toFixed(2)));
-            outBars.push(Number((-vOut).toFixed(2)));
-            netInvestedLine.push(Number(runningNet.toFixed(2)));
-            equityLine.push(i === dailySeries.length - 1 ? Number((isBrl ? equityBrl : equityUsd).toFixed(2)) : null);
-        });
-
-        if (equityLine.length > 0) equityLine[0] = inBars[0] || 0;
-
-        if (auditChart) auditChart.destroy();
-        auditChart = new window.Chart(canvas.getContext('2d'), {
-            data: {
-                labels,
-                datasets: [
-                    {
-                        type: 'bar',
-                        label: 'Aportes Reais',
-                        data: inBars,
-                        backgroundColor: 'rgba(16, 185, 129, 0.75)',
-                        borderRadius: 4
-                    },
-                    {
-                        type: 'bar',
-                        label: 'Saques Reais',
-                        data: outBars,
-                        backgroundColor: 'rgba(244, 63, 94, 0.75)',
-                        borderRadius: 4
-                    },
-                    {
-                        type: 'line',
-                        label: 'Capital Líquido Investido',
-                        data: netInvestedLine,
-                        borderColor: '#eab308',
-                        borderWidth: 2,
-                        tension: 0.2,
-                        pointRadius: 2
-                    },
-                    {
-                        type: 'line',
-                        label: 'Patrimônio Atual (Carteira + Pools)',
-                        data: equityLine,
-                        borderColor: '#38bdf8',
-                        borderDash: [5, 4],
-                        borderWidth: 2.5,
-                        spanGaps: true,
-                        pointRadius: 5,
-                        pointBackgroundColor: '#38bdf8'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#9aa3b2', font: { size: 11 } } }
-                },
-                scales: {
-                    x: { ticks: { color: '#646e80', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                    y: { ticks: { color: '#9aa3b2' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                }
-            }
-        });
-    }
-
-    function exportAuditCsv() {
-        if (defiState.audit.events.length === 0) return;
-        const lines = ['Data;Classificacao;Movimento;Valor_BRL;Valor_USD;Gas_BRL;TxHash'];
-        defiState.audit.events.forEach(ev => {
-            const vBrl = ev.effectiveClass === 'OUT' ? ev.outBrl : (ev.inBrl || ev.outBrl);
-            const vUsd = ev.effectiveClass === 'OUT' ? ev.outUsd : (ev.inUsd || ev.outUsd);
-            lines.push(`${ev.dateKey};${ev.effectiveClass};"${ev.summary}";${vBrl.toFixed(2)};${vUsd.toFixed(2)};${ev.gasBrl.toFixed(4)};${ev.hash}`);
-        });
-        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `rdesk-auditoria-${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
 
     // =========================================================================
     // VINCULAÇÃO DE EVENTOS & API GLOBAL
@@ -2104,7 +1580,7 @@
         // Inverter: o que eu recebia passa a ser o que envio (rede, moeda e quantidade)
         document.getElementById('btn-swap-flip')?.addEventListener('click', () => {
             const e = swapEls();
-            const prev = { fc: e.fc.value, ft: e.ft.value, tc: e.tc.value, tt: e.tt.value, out: parseFloat(e.out.value) };
+            const prev = { fc: e.fc.value, ft: e.ft.value, tc: e.tc.value, tt: e.tt.value, out: parseFloat(String(e.out.value).replace(',', '.')) };
             e.fc.value = prev.tc; e.tc.value = prev.fc;
             fillTokenSelect(e.ft, Number(prev.tc), prev.tt);
             fillTokenSelect(e.tt, Number(prev.fc), prev.ft);
@@ -2114,25 +1590,6 @@
         });
 
         document.getElementById('btn-execute-swap')?.addEventListener('click', executeActiveSwap);
-
-        // Tela 4: Auditoria Real
-        document.getElementById('btn-audit-currency')?.addEventListener('click', (e) => {
-            defiState.audit.currency = defiState.audit.currency === 'BRL' ? 'USD' : 'BRL';
-            e.target.textContent = defiState.audit.currency === 'BRL' ? 'BRL / USD' : 'USD / BRL';
-            renderAuditView();
-        });
-
-        document.getElementById('btn-audit-refresh')?.addEventListener('click', () => runAuditSafely(true));
-        document.getElementById('btn-export-audit-csv')?.addEventListener('click', exportAuditCsv);
-
-        document.querySelectorAll('.audit-filter-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.audit-filter-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                defiState.audit.filter = btn.getAttribute('data-afilter');
-                renderAuditView();
-            });
-        });
 
         // Sincroniza sempre que a carteira atualizar saldos
         window.addEventListener('rdesk:wallet-updated', async () => {
@@ -2155,7 +1612,7 @@
             refreshSwapQuote();
         },
         runAudit: (force = false) => runAuditSafely(force),
-        getAuditDebug: () => ({ txs: defiState.audit.debugTxs || [], events: defiState.audit.events }),
+        getLivePositionsUsd: () => defiState.livePositions.reduce((s, p) => s + (p.totalUsd || 0), 0),
         isBusy: () => Boolean(defiState.busy),
         refreshSwapQuote: () => refreshSwapQuote(),
         getSwapQuote: () => defiState.swapQuote ? { type: defiState.swapQuote.type, amountOut: defiState.swapQuote.amountOut, routeLabel: defiState.swapQuote.routeLabel, impact: defiState.swapQuote.impact, hops: defiState.swapQuote.hops || null } : null,

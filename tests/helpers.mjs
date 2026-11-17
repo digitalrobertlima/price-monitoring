@@ -13,6 +13,64 @@ export const TEST_PASSWORD = 'senha-de-teste-123';
 export const POL_USD = 0.09;
 export const USD_BRL = 5.4;
 
+// Preço de cada dia no passado (d = dias atrás) usado no histórico simulado
+export function histPrice(key, d) {
+    const k = String(key).toLowerCase();
+    if (k.includes('0x0d500b1d')) return POL_USD + 0.0005 * d;      // POL: um pouco mais caro no passado
+    if (k.includes('0x1bfd6703')) return 90000 + 1000 * d;          // BTC (WBTC)
+    if (k.includes('0x7ceb23fd')) return 3000;                      // ETH (WETH)
+    return 1;
+}
+export const CHANGE_24H = {
+    'coingecko:bitcoin': -2, 'coingecko:ethereum': 1, 'coingecko:tether': 0, 'coingecko:usd-coin': 0,
+    'polygon:0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270': 3, 'polygon:0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc': -1, 'coingecko:celo': 0
+};
+
+// Histórico de uma carteira no formato da API do Blockscout (Polygon)
+export function makeHistory(owner) {
+    const W = owner.toLowerCase();
+    const EOA = '0x1111111111111111111111111111111111111aaa';
+    const EOA2 = '0x2222222222222222222222222222222222222bbb';
+    const POOL = '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7';
+    const NFPM = '0xc36442b4a4522e871399cd717abdd847ab11fe88';
+    const ROUTER = '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45';
+    const USDT = '0xc2132d05d31c914a87c6611c10748aeb04b58e8f';
+    const WPOL = '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270';
+    const SPAM = '0x5555555555555555555555555555555555555555';
+    const day = (d, h = 12) => new Date(Math.floor(Date.now() / 86400000) * 86400000 - d * 86400000 + h * 3600000).toISOString();
+    const wei = (x, dec = 18) => (BigInt(Math.round(x * 1e6)) * 10n ** BigInt(dec - 6)).toString();
+    const a = (hash, isC) => ({ hash, is_contract: isC });
+    let n = 0;
+    const H = () => `0x${(++n).toString(16).padStart(64, '0')}`;
+    const txs = [], transfers = [], internals = [];
+    const tx = (d, to, toC, value, method, status = 'ok', from = W) => { const h = H(); txs.push({ hash: h, timestamp: day(d), from: a(from, false), to: a(to, toC), value: wei(value), fee: { value: wei(0.02) }, status, method }); return h; };
+    const tr = (h, d, token, from, fromC, to, toC, amt, dec, symbol) => transfers.push({ transaction_hash: h, timestamp: day(d), from: a(from, fromC), to: a(to, toC), token: { address_hash: token, type: 'ERC-20', symbol }, total: { value: wei(amt, dec) } });
+    // 1) recebeu 1000 POL de outra pessoa (20 dias atrás) -> entrada
+    txs.push({ hash: H(), timestamp: day(20), from: a(EOA, false), to: a(W, false), value: wei(1000), fee: { value: '0' }, status: 'ok', method: null });
+    // 2) trocou 300 POL por USDT (18 dias atrás)
+    const h2 = tx(18, ROUTER, true, 300, 'exactInputSingle');
+    tr(h2, 18, USDT, POOL, true, W, false, 28, 6, 'USDT0');
+    // 3) colocou para render: 10 USDT + 100 WPOL (15 dias atrás)
+    const h3 = tx(15, NFPM, true, 0, 'mint');
+    tr(h3, 15, USDT, W, false, POOL, true, 10, 6, 'USDT0');
+    tr(h3, 15, WPOL, W, false, POOL, true, 100, 18, 'WPOL');
+    // 4) recebeu 50 USDT de outra pessoa (10 dias atrás) -> entrada
+    const h4 = H();
+    tr(h4, 10, USDT, EOA2, false, W, false, 50, 6, 'USDT0');
+    // 5) tirou do render: 90 WPOL + 12 USDT (5 dias atrás)
+    const h5 = tx(5, NFPM, true, 0, 'multicall');
+    tr(h5, 5, WPOL, POOL, true, W, false, 90, 18, 'WPOL');
+    tr(h5, 5, USDT, POOL, true, W, false, 12, 6, 'USDT0');
+    // 6) enviou 200 POL para outra pessoa (3 dias atrás) -> saída
+    tx(3, EOA, false, 200, null);
+    // 7) autorizou USDT (2 dias atrás) e 8) operação que falhou (1 dia atrás)
+    tx(2, USDT, true, 0, 'approve');
+    tx(1, ROUTER, true, 0, 'exactInputSingle', 'error');
+    // moeda-lixo que não pode entrar na conta
+    tr(H(), 4, SPAM, EOA, false, W, false, 1000000, 18, 'FAKE');
+    return { txs, transfers, internals };
+}
+
 export function startStaticServer(port) {
     const server = http.createServer((req, res) => {
         let p = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]));
@@ -87,10 +145,48 @@ export async function mockNetwork(page, chains, opts = {}) {
         if (req.method() === 'POST') {
             const chain = map[chainIdFromRpcUrl(u)];
             if (!chain) return route.abort();
+            // Simula servidor instável (como a Rabby devolvendo "bad response" ao esperar a confirmação)
+            if (opts.badReceipts > 0) {
+                try {
+                    const body = JSON.parse(req.postData());
+                    const calls = Array.isArray(body) ? body : [body];
+                    if (calls.some((c) => c.method === 'eth_getTransactionReceipt')) { opts.badReceipts--; return text('bad response', 502); }
+                } catch (e) {}
+            }
             try { return json(chain.handle(JSON.parse(req.postData()))); } catch (e) { return route.abort(); }
         }
         if (/awesomeapi.*USD-BRL/.test(u)) return opts.failFx ? route.abort() : json({ USDBRL: { bid: String(USD_BRL), ask: String(USD_BRL) } });
         if (/open\.er-api\.com/.test(u)) return opts.failFx === 'all' ? route.abort() : json({ rates: { BRL: USD_BRL } });
+        // Histórico (Blockscout), preços de cada dia (DefiLlama e PTAX do BCB) e variação em 24 h
+        if (/polygon\.blockscout\.com\/api\/v2\/addresses\//.test(u)) {
+            if (opts.historyDown) return text('erro', 503);
+            const m = u.match(/addresses\/(0x[0-9a-fA-F]{40})\/(transactions|token-transfers|internal-transactions)/);
+            const h = opts.history && m ? opts.history(m[1].toLowerCase()) : null;
+            const kind = m ? m[2] : '';
+            return json({ items: h ? (kind === 'transactions' ? h.txs : kind === 'token-transfers' ? h.transfers : h.internals) : [], next_page_params: null });
+        }
+        if (/coins\.llama\.fi\/chart\//.test(u)) {
+            const keys = decodeURIComponent(u.split('/chart/')[1].split('?')[0]).split(',');
+            const coins = {};
+            const today = Math.floor(Date.now() / 86400000) * 86400;
+            keys.forEach((k) => {
+                const prices = [];
+                for (let d = 60; d >= 1; d--) prices.push({ timestamp: today - d * 86400, price: histPrice(k, d) });
+                coins[k] = { prices };
+            });
+            return json({ coins });
+        }
+        if (/olinda\.bcb\.gov\.br/.test(u)) {
+            const value = [];
+            for (let d = 60; d >= 0; d--) value.push({ cotacaoVenda: USD_BRL, dataHoraCotacao: `${new Date(Date.now() - d * 86400000).toISOString().slice(0, 10)} 13:00:00.000` });
+            return json({ value });
+        }
+        if (/coins\.llama\.fi\/percentage\//.test(u)) {
+            const keys = decodeURIComponent(u.split('/percentage/')[1].split('?')[0]).split(',');
+            const coins = {};
+            keys.forEach((k) => { coins[k] = CHANGE_24H[k.toLowerCase()] ?? 0; });
+            return json({ coins });
+        }
         if (/coins\.llama\.fi\/prices\/current\//.test(u)) {
             const keys = decodeURIComponent(u.split('/prices/current/')[1].split('?')[0]).split(',');
             const coins = {};

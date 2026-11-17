@@ -13,7 +13,8 @@ chain.fundNative(OWNER, START_POL);
 const { server, url } = await startStaticServer(8766);
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: 'block' });
-const { page, pageErrors, dialogs, cspViolations } = await openApp(context, url, chain);
+const netOpts = {};
+const { page, pageErrors, dialogs, cspViolations } = await openApp(context, url, chain, netOpts);
 
 const ui = (fn, arg) => page.evaluate(fn, arg);
 const fmtPol = (wei) => Number(ethers.utils.formatEther(wei.toString()));
@@ -181,9 +182,9 @@ try {
         await page.selectOption('#swap-from-token', from);
         await page.selectOption('#swap-to-token', to);
         await page.fill('#swap-amount-in', amount);
-        await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0, null, { timeout: 30000 });
+        await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value.replace(',', '.')) > 0, null, { timeout: 30000 });
         await page.waitForTimeout(1200); // cotação estabiliza (digitação dispara mais de uma)
-        const quoted = parseFloat(await page.inputValue('#swap-amount-out'));
+        const quoted = parseFloat((await page.inputValue('#swap-amount-out')).replace(',', '.'));
         const m = idle();
         await ui(() => { document.getElementById('swap-feedback').textContent = ''; });
         await page.click('#btn-execute-swap');
@@ -191,6 +192,12 @@ try {
         await waitFn(page, () => /concluída|rro|cancelad|insuf|revert|Too little/i.test(document.getElementById('swap-feedback')?.textContent || ''), null, { timeout: 120000 }).catch(() => {});
         return { quoted, txs: chain.txs.slice(m), msg: await page.textContent('#swap-feedback') };
     };
+    // Servidor instável: as primeiras consultas de confirmação voltam "bad response" (como aconteceu na Rabby)
+    netOpts.badReceipts = 6;
+    const sFlaky = await doSwap('WPOL', 'USDT', '3');
+    check('troca conclui mesmo com o servidor devolvendo "bad response" na confirmação', /concluída/.test(sFlaky.msg) && sFlaky.txs.every((x) => x.status === 1) && netOpts.badReceipts === 0, sFlaky.msg);
+    netOpts.badReceipts = 0;
+
     let usdtBefore = fmtUsdt(chain.balOf(ADDR.USDT0, OWNER));
     const s1 = await doSwap('WPOL', 'USDT', '100');
     console.log('   transações:', s1.txs.map(describe).join(' -> '));
@@ -211,15 +218,15 @@ try {
     await page.selectOption('#swap-from-token', 'POL');
     await page.selectOption('#swap-to-token', 'USDT');
     await page.fill('#swap-amount-in', '10');
-    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0 && /Uniswap/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 });
+    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value.replace(',', '.')) > 0 && /Uniswap/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 });
     await page.waitForTimeout(800);
     const beforeFlip = await ui(() => ({ out: document.getElementById('swap-amount-out').value }));
     await page.click('#btn-swap-flip');
     await page.waitForTimeout(1500);
     const afterFlip = await ui(() => ({ from: document.getElementById('swap-from-token').value, to: document.getElementById('swap-to-token').value,
-        amt: document.getElementById('swap-amount-in').value, out: parseFloat(document.getElementById('swap-amount-out').value) }));
+        amt: document.getElementById('swap-amount-in').value, out: parseFloat(document.getElementById('swap-amount-out').value.replace(',', '.')) }));
     check('botão de inverter troca as moedas de lado e leva a quantidade junto',
-        afterFlip.from === 'USDT' && afterFlip.to === 'POL' && afterFlip.amt === beforeFlip.out && Math.abs(afterFlip.out - 10) < 0.05, JSON.stringify(afterFlip));
+        afterFlip.from === 'USDT' && afterFlip.to === 'POL' && afterFlip.amt === beforeFlip.out.replace(',', '.') && Math.abs(afterFlip.out - 10) < 0.05, JSON.stringify(afterFlip));
 
     await page.click('#subpanel-dex-swap .more-fold summary');
     const contractsText = (await page.innerText('#swap-contracts')).replace(/\s+/g, ' ');
@@ -273,7 +280,7 @@ try {
     await page.selectOption('#swap-from-token', 'WPOL');
     await page.selectOption('#swap-to-token', 'USDT');
     await page.fill('#swap-amount-in', '7');
-    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0, null, { timeout: 30000 });
+    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value.replace(',', '.')) > 0, null, { timeout: 30000 });
     await page.waitForTimeout(900);
     await page.fill('#swap-amount-in', '9');
     await page.click('#btn-execute-swap');

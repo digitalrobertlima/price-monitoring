@@ -14,6 +14,10 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Fim marcante.** Envio, troca e render concluídos mostram uma comemoração curta.
 - **Controle total no Render.** O gráfico responde ao toque (arrastar, pinça, tocar para ver o preço) e a faixa tem alças azuis para arrastar; também dá para digitar mínimo e máximo ou usar os atalhos Estreita/Média/Larga.
 - Sem Pix: a carteira não transaciona em Pix, e a interface não sugere isso.
+- **Extrato:** todas as transações da rede Polygon desde a primeira, agrupadas por dia e em linguagem simples (Recebeu, Enviou, Trocou, Colocou para render…). Cada linha abre o detalhe, o link do explorador e a opção de mudar como ela entra na conta do lucro.
+- **Moeda de referência (régua):** Bitcoin por padrão; dá para trocar por Real (BRZ), Dólar ou Ether. O lucro, o gráfico e a variação de 24 h de cada moeda são medidos nela.
+- **Gráfico do patrimônio na tela inicial:** reconstruído dia a dia com os preços de cada dia, com entradas e saídas marcadas; o último ponto é o valor ao vivo.
+- **Lucro desde a 1ª transação:** tem hoje + tudo que você tirou − tudo que você colocou, cada valor convertido pela cotação do dia em que aconteceu.
 
 ## O que funciona hoje
 
@@ -37,7 +41,8 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Nenhuma transação foi testada na Polygon real nem em fork.** Os fluxos foram validados contra uma Polygon simulada (`tests/mock-chain.mjs`), que confere a lógica da app e as transações assinadas, não os contratos reais. Comece com valores pequenos.
 - **Lightning não é suportado.** Receber e pagar por Lightning exige um nó ou um serviço custodiante, o que não cabe numa carteira estática de autocustódia. Pedidos `lnbc…` são recusados com explicação.
 - Envio de Bitcoin e envios nas outras redes foram validados com vetores oficiais (BIP84/143/173/350) e redes simuladas, não com dinheiro real.
-- Pontes entre redes (LI.FI) e a aba Resultados (histórico) não têm testes automáticos completos.
+- Pontes entre redes (LI.FI) não têm teste automático completo.
+- O extrato e o gráfico usam o histórico da rede Polygon; as outras redes e o Bitcoin aparecem no saldo e entram no gráfico a partir do dia de hoje.
 - O ganho estimado em R$/min é uma aproximação (volume de 24h e liquidez de referência).
 - Não existe robô: nada acontece com a página fechada.
 
@@ -57,6 +62,7 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 | `bitcoin.js` | Bitcoin nativo: endereço, montagem e assinatura da transação |
 | `qr-scanner.js` | Leitor de QR Code (câmera ou foto) |
 | `onboarding.js` | Boas-vindas, primeiros passos, dicas na primeira vez, menu e explicações |
+| `history.js` | Histórico, extrato, resultado, gráfico do patrimônio e moeda de referência |
 | `wallet-views.js` | Telas de receber, enviar, detalhe da moeda e adicionar moeda |
 | `wallet-service.js` | Cofre, gerenciador de carteiras, biometria, redes, saldos, cotações, assinatura |
 | `defi-pix-service.js` | Faixa sugerida e faixa própria, render (Uniswap), posições, trocas, resultados |

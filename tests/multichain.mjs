@@ -60,7 +60,7 @@ try {
     const row = (c, s) => rows.find((r) => r.chain === String(c) && r.symbol === s);
     check('lista mostra saldos de várias redes ao mesmo tempo (Polygon, Base, Arbitrum, Bitcoin)',
         Boolean(row(137, 'POL') && row(137, 'USDT') && row(8453, 'USDC') && row(8453, 'ETH') && row(42161, 'ETH') && row('btc', 'BTC')), rows.map((r) => `${r.symbol}@${r.chain}`).join(' '));
-    check('cada linha tem o selo da moeda e diz em que rede ela está', rows.length > 0 && rows.every((r) => r.badge && /na rede /.test(r.text)), rows.map((r) => r.text.slice(0, 40)).join(' | '));
+    check('cada linha tem o selo da moeda e diz em que rede ela está', rows.length > 0 && rows.every((r) => r.badge && /· (Polygon|Base|Arbitrum|Ethereum|Optimism|Celo|Bitcoin)/.test(r.text)), rows.map((r) => r.text.slice(0, 40)).join(' | '));
     check('linha usa nome que qualquer um entende e esconde o contrato (fica no detalhe)', /Dólar digital \(Tether\)/.test(row(137, 'USDT')?.text || '') && !/0x/.test(row(137, 'USDT')?.text || ''), row(137, 'USDT')?.text);
     const btcBrl = (0.0037 * 90000 * USD_BRL).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     check('saldo de Bitcoin (inclui o que ainda não confirmou) aparece em R$', (row('btc', 'BTC')?.text || '').includes(btcBrl) && /0,0037/.test(row('btc', 'BTC')?.text || ''), row('btc', 'BTC')?.text);

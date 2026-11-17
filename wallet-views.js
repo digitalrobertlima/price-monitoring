@@ -328,13 +328,12 @@
                     ? await new global.ethers.Contract(token.address, ERC20, signer).transfer(dest, amountWei)
                     : await signer.sendTransaction({ to: dest, value: amountWei });
                 showOk(`Transação enviada (${esc(tx.hash.slice(0, 10))}…). Confirmando…`);
-                await tx.wait();
+                await global.RdeskWallet.confirmTx(tx, chainId);
                 global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Envio confirmado!' } }));
                 showOk(`✅ Envio confirmado na ${esc(chainName)}! <a href="${esc(REG.explorerTxUrl(chainId, tx.hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
                 ctx.refreshBalances();
             } catch (err) {
-                const raw = err?.reason || err?.error?.message || err?.message || 'Envio cancelado.';
-                showErr(/insufficient funds/i.test(raw) ? `Saldo insuficiente de ${tokensFor(chainId).find((t) => t.isNative)?.symbol || 'moeda nativa'} para pagar a taxa da rede.` : raw);
+                showErr(global.RdeskWallet.friendlyTxError(err, { native: tokensFor(chainId).find((t) => t.isNative)?.symbol }));
             } finally {
                 btn.disabled = false;
             }
