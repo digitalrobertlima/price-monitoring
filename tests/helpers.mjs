@@ -57,10 +57,10 @@ export function makeHistory(owner) {
     // 4) recebeu 50 USDT de outra pessoa (10 dias atrás) -> entrada
     const h4 = H();
     tr(h4, 10, USDT, EOA2, false, W, false, 50, 6, 'USDT0');
-    // 5) tirou do render: 90 WPOL + 12 USDT (5 dias atrás)
+    // 5) tirou do render: dentro da pool quase todo o POL virou dólar -> volta 5 WPOL + 18 USDT (5 dias atrás)
     const h5 = tx(5, NFPM, true, 0, 'multicall');
-    tr(h5, 5, WPOL, POOL, true, W, false, 90, 18, 'WPOL');
-    tr(h5, 5, USDT, POOL, true, W, false, 12, 6, 'USDT0');
+    tr(h5, 5, WPOL, POOL, true, W, false, 5, 18, 'WPOL');
+    tr(h5, 5, USDT, POOL, true, W, false, 18, 6, 'USDT0');
     // 6) enviou 200 POL para outra pessoa (3 dias atrás) -> saída
     tx(3, EOA, false, 200, null);
     // 7) autorizou USDT (2 dias atrás) e 8) operação que falhou (1 dia atrás)

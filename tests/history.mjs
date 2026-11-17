@@ -63,6 +63,12 @@ try {
     const d16 = sUsd.find((p) => p.key === new Date(Date.now() - 16 * 86400000).toISOString().slice(0, 10));
     const d15 = sUsd.find((p) => p.key === new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10));
     check('colocar para render não derruba o patrimônio (as moedas continuam suas)', d15 && d16 && d15.ref / d16.ref > 0.97, `${d16?.ref.toFixed(3)} → ${d15?.ref.toFixed(3)}`);
+    // Depois de tirar do render (com o POL convertido em dólar dentro da pool) não sobra POL "fantasma"
+    const d4 = sUsd.find((p) => p.key === new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10));
+    const expectD4 = (1000 - 300 - 0.06 - 100 + 5) * histPrice('0x0d500b1d', 4) + (28 - 10 + 50 + 18);
+    check('ao tirar do render, o patrimônio volta a ser só o que está na carteira (sem saldo fantasma)', d4 && near(d4.ref, expectD4, 1e-6), `${d4?.ref} esperado ${expectD4}`);
+    const maxRef = Math.max(...sUsd.map((p) => p.ref));
+    check('o patrimônio nunca passa do que realmente entrou + ganhos plausíveis', maxRef < 160, `máximo ${maxRef.toFixed(2)} dólares`);
     check('o último ponto é o valor ao vivo de agora', sUsd[sUsd.length - 1].live && near(sUsd[sUsd.length - 1].ref, liveUsd, 1e-6));
     await ui(() => window.RdeskHistory.setRef('BTC'));
     void series;
@@ -89,14 +95,18 @@ try {
 
     // ================================================================ 4. Moeda de referência
     await page.click('#btn-ref-picker');
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: 'tests/artifacts-hist-regua.png' });
     const picker = (await page.innerText('.ref-picker')).replace(/\s+/g, ' ');
+    const squeezed = await page.$$eval('.ref-picker .ref-txt', (els) => els.some((e) => e.getBoundingClientRect().width < 200));
+    check('opções da régua com texto em largura normal (sem espremer)', !squeezed);
     check('escolher a régua: Bitcoin (padrão), Real (BRZ), Dólar e Ether, com explicação', ['Bitcoin (padrão)', 'Real (BRZ)', 'Dólar (USDT)', 'Ether'].every((s) => picker.includes(s)), picker.slice(0, 160));
     const polRow = () => page.innerText('#wallet-assets-list [data-asset-symbol="POL"]');
     const usdtRow = () => page.innerText('#wallet-assets-list [data-asset-chain="137"][data-asset-symbol="USDT"]');
     await page.click('.ref-picker [data-ref="BTC"]');
     await page.waitForTimeout(300);
     check('frente ao Bitcoin: POL +3% e BTC −2% em 24 h → POL +5,1%; dólar +2,04%', /\+5,1%/.test(await polRow()) && /\+2,04%/.test(await usdtRow()), `${(await polRow()).replace(/\s+/g, ' ')} | ${(await usdtRow()).replace(/\s+/g, ' ')}`);
-    check('saldo também aparece em bitcoins, com a variação da carteira frente ao Bitcoin', /≈ [\d,]+ BTC/.test(await page.innerText('#hero-total-usd')) && /frente ao Bitcoin/.test(await page.innerText('#hero-ref-change')),
+    check('saldo em bitcoins sempre com 8 casas (0,00000000), com a variação frente ao Bitcoin', /≈ \d,\d{8} BTC$/.test(await page.innerText('#hero-total-usd')) && /frente ao Bitcoin/.test(await page.innerText('#hero-ref-change')),
         `${await page.innerText('#hero-total-usd')} | ${await page.innerText('#hero-ref-change')}`);
     await page.click('#btn-ref-picker');
     await page.click('.ref-picker [data-ref="BRL"]');
@@ -114,7 +124,7 @@ try {
     check('agrupado por dia, com "Ontem" e datas por extenso', days[0] === 'Ontem' && days.length === 8 && /de/.test(days[1]), days.join(', '));
     check('entradas mostram o valor em reais da data, com sinal', rows.some((x) => /Recebeu USDT.*\+R\$ 270,00/.test(x)), rows.find((x) => /Recebeu USDT/.test(x)));
     const pnlText = await page.innerText('#audit-kpi-pnl');
-    check('resultado aparece na régua (Bitcoin) com o valor em reais embaixo', /BTC/.test(pnlText) && /Em reais/.test(await page.innerText('#audit-kpi-pnl-brl')), `${pnlText} | ${await page.innerText('#audit-kpi-pnl-brl')}`);
+    check('resultado aparece na régua (Bitcoin, 8 casas) com o valor em reais embaixo', /^[+−]\d,\d{8} BTC/.test(pnlText) && /Em reais/.test(await page.innerText('#audit-kpi-pnl-brl')), `${pnlText} | ${await page.innerText('#audit-kpi-pnl-brl')}`);
     await page.screenshot({ path: 'tests/artifacts-hist-extrato.png', fullPage: true });
     for (const [f, n] of [['IN', 2], ['OUT', 1], ['SWAP', 1], ['RENDER', 2]]) {
         await page.click(`#extrato-filters [data-xf="${f}"]`);

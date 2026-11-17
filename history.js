@@ -192,13 +192,15 @@
         const a = Math.abs(v);
         if (ref === 'USD') return `${sign}US$ ${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         if (ref === 'BRL') return `${sign}${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BRZ`;
+        // Bitcoin sempre com 8 casas (0,00000000); Ether com 6
         const digits = ref === 'BTC' ? 8 : 6;
-        const txt = a === 0 ? '0' : a.toLocaleString('pt-BR', { maximumFractionDigits: a >= 1 ? 4 : digits, maximumSignificantDigits: a >= 1 ? undefined : 4 });
+        const txt = a.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
         return `${sign}${txt} ${REFS[ref].unit}`;
     }
     const fmtPct = (p) => `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`;
-    function fmtAmt(a) {
+    function fmtAmt(a, sym) {
         const x = Math.abs(a);
+        if (/^(W?BTC|CBBTC)$/i.test(String(sym || ''))) return x.toLocaleString('pt-BR', { minimumFractionDigits: 8, maximumFractionDigits: 8 });
         return x === 0 ? '0' : x.toLocaleString('pt-BR', { maximumFractionDigits: x >= 1000 ? 2 : x >= 1 ? 4 : 6, maximumSignificantDigits: x < 1 ? 4 : undefined });
     }
 
@@ -386,16 +388,26 @@
             let flowIn = 0, flowOut = 0;
             (byDay.get(key) || []).forEach((e) => {
                 hold.POL -= e.gasPol;
-                e.items.forEach((i) => {
-                    hold[i.kind] += i.dir * i.amt;
-                    if (e.type.startsWith('RENDER')) pool[i.kind] = Math.max(0, pool[i.kind] - i.dir * i.amt);
-                });
+                e.items.forEach((i) => { hold[i.kind] += i.dir * i.amt; });
+                if (e.type.startsWith('RENDER')) {
+                    // Dentro do render as moedas se convertem umas nas outras (POL vira USDT e vice-versa).
+                    // Por isso o que volta tira do "cesto" uma FRAÇÃO do valor, e não as mesmas moedas;
+                    // devolver 80% ou mais do valor conta como posição encerrada (cesto zerado).
+                    const priceNow = (k) => usdOn(k, key);
+                    const basketUsd = Object.keys(pool).reduce((s, k) => s + pool[k] * priceNow(k), 0);
+                    e.items.filter((i) => i.dir < 0).forEach((i) => { pool[i.kind] += i.amt; });
+                    const backUsd = e.items.filter((i) => i.dir > 0).reduce((s, i) => s + i.amt * priceNow(i.kind), 0);
+                    if (backUsd > 0 && basketUsd > 0) {
+                        const frac = backUsd / basketUsd >= 0.8 ? 1 : backUsd / basketUsd;
+                        Object.keys(pool).forEach((k) => { pool[k] *= (1 - frac); });
+                    }
+                }
                 const v = valued(e);
                 if (v.cls === 'IN') flowIn += (v.inUsd || v.outUsd) / v.refUsd;
                 if (v.cls === 'OUT') flowOut += (v.outUsd || v.inUsd) / v.refUsd;
             });
             let usd = 0;
-            Object.keys(hold).forEach((k) => { usd += Math.max(0, hold[k] + pool[k]) * usdOn(k, key); });
+            Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
             pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
             if (key >= today) break;
             if (pts.length > 2000) break;
@@ -603,12 +615,16 @@
                 tip.hidden = false;
                 tip.innerHTML = `<strong>${esc(when)}</strong><span class="money">${esc(fmtRef(p.ref, ref))} • ${esc(fmtBRL(p.usd * (p.live ? usdBrl : fxOn(p.key))))}</span>${flows ? `<small class="money">${esc(flows)}</small>` : ''}`;
             } else tip.hidden = true;
-            const chg = vals[0] > 0 ? ((vals[li] / vals[0]) - 1) * 100 : null;
-            canvas.setAttribute('aria-label', `Patrimônio em ${REFS[ref].name}: de ${fmtRef(vals[0], ref)} para ${fmtRef(vals[li], ref)}${chg !== null ? ` (${fmtPct(chg)})` : ''}`);
+            // Ganho do período SEM contar dinheiro que entrou ou saiu (saque não é prejuízo)
+            const flowsNet = data.slice(1).reduce((s, p) => s + p.flowIn - p.flowOut, 0);
+            const gain = vals[li] - vals[0] - flowsNet;
+            const base = vals[0] + data.slice(1).reduce((s, p) => s + p.flowIn, 0);
+            const pct = base > 0 ? (gain / base) * 100 : null;
+            canvas.setAttribute('aria-label', `Patrimônio em ${REFS[ref].name}: de ${fmtRef(vals[0], ref)} para ${fmtRef(vals[li], ref)}; ganho no período ${fmtRef(gain, ref, { sign: true })}`);
             const sum = document.getElementById('home-chart-summary');
             if (sum) {
-                sum.textContent = chg === null ? '' : `${fmtPct(chg)} no período`;
-                sum.className = `chg money ${chg > 0.005 ? 'up' : chg < -0.005 ? 'down' : ''}`;
+                sum.textContent = `${gain >= 0 ? 'Ganho' : 'Perda'} no período: ${fmtRef(gain, ref, { sign: true })}${pct !== null ? ` (${fmtPct(pct)})` : ''}`;
+                sum.className = `chg money ${gain > 0 ? 'up' : gain < 0 ? 'down' : ''}`;
             }
         }
         return {
@@ -680,7 +696,7 @@
         page.forEach(({ e, v }) => {
             if (v.key !== lastDay) { html += `<h3 class="extrato-day">${esc(dayTitle(v.key))}</h3>`; lastDay = v.key; }
             const [ico, tone] = TYPE_ICON[e.type] || TYPE_ICON.OTHER;
-            const amounts = e.items.map((i) => `${i.dir > 0 ? '+' : '−'}${fmtAmt(i.amt)} ${i.sym}`).join(' · ');
+            const amounts = e.items.map((i) => `${i.dir > 0 ? '+' : '−'}${fmtAmt(i.amt, i.sym)} ${i.sym}`).join(' · ');
             const time = new Date(e.unix * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             let value = '', vTone = '';
             if (v.cls === 'IN') { value = `+${fmtBRL((v.inUsd || v.outUsd) * v.fx)}`; vTone = 'up'; }
@@ -721,7 +737,7 @@
         if (!e) return;
         const v = valued(e);
         const when = new Date(e.unix * 1000).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
-        const items = e.items.map((i) => `<li><span>${i.dir > 0 ? 'Entrou' : 'Saiu'}</span><strong class="money">${i.dir > 0 ? '+' : '−'}${esc(fmtAmt(i.amt))} ${esc(i.sym)}</strong></li>`).join('');
+        const items = e.items.map((i) => `<li><span>${i.dir > 0 ? 'Entrou' : 'Saiu'}</span><strong class="money">${i.dir > 0 ? '+' : '−'}${esc(fmtAmt(i.amt, i.sym))} ${esc(i.sym)}</strong></li>`).join('');
         const el = sheet(`
             <div class="ex-detail">
                 <h2>${esc(e.title)}</h2>
