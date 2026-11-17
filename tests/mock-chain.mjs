@@ -74,6 +74,9 @@ function deepClone(v) {
     return out;
 }
 
+const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11';
+const MC_IFACE = new ethers.utils.Interface(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
+
 export class MockChain {
     constructor({ polPriceUsd = 0.09, chainId = 137 } = {}) {
         this.chainId = chainId;
@@ -147,6 +150,17 @@ export class MockChain {
         if (!data || data === '0x') { // envio simples de POL para uma conta
             s.native[to] = (s.native[to] || 0n) + value;
             return '0x';
+        }
+        if (to === MULTICALL3) { // Multicall3.aggregate3: várias chamadas numa só (falhas viram success=false)
+            const [calls] = MC_IFACE.decodeFunctionData('aggregate3', data);
+            this.multicalls = (this.multicalls || 0) + 1;
+            const out = calls.map((c) => {
+                try { return [true, this.exec(s, { from, to: c.target, data: c.callData })]; } catch (e) {
+                    if (!(e instanceof Revert) || !c.allowFailure) throw e;
+                    return [false, '0x'];
+                }
+            });
+            return MC_IFACE.encodeFunctionResult('aggregate3', [out]);
         }
         const special = [ADDR.POOL, ADDR.NFPM, ADDR.ROUTER, ADDR.QUOTER].includes(to);
         const meta = this.contracts?.[to];

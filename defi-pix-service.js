@@ -907,10 +907,14 @@
     const IMPACT_WARN = 0.03;                            // avisa acima de 3% de perda frente ao mercado
     const IMPACT_BLOCK = 0.10;                           // bloqueia acima de 10%
     const NATIVE_RESERVE = { POL: 3.0, ETH: 0.0015, CELO: 0.05 };
+    const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+    const MULTICALL3_ABI = ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)'];
+    const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado')), ms))]);
     const QUOTER_ABI = [
         'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
         'function quoteExactInput(bytes path, uint256 amountIn) returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)'
     ];
+    const quoterIface = new ethers.utils.Interface(QUOTER_ABI);
     const ROUTER_ABI = [
         'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)',
         'function exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum)) payable returns (uint256 amountOut)'
@@ -991,28 +995,42 @@
         const best = { out: ethers.constants.Zero, hops: null };
         const consider = (out, hops) => { if (out.gt(best.out)) { best.out = out; best.hops = hops; } };
 
-        const direct = await Promise.allSettled(SWAP_FEE_TIERS.map((fee) =>
-            quoter.callStatic.quoteExactInputSingle({ tokenIn: addrIn, tokenOut: addrOut, amountIn: rawIn, fee, sqrtPriceLimitX96: 0 })));
-        direct.forEach((r, i) => { if (r.status === 'fulfilled') consider(r.value.amountOut, [{ tokenIn: addrIn, fee: SWAP_FEE_TIERS[i], tokenOut: addrOut }]); });
+        // Todas as rotas candidatas (diretas em cada tarifa + dois saltos via USDT/WPOL/USDC) vão numa
+        // ÚNICA consulta à rede (Multicall3). Dezenas de consultas soltas fazem o RPC público limitar
+        // e a cotação ficava "Buscando…" por mais de um minuto.
+        const candidates = SWAP_FEE_TIERS.map((fee) => ({
+            hops: [{ tokenIn: addrIn, fee, tokenOut: addrOut }],
+            data: quoterIface.encodeFunctionData('quoteExactInputSingle', [{ tokenIn: addrIn, tokenOut: addrOut, amountIn: rawIn, fee, sqrtPriceLimitX96: 0 }])
+        }));
+        const mids = ['USDT', 'WPOL', 'USDC'].map((s) => getTokenMeta(137, s)).filter(Boolean)
+            .map((m) => m.address).filter((a) => a.toLowerCase() !== addrIn.toLowerCase() && a.toLowerCase() !== addrOut.toLowerCase());
+        mids.forEach((mid) => HOP_FEE_TIERS.forEach((f1) => HOP_FEE_TIERS.forEach((f2) => candidates.push({
+            hops: [{ tokenIn: addrIn, fee: f1, tokenOut: mid }, { tokenIn: mid, fee: f2, tokenOut: addrOut }],
+            data: quoterIface.encodeFunctionData('quoteExactInput', [ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'], [addrIn, f1, mid, f2, addrOut]), rawIn])
+        }))));
+        const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
 
-        // Dois saltos (via USDT, WPOL ou USDC) só quando não há pool direta ou ela paga mal frente ao mercado
-        const unitIn = tokenUnitUsd(137, fromMeta), unitOut = tokenUnitUsd(137, toMeta);
-        const directValueRatio = best.hops && unitIn > 0 && unitOut > 0
-            ? (parseFloat(ethers.utils.formatUnits(best.out, toMeta.decimals)) * unitOut) / (parseFloat(ethers.utils.formatUnits(rawIn, fromMeta.decimals)) * unitIn)
-            : 0;
-        if (!best.hops || directValueRatio < 0.99) {
-            const mids = ['USDT', 'WPOL', 'USDC'].map((s) => getTokenMeta(137, s)).filter(Boolean)
-                .map((m) => m.address).filter((a) => a.toLowerCase() !== addrIn.toLowerCase() && a.toLowerCase() !== addrOut.toLowerCase());
-            const combos = [];
-            mids.forEach((mid) => HOP_FEE_TIERS.forEach((f1) => HOP_FEE_TIERS.forEach((f2) => combos.push({ mid, f1, f2 }))));
-            const hopResults = await Promise.allSettled(combos.map((c) =>
-                quoter.callStatic.quoteExactInput(ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'], [addrIn, c.f1, c.mid, c.f2, addrOut]), rawIn)));
-            hopResults.forEach((r, i) => {
-                if (r.status !== 'fulfilled') return;
-                const c = combos[i];
-                consider(r.value.amountOut, [{ tokenIn: addrIn, fee: c.f1, tokenOut: c.mid }, { tokenIn: c.mid, fee: c.f2, tokenOut: addrOut }]);
-            });
+        let results = null;
+        try {
+            const multicall = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, provider);
+            const res = await withTimeout(multicall.callStatic.aggregate3(candidates.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }))), 20000);
+            results = res.map((r, i) => (r.success ? decodeOut(candidates[i], r.returnData) : null));
+        } catch (err) {
+            // Reserva: poucas consultas por vez, cada uma com prazo.
+            results = [];
+            for (let i = 0; i < candidates.length; i += 4) {
+                const part = await Promise.allSettled(candidates.slice(i, i + 4).map((c) =>
+                    withTimeout(provider.call({ to: QUOTER_V2, data: c.data }), 8000).then((ret) => decodeOut(c, ret))));
+                part.forEach((r) => results.push(r.status === 'fulfilled' ? r.value : null));
+            }
         }
+        // Prefere a rota direta quando ela paga praticamente o mesmo (menos contratos envolvidos).
+        results.forEach((out, i) => {
+            if (!out || out.isZero()) return;
+            const c = candidates[i];
+            if (c.hops.length === 2 && best.hops && best.hops.length === 1 && out.lte(best.out.mul(1005).div(1000))) return;
+            consider(out, c.hops);
+        });
         if (!best.hops) return null;
         const symbolOf = (addr) => (REG.findToken(137, addr)?.symbol || REG.shortAddress(addr));
         const label = best.hops.length === 1

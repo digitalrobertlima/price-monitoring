@@ -240,6 +240,8 @@ try {
         /concluída/.test(s3.msg) && s3.txs.length === 1 && Boolean(hopTx) && hopTx.status === 1 && hopTx.args[0].amountOutMinimum.gt(0) && Math.abs(brlaGot - s3.quoted) / s3.quoted < 0.002,
         `cotado ${s3.quoted} BRLA, recebido ${brlaGot.toFixed(4)} | ${s3.msg}`);
 
+    check('cotação consulta todas as rotas numa única chamada à rede (Multicall3)', (chain.multicalls || 0) > 0, `${chain.multicalls || 0} consultas agrupadas`);
+
     // Pool rasa: USDT -> BRZ pagaria 26% abaixo do mercado -> bloqueado
     await page.selectOption('#swap-from-token', 'USDT');
     await page.selectOption('#swap-to-token', 'BRZ');
