@@ -77,6 +77,7 @@ try {
     check('carteira criada com o endereço das palavras mostradas', created.address === ethers.Wallet.fromMnemonic(words.join(' ')).address, created.address);
     check('nome com HTML é mostrado como texto (sem injeção)', (await page.locator('#rdesk-mw-sheet b').count()) === 0 && created.name === 'Caixa <b>Forte</b>');
 
+    await waitFn(page, (k) => Boolean(JSON.parse(localStorage.getItem(k) || 'null')?.encryptedSecrets), VAULT_KEY, { timeout: 15000 });
     const blob = await stored(page, VAULT_KEY);
     const raw = JSON.stringify(blob);
     check('frase não fica em texto puro no aparelho; cofre com 600 mil iterações',
