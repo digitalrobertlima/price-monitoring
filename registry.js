@@ -38,14 +38,14 @@
             { symbol: 'BRZ', name: 'Brazilian Digital Token', address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, priceKey: 'BRL' },
             { symbol: 'BRLA', name: 'BRLA Digital', address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, priceKey: 'BRL' },
             { symbol: 'WETH', name: 'Ether embrulhado', address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18, priceKey: 'ETH' },
-            { symbol: 'WBTC', name: 'Bitcoin embrulhado', address: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', decimals: 8, priceKey: 'BTC' }
+            { symbol: 'WBTC', name: 'Bitcoin pareado (token, não é BTC nativo)', address: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', decimals: 8, priceKey: 'BTC' }
         ],
         1: [
             { symbol: 'ETH', name: 'Ether (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
             { symbol: 'WETH', name: 'Ether embrulhado', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, priceKey: 'ETH' },
             { symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, priceKey: 'USD' },
             { symbol: 'USDC', name: 'USD Coin', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, priceKey: 'USD' },
-            { symbol: 'WBTC', name: 'Bitcoin embrulhado', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8, priceKey: 'BTC' }
+            { symbol: 'WBTC', name: 'Bitcoin pareado (token, não é BTC nativo)', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8, priceKey: 'BTC' }
         ],
         8453: [
             { symbol: 'ETH', name: 'Ether (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
@@ -57,7 +57,7 @@
             { symbol: 'WETH', name: 'Ether embrulhado', address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', decimals: 18, priceKey: 'ETH' },
             { symbol: 'USDT', name: 'Tether USD', address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', decimals: 6, priceKey: 'USD' },
             { symbol: 'USDC', name: 'USD Coin', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', decimals: 6, priceKey: 'USD' },
-            { symbol: 'WBTC', name: 'Bitcoin embrulhado', address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', decimals: 8, priceKey: 'BTC' }
+            { symbol: 'WBTC', name: 'Bitcoin pareado (token, não é BTC nativo)', address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', decimals: 8, priceKey: 'BTC' }
         ],
         10: [
             { symbol: 'ETH', name: 'Ether (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
@@ -231,11 +231,31 @@
         return a.length > head + tail + 3 ? `${a.slice(0, head)}…${a.slice(-tail)}` : a;
     }
 
+    // =====================================================================
+    // TAXA DO CRIADOR — pronta e DESLIGADA. Para ligar: rateBps > 0 (100 = 1%) e as carteiras de destino.
+    // Só vale onde o app agrega valor (trocas e Render). Nunca em enviar, receber ou Pix.
+    // Limite máximo fixo de 1%; sempre aparece no recibo antes de confirmar.
+    // =====================================================================
+    const CREATOR_FEE = Object.freeze({
+        rateBps: 0,          // ex.: 20 = 0,2%
+        evmAddress: '',      // sua carteira 0x… (recebe nas trocas da Uniswap e no Render)
+        lifiIntegrator: 'rdesk-sentinel' // nas rotas da LI.FI a taxa vai para a carteira cadastrada no portal deles para este nome
+    });
+    const MAX_CREATOR_BPS = 100;
+    function creatorFee() {
+        // Testes automáticos podem injetar uma configuração antes do app carregar (nunca fica salva)
+        const c = Object.assign({}, CREATOR_FEE, global.__RDESK_CREATOR_FEE_TEST__ || {});
+        const rateBps = Math.floor(Number(c.rateBps) || 0);
+        const okAddr = Boolean(c.evmAddress && global.ethers?.utils.isAddress(c.evmAddress));
+        const active = rateBps > 0 && rateBps <= MAX_CREATOR_BPS && okAddr;
+        return { active, rateBps: active ? rateBps : 0, rate: active ? rateBps / 10000 : 0, evmAddress: okAddr ? global.ethers.utils.getAddress(c.evmAddress) : '', lifiIntegrator: c.lifiIntegrator };
+    }
+
     global.RdeskRegistry = {
         CHAINS, BITCOIN, BUILTIN_TOKENS,
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
         explorerTokenUrl, explorerAddressUrl, explorerTxUrl,
-        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge
+        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge, creatorFee, MAX_CREATOR_BPS
     };
 })(window);

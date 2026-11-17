@@ -29,6 +29,7 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Várias redes:** Polygon, Ethereum, Base, Arbitrum, Optimism e Celo, além de **Bitcoin nativo** (endereço `bc1q…` derivado da mesma frase, BIP84). Moedas já cadastradas: POL, ETH, CELO, BTC, USDT, USDC, WETH, WBTC, BRZ e BRLA, cada uma com o contrato oficial visível para conferência e link para o explorador da rede.
 - **Adicionar qualquer moeda:** cole o contrato e escolha a rede; a app lê nome, símbolo e casas decimais direto da blockchain. Moeda com símbolo igual a uma oficial ganha um sufixo para não confundir.
 - **Bitcoin no centro:** o Bitcoin vem primeiro em tudo (lista de moedas, receber, troca) e é a cor da marca (laranja). Cada rede mostra um selo de maturidade: Bitcoin "a mais consolidada, desde 2009", Ethereum "consolidada, desde 2015" e as demais "rede jovem", com aviso para usar essas redes para movimentar e não para guardar tudo. O Render avisa que roda na Polygon.
+- **Segurança das rotas:** antes de mostrar o recibo, o app confere a resposta da LI.FI: contrato oficial, valor, carteira de origem e endereço de destino. Rota adulterada é recusada.
 - **Trocar Bitcoin dentro do app:** BTC nativo ⇄ moedas das outras redes, nos dois sentidos, pela LI.FI (que escolhe o serviço: LayerSwap, Relay…). Antes de assinar, o app confere o PSBT recebido: as moedas gastas são suas, o depósito vai para o endereço e valor cotados, existe a anotação da troca, o troco volta para você e a taxa não é absurda. O recibo mostra a taxa da rede (sat e R$), a taxa do serviço em R$ e o aviso de que, durante ~25 min, o valor fica com o serviço de ponte.
 - **Receber e enviar:** escolha a rede, veja o QR e o endereço; ao enviar, a confirmação mostra rede, contrato da moeda e endereço inteiro. Enviar para o próprio contrato de uma moeda é bloqueado. Bitcoin com escolha de velocidade da taxa, cada uma já com o valor estimado em reais.
 - **Leitor de QR Code** em todos os campos de endereço (câmera ou foto), entendendo `ethereum:` (com rede), `bitcoin:` (com valor) e endereço puro.
@@ -37,6 +38,14 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Cotações em tempo real:** atualizadas a cada 10 s, com fontes de reserva para o dólar; quando nenhuma responde, a tela avisa que os valores são aproximados.
 - **Troca:** Uniswap V3 na Polygon procurando a melhor tarifa e rotas em dois saltos (ex.: POL → USDT → BRLA numa só transação); bloqueia trocas que perderiam mais de 10% para o mercado. Seta de inverter troca rede, moeda e quantidade. Outras redes e pontes via LI.FI.
 - **Ícones:** são selos gerados pela própria app (letra/símbolo e cor), não os logotipos oficiais.
+
+## Taxa do criador (pronta e desligada)
+Fica em `registry.js` (`CREATOR_FEE`). Vem com `rateBps: 0`, ou seja, desligada. Para ligar:
+1. `rateBps`: 20 = 0,2% (limite máximo fixo de 1%; acima disso o app ignora e desliga).
+2. `evmAddress`: a carteira 0x que recebe nas trocas da Uniswap e no Render.
+3. Nas rotas da LI.FI (entre redes e Bitcoin) a taxa vai para a carteira cadastrada no portal da LI.FI para o integrador `rdesk-sentinel`.
+
+Só cobra onde o app agrega valor: trocas (sobre o valor trocado) e Render (só sobre o que rendeu, ao colher). Nunca em enviar, receber ou Pix. Sempre aparece no recibo, em reais, antes de confirmar.
 
 ## O que ainda NÃO está validado
 
