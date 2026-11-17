@@ -38,7 +38,7 @@
         ETH: { id: 'ETH', name: 'Ether', unit: 'ETH', llama: 'coingecko:ethereum', hint: 'Mostra se você ficou mais rico ou mais pobre em ether.' }
     };
     const REF_KEY = 'rdesk_ref_currency_v1';
-    const CACHE_PREFIX = 'rdesk_history_v2_';
+    const CACHE_PREFIX = 'rdesk_history_v4_'; // v3: inclui o POL devolvido pelos contratos
     const PAGE_SIZE = 40;
 
     const W = () => global.RdeskWallet;
@@ -52,6 +52,7 @@
         ptax: {},
         llama: {}, // addr -> { 'YYYY-MM-DD': usd }
         exact: {}, // hash -> { POL, BTC, ETH } preço no minuto da transação (entradas e saídas)
+        nativeEnd: {}, // 'YYYY-MM-DD' -> saldo real de POL nativo no fim do dia (lido da rede)
         seriesReady: false,
         loading: false,
         progress: '',
@@ -192,13 +193,15 @@
         const a = Math.abs(v);
         if (ref === 'USD') return `${sign}US$ ${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         if (ref === 'BRL') return `${sign}${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BRZ`;
+        // Bitcoin sempre com 8 casas (0,00000000); Ether com 6
         const digits = ref === 'BTC' ? 8 : 6;
-        const txt = a === 0 ? '0' : a.toLocaleString('pt-BR', { maximumFractionDigits: a >= 1 ? 4 : digits, maximumSignificantDigits: a >= 1 ? undefined : 4 });
+        const txt = a.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
         return `${sign}${txt} ${REFS[ref].unit}`;
     }
     const fmtPct = (p) => `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`;
-    function fmtAmt(a) {
+    function fmtAmt(a, sym) {
         const x = Math.abs(a);
+        if (/^(W?BTC|CBBTC)$/i.test(String(sym || ''))) return x.toLocaleString('pt-BR', { minimumFractionDigits: 8, maximumFractionDigits: 8 });
         return x === 0 ? '0' : x.toLocaleString('pt-BR', { maximumFractionDigits: x >= 1000 ? 2 : x >= 1 ? 4 : 6, maximumSignificantDigits: x < 1 ? 4 : undefined });
     }
 
@@ -239,11 +242,12 @@
         const map = new Map();
         const get = (hash, ts) => {
             const h = lower(hash);
-            if (!map.has(h)) map.set(h, { hash: h, unix: Math.floor(new Date(ts).getTime() / 1000), to: '', method: '', ok: true, gasPol: 0, items: [], contractTouched: false, fromSelf: false });
+            if (!map.has(h)) map.set(h, { hash: h, unix: Math.floor(new Date(ts).getTime() / 1000), to: '', method: '', ok: true, gasPol: 0, items: [], contractTouched: false, fromSelf: false, block: 0 });
             return map.get(h);
         };
         for (const tx of txs) {
             const e = get(tx.hash, tx.timestamp);
+            e.block = Number(tx.block_number || tx.block || 0) || e.block;
             const from = lower(tx.from?.hash), to = lower(tx.to?.hash);
             e.to = to; e.method = tx.method || ''; e.ok = tx.status === 'ok';
             e.fromSelf = from === wallet;
@@ -272,10 +276,106 @@
             if (!(amt > 0)) continue;
             const from = lower(tr.from?.hash), to = lower(tr.to?.hash);
             const e = get(tr.transaction_hash, tr.timestamp);
+            e.block = e.block || Number(tr.block_number || 0);
             if (to === wallet && from !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: 1, peerC: Boolean(tr.from?.is_contract) }); if (tr.from?.is_contract) e.contractTouched = true; }
             else if (from === wallet && to !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: -1, peerC: Boolean(tr.to?.is_contract) }); if (tr.to?.is_contract) e.contractTouched = true; }
         }
-        return [...map.values()].sort((a, b) => a.unix - b.unix).map(classify);
+        const list = [...map.values()].sort((a, b) => a.unix - b.unix);
+        await addNativeReturns(list, wallet);
+        return list.map(classify);
+    }
+
+    // POL nativo que volta de contratos (troca que paga em POL, tirar do render, sobra devolvida)
+    // não aparece no serviço de histórico da Polygon (transações internas não processadas).
+    // Ele é deduzido dos recibos de cada transação: o contrato desembrulha WPOL (evento Withdrawal)
+    // e manda o POL para você; e o que você mandou a mais e não foi embrulhado (Deposit) volta.
+    const T_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c';
+    const T_WITHDRAWAL = '0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65';
+    async function fetchReceipts(hashes) {
+        const urls = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const out = {};
+        for (let i = 0; i < hashes.length; i += 20) {
+            const chunk = hashes.slice(i, i + 20);
+            const body = chunk.map((h, k) => ({ jsonrpc: '2.0', id: k, method: 'eth_getTransactionReceipt', params: [h] }));
+            for (const u of urls) {
+                try {
+                    const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+                    const j = await r.json();
+                    if (!Array.isArray(j)) throw new Error('sem lote');
+                    j.forEach((x) => { if (x && x.result) out[chunk[x.id]] = x.result; });
+                    if (chunk.every((h) => out[h])) break;
+                } catch (e) { /* tenta o próximo servidor */ }
+            }
+            setProgress(`Conferindo POL devolvido pelos contratos: ${Math.min(i + 20, hashes.length)} de ${hashes.length}…`);
+        }
+        return out;
+    }
+    // Só contratos que embrulham/desembrulham POL de forma conhecida (Uniswap e o próprio WPOL).
+    // Em pontes e agregadores o POL enviado segue adiante sem virar WPOL: lá não há "sobra" a deduzir.
+    const NATIVE_AWARE = new Set([
+        NFPM, WPOL,
+        '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45', // SwapRouter02
+        '0xec7be89e9d109e7e3fec59c222cf297125fefda2', // Universal Router
+        '0x643770e279d5d0733f21d6dc03a8efbabf3255b4', // Universal Router (anterior)
+        '0x1095692a6237d83c6a72f3f5efedb9a670c49223'  // Universal Router (v4)
+    ]);
+    // Saldo REAL de POL nativo no fim de cada dia com movimento, lido da rede (o histórico não mostra
+    // todo POL que chega de contratos). Corrige o gráfico mesmo quando algum retorno não foi deduzido.
+    async function rpcBatch(calls) {
+        const urls = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const out = new Array(calls.length).fill(null);
+        for (let i = 0; i < calls.length; i += 20) {
+            const chunk = calls.slice(i, i + 20);
+            const body = chunk.map((c, k) => ({ jsonrpc: '2.0', id: k, method: c[0], params: c[1] }));
+            for (const u of urls) {
+                try {
+                    const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+                    const j = await r.json();
+                    if (!Array.isArray(j)) throw new Error('sem lote');
+                    j.forEach((x) => { if (x && x.result !== undefined && x.result !== null) out[i + x.id] = x.result; });
+                    if (chunk.every((_, k) => out[i + k] !== null)) break;
+                } catch (e) { /* próximo servidor */ }
+            }
+        }
+        return out;
+    }
+    async function loadNativeBalances(wallet) {
+        const lastBlockOfDay = {};
+        st.events.forEach((e) => { const k = dayKey(e.unix); if (e.block > (lastBlockOfDay[k] || 0)) lastBlockOfDay[k] = e.block; });
+        const days = Object.keys(lastBlockOfDay).sort().slice(-400);
+        if (!days.length) return;
+        setProgress('Conferindo o saldo de POL de cada dia…');
+        const res = await rpcBatch(days.map((k) => ['eth_getBalance', [wallet, `0x${lastBlockOfDay[k].toString(16)}`]]));
+        days.forEach((k, i) => { if (res[i]) st.nativeEnd[k] = Number(global.ethers.utils.formatEther(res[i])); });
+    }
+
+    async function addNativeReturns(list, wallet) {
+        const need = list.filter((e) => e.ok && e.fromSelf && NATIVE_AWARE.has(e.to) && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
+        if (!need.length) return;
+        const receipts = await fetchReceipts(need.map((e) => e.hash));
+        const word = (hex) => Number(global.ethers.utils.formatEther(global.ethers.BigNumber.from(hex || '0x0')));
+        need.forEach((e) => {
+            const rc = receipts[e.hash];
+            if (!rc) return;
+            let wrapped = 0, unwrapped = 0;
+            (rc.logs || []).forEach((lg) => {
+                if (lower(lg.address) !== WPOL || !lg.topics || lg.topics.length < 2) return;
+                const who = `0x${lg.topics[1].slice(26)}`.toLowerCase();
+                // contrato que embrulha/desembrulha: o próprio destino da transação; se foi direto no WPOL, é você
+                if (who !== (e.to === WPOL ? wallet : e.to)) return;
+                if (lg.topics[0] === T_DEPOSIT) wrapped += word(lg.data);
+                if (lg.topics[0] === T_WITHDRAWAL) unwrapped += word(lg.data);
+            });
+            const sentNative = e.items.filter((i) => i.sym === 'POL' && i.dir < 0).reduce((s, i) => s + i.amt, 0);
+            const refund = sentNative > 0 ? sentNative - wrapped : 0;
+            if (refund > 1e-9) { // o que não foi usado voltou: o envio real foi menor
+                const outItem = e.items.find((i) => i.sym === 'POL' && i.dir < 0);
+                outItem.amt = Math.max(0, outItem.amt - refund);
+                if (outItem.amt < 1e-12) e.items.splice(e.items.indexOf(outItem), 1);
+            }
+            if (unwrapped > 1e-9) e.items.push({ sym: 'POL', kind: 'POL', amt: unwrapped, dir: 1, peerC: true });
+            e.nativeChecked = true;
+        });
     }
 
     // Tipo e título em linguagem simples
@@ -374,7 +474,8 @@
     // para render continuam contando como suas) e avalia com o preço de cada dia.
     function computeSeries() {
         if (!st.events.length) return [];
-        const hold = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
+        const hold = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 }; // POL aqui = WPOL (o nativo fica em 'native')
+        let native = 0;
         const pool = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
         const byDay = new Map();
         st.events.forEach((e) => { const k = dayKey(e.unix); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
@@ -385,17 +486,28 @@
             const key = new Date(t).toISOString().slice(0, 10);
             let flowIn = 0, flowOut = 0;
             (byDay.get(key) || []).forEach((e) => {
-                hold.POL -= e.gasPol;
-                e.items.forEach((i) => {
-                    hold[i.kind] += i.dir * i.amt;
-                    if (e.type.startsWith('RENDER')) pool[i.kind] = Math.max(0, pool[i.kind] - i.dir * i.amt);
-                });
+                native -= e.gasPol;
+                e.items.forEach((i) => { if (i.sym === 'POL') native += i.dir * i.amt; else hold[i.kind] += i.dir * i.amt; });
+                if (e.type.startsWith('RENDER')) {
+                    // Dentro do render as moedas se convertem umas nas outras (POL vira USDT e vice-versa).
+                    // Por isso o que volta tira do "cesto" uma FRAÇÃO do valor, e não as mesmas moedas;
+                    // devolver 80% ou mais do valor conta como posição encerrada (cesto zerado).
+                    const priceNow = (k) => usdOn(k, key);
+                    const basketUsd = Object.keys(pool).reduce((s, k) => s + pool[k] * priceNow(k), 0);
+                    e.items.filter((i) => i.dir < 0).forEach((i) => { pool[i.kind] += i.amt; });
+                    const backUsd = e.items.filter((i) => i.dir > 0).reduce((s, i) => s + i.amt * priceNow(i.kind), 0);
+                    if (backUsd > 0 && basketUsd > 0) {
+                        const frac = backUsd / basketUsd >= 0.8 ? 1 : backUsd / basketUsd;
+                        Object.keys(pool).forEach((k) => { pool[k] *= (1 - frac); });
+                    }
+                }
                 const v = valued(e);
                 if (v.cls === 'IN') flowIn += (v.inUsd || v.outUsd) / v.refUsd;
                 if (v.cls === 'OUT') flowOut += (v.outUsd || v.inUsd) / v.refUsd;
             });
-            let usd = 0;
-            Object.keys(hold).forEach((k) => { usd += Math.max(0, hold[k] + pool[k]) * usdOn(k, key); });
+            if (Number.isFinite(st.nativeEnd[key])) native = st.nativeEnd[key]; // saldo real lido da rede
+            let usd = Math.max(0, native) * usdOn('POL', key);
+            Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
             pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
             if (key >= today) break;
             if (pts.length > 2000) break;
@@ -411,16 +523,17 @@
     function cacheKey(w) { return CACHE_PREFIX + w; }
     function saveCache() {
         try {
-            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
-            localStorage.setItem(cacheKey(st.wallet), JSON.stringify({ at: st.savedAt, ev: slim }));
+            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, f: e.fromSelf ? 1 : 0, n: e.nativeChecked ? 1 : 0, b: e.block || 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
+            localStorage.setItem(cacheKey(st.wallet), JSON.stringify({ at: st.savedAt, ev: slim, nat: st.nativeEnd }));
         } catch (e) {}
     }
     function loadCache(w) {
         try {
             const raw = JSON.parse(localStorage.getItem(cacheKey(w)) || 'null');
             if (!raw || !Array.isArray(raw.ev)) return false;
-            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
+            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), fromSelf: Boolean(x.f), nativeChecked: Boolean(x.n), block: x.b || 0, items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
             st.savedAt = raw.at || 0;
+            st.nativeEnd = raw.nat || {};
             return true;
         } catch (e) { return false; }
     }
@@ -454,7 +567,8 @@
                 st.events = events;
                 st.savedAt = Date.now();
                 setProgress('Buscando os preços de cada dia…');
-                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices()]);
+                st.nativeEnd = {};
+                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices(), loadNativeBalances(w).catch(() => {})]);
                 saveCache();
             } catch (err) {
                 st.error = 'Não deu para ler o histórico agora (o serviço de histórico não respondeu). Toque em Atualizar para tentar de novo.';
@@ -603,12 +717,16 @@
                 tip.hidden = false;
                 tip.innerHTML = `<strong>${esc(when)}</strong><span class="money">${esc(fmtRef(p.ref, ref))} • ${esc(fmtBRL(p.usd * (p.live ? usdBrl : fxOn(p.key))))}</span>${flows ? `<small class="money">${esc(flows)}</small>` : ''}`;
             } else tip.hidden = true;
-            const chg = vals[0] > 0 ? ((vals[li] / vals[0]) - 1) * 100 : null;
-            canvas.setAttribute('aria-label', `Patrimônio em ${REFS[ref].name}: de ${fmtRef(vals[0], ref)} para ${fmtRef(vals[li], ref)}${chg !== null ? ` (${fmtPct(chg)})` : ''}`);
+            // Ganho do período SEM contar dinheiro que entrou ou saiu (saque não é prejuízo)
+            const flowsNet = data.slice(1).reduce((s, p) => s + p.flowIn - p.flowOut, 0);
+            const gain = vals[li] - vals[0] - flowsNet;
+            const base = vals[0] + data.slice(1).reduce((s, p) => s + p.flowIn, 0);
+            const pct = base > 0 ? (gain / base) * 100 : null;
+            canvas.setAttribute('aria-label', `Patrimônio em ${REFS[ref].name}: de ${fmtRef(vals[0], ref)} para ${fmtRef(vals[li], ref)}; ganho no período ${fmtRef(gain, ref, { sign: true })}`);
             const sum = document.getElementById('home-chart-summary');
             if (sum) {
-                sum.textContent = chg === null ? '' : `${fmtPct(chg)} no período`;
-                sum.className = `chg money ${chg > 0.005 ? 'up' : chg < -0.005 ? 'down' : ''}`;
+                sum.textContent = `${gain >= 0 ? 'Ganho' : 'Perda'} no período: ${fmtRef(gain, ref, { sign: true })}${pct !== null ? ` (${fmtPct(pct)})` : ''}`;
+                sum.className = `chg money ${gain > 0 ? 'up' : gain < 0 ? 'down' : ''}`;
             }
         }
         return {
@@ -680,7 +798,7 @@
         page.forEach(({ e, v }) => {
             if (v.key !== lastDay) { html += `<h3 class="extrato-day">${esc(dayTitle(v.key))}</h3>`; lastDay = v.key; }
             const [ico, tone] = TYPE_ICON[e.type] || TYPE_ICON.OTHER;
-            const amounts = e.items.map((i) => `${i.dir > 0 ? '+' : '−'}${fmtAmt(i.amt)} ${i.sym}`).join(' · ');
+            const amounts = e.items.map((i) => `${i.dir > 0 ? '+' : '−'}${fmtAmt(i.amt, i.sym)} ${i.sym}`).join(' · ');
             const time = new Date(e.unix * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             let value = '', vTone = '';
             if (v.cls === 'IN') { value = `+${fmtBRL((v.inUsd || v.outUsd) * v.fx)}`; vTone = 'up'; }
@@ -721,7 +839,7 @@
         if (!e) return;
         const v = valued(e);
         const when = new Date(e.unix * 1000).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
-        const items = e.items.map((i) => `<li><span>${i.dir > 0 ? 'Entrou' : 'Saiu'}</span><strong class="money">${i.dir > 0 ? '+' : '−'}${esc(fmtAmt(i.amt))} ${esc(i.sym)}</strong></li>`).join('');
+        const items = e.items.map((i) => `<li><span>${i.dir > 0 ? 'Entrou' : 'Saiu'}</span><strong class="money">${i.dir > 0 ? '+' : '−'}${esc(fmtAmt(i.amt, i.sym))} ${esc(i.sym)}</strong></li>`).join('');
         const el = sheet(`
             <div class="ex-detail">
                 <h2>${esc(e.title)}</h2>
@@ -824,7 +942,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };

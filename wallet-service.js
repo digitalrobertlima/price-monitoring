@@ -2673,8 +2673,9 @@
     }
 
     // Quantidade legível: 2,038 BRZ em vez de 2,03796471 BRZ (Bitcoin pequeno mantém precisão)
-    function formatAmount(a) {
+    function formatAmount(a, sym) {
         const x = Math.abs(Number(a) || 0);
+        if (/^(W?BTC|CBBTC)$/i.test(String(sym || ''))) return x.toLocaleString('pt-BR', { minimumFractionDigits: 8, maximumFractionDigits: 8 });
         if (x === 0) return '0';
         return x.toLocaleString('pt-BR', x >= 1
             ? { maximumFractionDigits: x >= 1000 ? 2 : 4 }
@@ -2772,7 +2773,7 @@
                             ${REG.tokenOnChainBadge(b.symbol, b.chainId, 38)}
                             <span class="asset-names">
                                 <strong>${esc(friendlyTokenName(b))}</strong>
-                                <span class="asset-meta money">${esc(formatAmount(b.amount))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
+                                <span class="asset-meta money">${esc(formatAmount(b.amount, b.symbol))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
                             </span>
                         </span>
                         <span class="asset-right money">

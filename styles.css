@@ -1976,7 +1976,7 @@ li.done .step-text strong { text-decoration: line-through; text-decoration-color
     background: transparent; color: var(--text-primary); font-size: 1rem; font-family: var(--font-sans); text-align: left; cursor: pointer;
 }
 .ob-menu button:active { background: rgba(255, 255, 255, 0.05); }
-.ob-menu button span { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--bg-surface-2); }
+.ob-menu button > span:first-child { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--bg-surface-2); }
 .ob-menu .muted-sm { margin-top: 10px; }
 .explain-list { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); }
 .explain-list strong { color: var(--text-primary); }
@@ -2113,7 +2113,7 @@ body.privacy-on .result-hero .money::after { color: var(--text-primary); -webkit
 .ex-link { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .ref-picker button { align-items: flex-start; padding: 10px; min-height: 64px; }
 .ref-picker button.on { background: var(--mint-soft); outline: 1px solid rgba(52, 211, 153, 0.45); }
-.ref-picker .ref-txt { display: flex; flex-direction: column; gap: 2px; }
+.ref-picker .ref-txt { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; text-align: left; line-height: 1.3; }
 .ref-picker .ref-txt small { color: var(--text-secondary); font-size: 0.85rem; }
 .ref-picker button > span:first-child { font-weight: 800; color: #fbbf24; }
 body.privacy-on .eq-tip .money, body.privacy-on #home-chart-summary { visibility: hidden; }

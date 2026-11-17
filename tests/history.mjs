@@ -15,7 +15,7 @@ const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol * Math.max(1, Math.abs
 
 try {
     const context = await browser.newContext(MOBILE);
-    const netOpts = { history: (addr) => (addr === OWNER.toLowerCase() ? makeHistory(OWNER) : null) };
+    const netOpts = { history: (addr) => (addr === OWNER.toLowerCase() ? makeHistory(OWNER) : null), receipts: makeHistory(OWNER).receipts };
     const { page, pageErrors, cspViolations } = await openApp(context, url, chain, netOpts);
     const ui = (fn, arg) => page.evaluate(fn, arg);
     await importWalletViaUi(page);
@@ -26,7 +26,14 @@ try {
     // ================================================================ 1. Classificação
     const evs = await ui(() => window.RdeskHistory.getEvents());
     const titles = evs.map((e) => e.title);
-    check('histórico lido desde a 1ª transação, moeda-lixo ignorada (8 transações)', evs.length === 8, titles.join(' | '));
+    check('histórico lido desde a 1ª transação, moeda-lixo ignorada (9 transações)', evs.length === 9, titles.join(' | '));
+    const sw2 = evs.find((e) => e.title === 'Trocou USDT por POL');
+    const ren = evs.find((e) => e.title === 'Colocou para render');
+    const out5 = evs.find((e) => e.title === 'Tirou do render');
+    check('POL que volta dos contratos (fora do histórico da Polygon) é deduzido dos recibos',
+        sw2 && sw2.items.some((i) => i.sym === 'POL' && i.dir > 0 && Math.abs(i.amt - 210) < 1e-9) &&
+        ren && ren.items.some((i) => i.sym === 'POL' && i.dir < 0 && Math.abs(i.amt - 100) < 1e-9) &&
+        out5 && out5.items.some((i) => i.sym === 'POL' && i.dir > 0 && Math.abs(i.amt - 5) < 1e-9), JSON.stringify([sw2?.items, ren?.items, out5?.items]));
     check('cada transação ganha um nome que qualquer um entende',
         ['Recebeu POL', 'Trocou POL por USDT', 'Colocou para render', 'Recebeu USDT', 'Tirou do render', 'Enviou POL', 'Autorizou o uso de USDT', 'Operação que falhou (só a taxa foi cobrada)'].every((t) => titles.includes(t)), titles.join(' | '));
     check('só transferências com pessoas contam como entrada/saída de dinheiro',
@@ -63,6 +70,13 @@ try {
     const d16 = sUsd.find((p) => p.key === new Date(Date.now() - 16 * 86400000).toISOString().slice(0, 10));
     const d15 = sUsd.find((p) => p.key === new Date(Date.now() - 15 * 86400000).toISOString().slice(0, 10));
     check('colocar para render não derruba o patrimônio (as moedas continuam suas)', d15 && d16 && d15.ref / d16.ref > 0.97, `${d16?.ref.toFixed(3)} → ${d15?.ref.toFixed(3)}`);
+    // Depois de tirar do render (com o POL convertido em dólar dentro da pool) não sobra POL "fantasma"
+    const d4 = sUsd.find((p) => p.key === new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10));
+    const expectD4 = (1000 - 300 - 100 + 210 + 5 - 0.08) * histPrice('0x0d500b1d', 4) + (28 - 10 + 50 - 20 + 18);
+    check('ao tirar do render, o patrimônio volta a ser só o que está na carteira (sem saldo fantasma)', d4 && near(d4.ref, expectD4, 1e-6), `${d4?.ref} esperado ${expectD4}`);
+    check('sem saldo histórico na rede (servidor sem arquivo), o gráfico usa a reconstrução sem quebrar', (await ui(() => window.RdeskHistory.getState().nativeDays)) === 0);
+    const maxRef = Math.max(...sUsd.map((p) => p.ref));
+    check('o patrimônio nunca passa do que realmente entrou + ganhos plausíveis', maxRef < 160, `máximo ${maxRef.toFixed(2)} dólares`);
     check('o último ponto é o valor ao vivo de agora', sUsd[sUsd.length - 1].live && near(sUsd[sUsd.length - 1].ref, liveUsd, 1e-6));
     await ui(() => window.RdeskHistory.setRef('BTC'));
     void series;
@@ -89,14 +103,18 @@ try {
 
     // ================================================================ 4. Moeda de referência
     await page.click('#btn-ref-picker');
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: 'tests/artifacts-hist-regua.png' });
     const picker = (await page.innerText('.ref-picker')).replace(/\s+/g, ' ');
+    const squeezed = await page.$$eval('.ref-picker .ref-txt', (els) => els.some((e) => e.getBoundingClientRect().width < 200));
+    check('opções da régua com texto em largura normal (sem espremer)', !squeezed);
     check('escolher a régua: Bitcoin (padrão), Real (BRZ), Dólar e Ether, com explicação', ['Bitcoin (padrão)', 'Real (BRZ)', 'Dólar (USDT)', 'Ether'].every((s) => picker.includes(s)), picker.slice(0, 160));
     const polRow = () => page.innerText('#wallet-assets-list [data-asset-symbol="POL"]');
     const usdtRow = () => page.innerText('#wallet-assets-list [data-asset-chain="137"][data-asset-symbol="USDT"]');
     await page.click('.ref-picker [data-ref="BTC"]');
     await page.waitForTimeout(300);
     check('frente ao Bitcoin: POL +3% e BTC −2% em 24 h → POL +5,1%; dólar +2,04%', /\+5,1%/.test(await polRow()) && /\+2,04%/.test(await usdtRow()), `${(await polRow()).replace(/\s+/g, ' ')} | ${(await usdtRow()).replace(/\s+/g, ' ')}`);
-    check('saldo também aparece em bitcoins, com a variação da carteira frente ao Bitcoin', /≈ [\d,]+ BTC/.test(await page.innerText('#hero-total-usd')) && /frente ao Bitcoin/.test(await page.innerText('#hero-ref-change')),
+    check('saldo em bitcoins sempre com 8 casas (0,00000000), com a variação frente ao Bitcoin', /≈ \d,\d{8} BTC$/.test(await page.innerText('#hero-total-usd')) && /frente ao Bitcoin/.test(await page.innerText('#hero-ref-change')),
         `${await page.innerText('#hero-total-usd')} | ${await page.innerText('#hero-ref-change')}`);
     await page.click('#btn-ref-picker');
     await page.click('.ref-picker [data-ref="BRL"]');
@@ -109,14 +127,14 @@ try {
     await page.click('.nav-tab-btn[data-tab="audit"]');
     await page.waitForSelector('.extrato-row');
     const rows = await page.$$eval('.extrato-row', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ')));
-    check('extrato lista todas as transações, da mais nova para a mais antiga', rows.length === 8 && /falhou/.test(rows[0]) && /Recebeu POL/.test(rows[7]), rows.map((x) => x.slice(0, 26)).join(' | '));
+    check('extrato lista todas as transações, da mais nova para a mais antiga', rows.length === 9 && /falhou/.test(rows[0]) && /Recebeu POL/.test(rows[8]), rows.map((x) => x.slice(0, 26)).join(' | '));
     const days = await page.$$eval('.extrato-day', (els) => els.map((e) => e.textContent));
-    check('agrupado por dia, com "Ontem" e datas por extenso', days[0] === 'Ontem' && days.length === 8 && /de/.test(days[1]), days.join(', '));
+    check('agrupado por dia, com "Ontem" e datas por extenso', days[0] === 'Ontem' && days.length === 9 && /de/.test(days[1]), days.join(', '));
     check('entradas mostram o valor em reais da data, com sinal', rows.some((x) => /Recebeu USDT.*\+R\$ 270,00/.test(x)), rows.find((x) => /Recebeu USDT/.test(x)));
     const pnlText = await page.innerText('#audit-kpi-pnl');
-    check('resultado aparece na régua (Bitcoin) com o valor em reais embaixo', /BTC/.test(pnlText) && /Em reais/.test(await page.innerText('#audit-kpi-pnl-brl')), `${pnlText} | ${await page.innerText('#audit-kpi-pnl-brl')}`);
+    check('resultado aparece na régua (Bitcoin, 8 casas) com o valor em reais embaixo', /^[+−]\d,\d{8} BTC/.test(pnlText) && /Em reais/.test(await page.innerText('#audit-kpi-pnl-brl')), `${pnlText} | ${await page.innerText('#audit-kpi-pnl-brl')}`);
     await page.screenshot({ path: 'tests/artifacts-hist-extrato.png', fullPage: true });
-    for (const [f, n] of [['IN', 2], ['OUT', 1], ['SWAP', 1], ['RENDER', 2]]) {
+    for (const [f, n] of [['IN', 2], ['OUT', 1], ['SWAP', 2], ['RENDER', 2]]) {
         await page.click(`#extrato-filters [data-xf="${f}"]`);
         const c = await page.locator('.extrato-row').count();
         check(`filtro "${await page.innerText(`#extrato-filters [data-xf="${f}"]`)}" mostra ${n}`, c === n, String(c));
@@ -139,7 +157,7 @@ try {
     // Planilha
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btn-export-audit-csv')]);
     const csv = await (await dl.createReadStream()).toArray().then((c) => Buffer.concat(c).toString('utf8'));
-    check('baixar planilha traz todas as transações com data, tipo, valor em reais e hash', csv.split('\n').length === 9 && /Recebeu POL/.test(csv) && /Entrada de dinheiro/.test(csv), csv.split('\n')[1]);
+    check('baixar planilha traz todas as transações com data, tipo, valor em reais e hash', csv.split('\n').length === 10 && /Recebeu POL/.test(csv) && /Entrada de dinheiro/.test(csv), csv.split('\n')[1]);
 
     // Atalho da tela inicial
     await page.click('.nav-tab-btn[data-tab="wallet"]');
@@ -148,6 +166,18 @@ try {
 
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
     await context.close();
+
+    // ================================================================ 6b. Saldo real de POL lido da rede (servidor com arquivo)
+    const ctxN = await browser.newContext(MOBILE);
+    const nat = await openApp(ctxN, url, chain, { history: netOpts.history, receipts: netOpts.receipts, balancesAt: () => (777n * 10n ** 18n).toString() });
+    await importWalletViaUi(nat.page);
+    await waitFn(nat.page, () => window.RdeskHistory.getState().events > 0 && window.RdeskHistory.getState().seriesReady && !window.RdeskHistory.getState().loading, null, { timeout: 30000 });
+    await nat.page.evaluate(() => window.RdeskHistory.setRef('USD'));
+    const sN = await nat.page.evaluate(() => window.RdeskHistory.getSeries());
+    const d3 = sN.find((p) => p.key === new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10));
+    const expD3 = 777 * histPrice('0x0d500b1d', 3) + (28 - 10 + 50 - 20 + 18);
+    check('com saldo histórico disponível, o gráfico usa o POL real de cada dia (não só a reconstrução)', d3 && near(d3.ref, expD3, 1e-6) && (await nat.page.evaluate(() => window.RdeskHistory.getState().nativeDays)) > 0, `${d3?.ref} esperado ${expD3}`);
+    await ctxN.close();
 
     // ================================================================ 6. Serviço de histórico fora do ar
     const ctx2 = await browser.newContext(MOBILE);

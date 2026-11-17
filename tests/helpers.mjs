@@ -42,25 +42,35 @@ export function makeHistory(owner) {
     const a = (hash, isC) => ({ hash, is_contract: isC });
     let n = 0;
     const H = () => `0x${(++n).toString(16).padStart(64, '0')}`;
-    const txs = [], transfers = [], internals = [];
-    const tx = (d, to, toC, value, method, status = 'ok', from = W) => { const h = H(); txs.push({ hash: h, timestamp: day(d), from: a(from, false), to: a(to, toC), value: wei(value), fee: { value: wei(0.02) }, status, method }); return h; };
-    const tr = (h, d, token, from, fromC, to, toC, amt, dec, symbol) => transfers.push({ transaction_hash: h, timestamp: day(d), from: a(from, fromC), to: a(to, toC), token: { address_hash: token, type: 'ERC-20', symbol }, total: { value: wei(amt, dec) } });
+    const txs = [], transfers = [], internals = [], receipts = {};
+    const T_DEP = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c';
+    const T_WD = '0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65';
+    const pad = (x) => `0x${'0'.repeat(24)}${x.slice(2)}`;
+    const receipt = (h, logs) => { receipts[h] = { transactionHash: h, status: '0x1', blockNumber: '0x1', logs: logs.map(([topic, who, amt]) => ({ address: WPOL, topics: [topic, pad(who)], data: `0x${BigInt(wei(amt)).toString(16)}` })) }; };
+    const blk = (d) => 1000 + (60 - d) * 100 + n; // um bloco por transação, crescente no tempo
+    const tx = (d, to, toC, value, method, status = 'ok', from = W) => { const h = H(); txs.push({ hash: h, block_number: blk(d), timestamp: day(d), from: a(from, false), to: a(to, toC), value: wei(value), fee: { value: wei(0.02) }, status, method }); return h; };
+    const tr = (h, d, token, from, fromC, to, toC, amt, dec, symbol) => transfers.push({ transaction_hash: h, block_number: blk(d), timestamp: day(d), from: a(from, fromC), to: a(to, toC), token: { address_hash: token, type: 'ERC-20', symbol }, total: { value: wei(amt, dec) } });
     // 1) recebeu 1000 POL de outra pessoa (20 dias atrás) -> entrada
-    txs.push({ hash: H(), timestamp: day(20), from: a(EOA, false), to: a(W, false), value: wei(1000), fee: { value: '0' }, status: 'ok', method: null });
+    txs.push({ hash: H(), block_number: 1000 + 40 * 100, timestamp: day(20), from: a(EOA, false), to: a(W, false), value: wei(1000), fee: { value: '0' }, status: 'ok', method: null });
     // 2) trocou 300 POL por USDT (18 dias atrás)
     const h2 = tx(18, ROUTER, true, 300, 'exactInputSingle');
     tr(h2, 18, USDT, POOL, true, W, false, 28, 6, 'USDT0');
-    // 3) colocou para render: 10 USDT + 100 WPOL (15 dias atrás)
-    const h3 = tx(15, NFPM, true, 0, 'mint');
+    receipt(h2, [[T_DEP, ROUTER, 300]]);
+    // 3) colocou para render: 10 USDT + 120 POL nativo, dos quais o contrato usou 100 e devolveu 20 (15 dias atrás)
+    const h3 = tx(15, NFPM, true, 120, 'multicall');
     tr(h3, 15, USDT, W, false, POOL, true, 10, 6, 'USDT0');
-    tr(h3, 15, WPOL, W, false, POOL, true, 100, 18, 'WPOL');
+    receipt(h3, [[T_DEP, NFPM, 100]]);
+    // 3b) trocou 20 USDT por POL nativo: o POL chega desembrulhado pelo roteador, sem aparecer no histórico (8 dias atrás)
+    const h3b = tx(8, ROUTER, true, 0, 'multicall');
+    tr(h3b, 8, USDT, W, false, POOL, true, 20, 6, 'USDT0');
+    receipt(h3b, [[T_WD, ROUTER, 210]]);
     // 4) recebeu 50 USDT de outra pessoa (10 dias atrás) -> entrada
     const h4 = H();
     tr(h4, 10, USDT, EOA2, false, W, false, 50, 6, 'USDT0');
-    // 5) tirou do render: 90 WPOL + 12 USDT (5 dias atrás)
+    // 5) tirou do render: dentro da pool quase todo o POL virou dólar -> volta 5 WPOL + 18 USDT (5 dias atrás)
     const h5 = tx(5, NFPM, true, 0, 'multicall');
-    tr(h5, 5, WPOL, POOL, true, W, false, 90, 18, 'WPOL');
-    tr(h5, 5, USDT, POOL, true, W, false, 12, 6, 'USDT0');
+    tr(h5, 5, USDT, POOL, true, W, false, 18, 6, 'USDT0');
+    receipt(h5, [[T_WD, NFPM, 5]]); // os 5 POL voltam nativos
     // 6) enviou 200 POL para outra pessoa (3 dias atrás) -> saída
     tx(3, EOA, false, 200, null);
     // 7) autorizou USDT (2 dias atrás) e 8) operação que falhou (1 dia atrás)
@@ -68,7 +78,7 @@ export function makeHistory(owner) {
     tx(1, ROUTER, true, 0, 'exactInputSingle', 'error');
     // moeda-lixo que não pode entrar na conta
     tr(H(), 4, SPAM, EOA, false, W, false, 1000000, 18, 'FAKE');
-    return { txs, transfers, internals };
+    return { txs, transfers, internals, receipts };
 }
 
 export function startStaticServer(port) {
@@ -153,7 +163,21 @@ export async function mockNetwork(page, chains, opts = {}) {
                     if (calls.some((c) => c.method === 'eth_getTransactionReceipt')) { opts.badReceipts--; return text('bad response', 502); }
                 } catch (e) {}
             }
-            try { return json(chain.handle(JSON.parse(req.postData()))); } catch (e) { return route.abort(); }
+            try {
+                const body = JSON.parse(req.postData());
+                // Recibos do histórico simulado (para deduzir o POL devolvido pelos contratos)
+                const rc = (c) => {
+                    if (opts.receipts && c.method === 'eth_getTransactionReceipt' && opts.receipts[c.params[0]]) return { jsonrpc: '2.0', id: c.id, result: opts.receipts[c.params[0]] };
+                    // Saldo num bloco do passado: só responde o que o teste definiu (senão, como servidor sem arquivo)
+                    if (c.method === 'eth_getBalance' && /^0x[0-9a-f]+$/i.test(String(c.params?.[1] || ''))) {
+                        const v = typeof opts.balancesAt === 'function' ? opts.balancesAt(parseInt(c.params[1], 16)) : opts.balancesAt && opts.balancesAt[parseInt(c.params[1], 16)];
+                        return v !== undefined ? { jsonrpc: '2.0', id: c.id, result: `0x${BigInt(v).toString(16)}` } : { jsonrpc: '2.0', id: c.id, error: { code: -32000, message: 'missing trie node' } };
+                    }
+                    return null;
+                };
+                if (Array.isArray(body)) return json(body.map((c) => rc(c) || chain.handle(c)));
+                return json(rc(body) || chain.handle(body));
+            } catch (e) { return route.abort(); }
         }
         if (/awesomeapi.*USD-BRL/.test(u)) return opts.failFx ? route.abort() : json({ USDBRL: { bid: String(USD_BRL), ask: String(USD_BRL) } });
         if (/open\.er-api\.com/.test(u)) return opts.failFx === 'all' ? route.abort() : json({ rates: { BRL: USD_BRL } });
