@@ -63,10 +63,10 @@ try {
     // ---- contratos: cada moeda da lista confere com o que a própria rede responde ----
     const audit = await page.evaluate(async () => {
         const REG = window.RdeskRegistry; const out = [];
-        for (const chain of Object.values(REG.CHAINS)) {
+        for (const chain of REG.CHAINS) {
             let provider;
             try { provider = await window.RdeskWallet.getHealthyProvider(chain.id); } catch (e) { out.push({ chain: chain.name, unreachable: String(e.message).slice(0, 80) }); continue; }
-            for (const tk of REG.BUILTIN_TOKENS.filter((x) => x.chainId === chain.id && x.address)) {
+            for (const tk of (REG.BUILTIN_TOKENS[chain.id] || []).filter((x) => x.address)) {
                 let lastErr = null;
                 for (let attempt = 0; attempt < 3; attempt++) {
                     try {
