@@ -52,6 +52,7 @@
         ptax: {},
         llama: {}, // addr -> { 'YYYY-MM-DD': usd }
         exact: {}, // hash -> { POL, BTC, ETH } preço no minuto da transação (entradas e saídas)
+        nativeEnd: {}, // 'YYYY-MM-DD' -> saldo real de POL nativo no fim do dia (lido da rede)
         seriesReady: false,
         loading: false,
         progress: '',
@@ -241,11 +242,12 @@
         const map = new Map();
         const get = (hash, ts) => {
             const h = lower(hash);
-            if (!map.has(h)) map.set(h, { hash: h, unix: Math.floor(new Date(ts).getTime() / 1000), to: '', method: '', ok: true, gasPol: 0, items: [], contractTouched: false, fromSelf: false });
+            if (!map.has(h)) map.set(h, { hash: h, unix: Math.floor(new Date(ts).getTime() / 1000), to: '', method: '', ok: true, gasPol: 0, items: [], contractTouched: false, fromSelf: false, block: 0 });
             return map.get(h);
         };
         for (const tx of txs) {
             const e = get(tx.hash, tx.timestamp);
+            e.block = Number(tx.block_number || tx.block || 0) || e.block;
             const from = lower(tx.from?.hash), to = lower(tx.to?.hash);
             e.to = to; e.method = tx.method || ''; e.ok = tx.status === 'ok';
             e.fromSelf = from === wallet;
@@ -274,6 +276,7 @@
             if (!(amt > 0)) continue;
             const from = lower(tr.from?.hash), to = lower(tr.to?.hash);
             const e = get(tr.transaction_hash, tr.timestamp);
+            e.block = e.block || Number(tr.block_number || 0);
             if (to === wallet && from !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: 1, peerC: Boolean(tr.from?.is_contract) }); if (tr.from?.is_contract) e.contractTouched = true; }
             else if (from === wallet && to !== wallet) { e.items.push({ sym: meta.symbol, kind: meta.kind, amt, dir: -1, peerC: Boolean(tr.to?.is_contract) }); if (tr.to?.is_contract) e.contractTouched = true; }
         }
@@ -316,6 +319,36 @@
         '0x643770e279d5d0733f21d6dc03a8efbabf3255b4', // Universal Router (anterior)
         '0x1095692a6237d83c6a72f3f5efedb9a670c49223'  // Universal Router (v4)
     ]);
+    // Saldo REAL de POL nativo no fim de cada dia com movimento, lido da rede (o histórico não mostra
+    // todo POL que chega de contratos). Corrige o gráfico mesmo quando algum retorno não foi deduzido.
+    async function rpcBatch(calls) {
+        const urls = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const out = new Array(calls.length).fill(null);
+        for (let i = 0; i < calls.length; i += 20) {
+            const chunk = calls.slice(i, i + 20);
+            const body = chunk.map((c, k) => ({ jsonrpc: '2.0', id: k, method: c[0], params: c[1] }));
+            for (const u of urls) {
+                try {
+                    const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+                    const j = await r.json();
+                    if (!Array.isArray(j)) throw new Error('sem lote');
+                    j.forEach((x) => { if (x && x.result !== undefined && x.result !== null) out[i + x.id] = x.result; });
+                    if (chunk.every((_, k) => out[i + k] !== null)) break;
+                } catch (e) { /* próximo servidor */ }
+            }
+        }
+        return out;
+    }
+    async function loadNativeBalances(wallet) {
+        const lastBlockOfDay = {};
+        st.events.forEach((e) => { const k = dayKey(e.unix); if (e.block > (lastBlockOfDay[k] || 0)) lastBlockOfDay[k] = e.block; });
+        const days = Object.keys(lastBlockOfDay).sort().slice(-400);
+        if (!days.length) return;
+        setProgress('Conferindo o saldo de POL de cada dia…');
+        const res = await rpcBatch(days.map((k) => ['eth_getBalance', [wallet, `0x${lastBlockOfDay[k].toString(16)}`]]));
+        days.forEach((k, i) => { if (res[i]) st.nativeEnd[k] = Number(global.ethers.utils.formatEther(res[i])); });
+    }
+
     async function addNativeReturns(list, wallet) {
         const need = list.filter((e) => e.ok && e.fromSelf && NATIVE_AWARE.has(e.to) && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
         if (!need.length) return;
@@ -441,7 +474,8 @@
     // para render continuam contando como suas) e avalia com o preço de cada dia.
     function computeSeries() {
         if (!st.events.length) return [];
-        const hold = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
+        const hold = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 }; // POL aqui = WPOL (o nativo fica em 'native')
+        let native = 0;
         const pool = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
         const byDay = new Map();
         st.events.forEach((e) => { const k = dayKey(e.unix); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
@@ -452,8 +486,8 @@
             const key = new Date(t).toISOString().slice(0, 10);
             let flowIn = 0, flowOut = 0;
             (byDay.get(key) || []).forEach((e) => {
-                hold.POL -= e.gasPol;
-                e.items.forEach((i) => { hold[i.kind] += i.dir * i.amt; });
+                native -= e.gasPol;
+                e.items.forEach((i) => { if (i.sym === 'POL') native += i.dir * i.amt; else hold[i.kind] += i.dir * i.amt; });
                 if (e.type.startsWith('RENDER')) {
                     // Dentro do render as moedas se convertem umas nas outras (POL vira USDT e vice-versa).
                     // Por isso o que volta tira do "cesto" uma FRAÇÃO do valor, e não as mesmas moedas;
@@ -471,7 +505,8 @@
                 if (v.cls === 'IN') flowIn += (v.inUsd || v.outUsd) / v.refUsd;
                 if (v.cls === 'OUT') flowOut += (v.outUsd || v.inUsd) / v.refUsd;
             });
-            let usd = 0;
+            if (Number.isFinite(st.nativeEnd[key])) native = st.nativeEnd[key]; // saldo real lido da rede
+            let usd = Math.max(0, native) * usdOn('POL', key);
             Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
             pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
             if (key >= today) break;
@@ -488,16 +523,17 @@
     function cacheKey(w) { return CACHE_PREFIX + w; }
     function saveCache() {
         try {
-            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, f: e.fromSelf ? 1 : 0, n: e.nativeChecked ? 1 : 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
-            localStorage.setItem(cacheKey(st.wallet), JSON.stringify({ at: st.savedAt, ev: slim }));
+            const slim = st.events.map((e) => ({ h: e.hash, u: e.unix, t: e.to, m: e.method, o: e.ok ? 1 : 0, g: e.gasPol, c: e.contractTouched ? 1 : 0, f: e.fromSelf ? 1 : 0, n: e.nativeChecked ? 1 : 0, b: e.block || 0, i: e.items.map((i) => [i.sym, i.kind, i.amt, i.dir, i.peerC ? 1 : 0]) }));
+            localStorage.setItem(cacheKey(st.wallet), JSON.stringify({ at: st.savedAt, ev: slim, nat: st.nativeEnd }));
         } catch (e) {}
     }
     function loadCache(w) {
         try {
             const raw = JSON.parse(localStorage.getItem(cacheKey(w)) || 'null');
             if (!raw || !Array.isArray(raw.ev)) return false;
-            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), fromSelf: Boolean(x.f), nativeChecked: Boolean(x.n), items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
+            st.events = raw.ev.map((x) => classify({ hash: x.h, unix: x.u, to: x.t, method: x.m, ok: Boolean(x.o), gasPol: x.g, contractTouched: Boolean(x.c), fromSelf: Boolean(x.f), nativeChecked: Boolean(x.n), block: x.b || 0, items: x.i.map((a) => ({ sym: a[0], kind: a[1], amt: a[2], dir: a[3], peerC: Boolean(a[4]) })) }));
             st.savedAt = raw.at || 0;
+            st.nativeEnd = raw.nat || {};
             return true;
         } catch (e) { return false; }
     }
@@ -531,7 +567,8 @@
                 st.events = events;
                 st.savedAt = Date.now();
                 setProgress('Buscando os preços de cada dia…');
-                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices()]);
+                st.nativeEnd = {};
+                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices(), loadNativeBalances(w).catch(() => {})]);
                 saveCache();
             } catch (err) {
                 st.error = 'Não deu para ler o histórico agora (o serviço de histórico não respondeu). Toque em Atualizar para tentar de novo.';
@@ -905,7 +942,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };

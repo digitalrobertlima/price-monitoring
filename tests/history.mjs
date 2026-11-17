@@ -74,6 +74,7 @@ try {
     const d4 = sUsd.find((p) => p.key === new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10));
     const expectD4 = (1000 - 300 - 100 + 210 + 5 - 0.08) * histPrice('0x0d500b1d', 4) + (28 - 10 + 50 - 20 + 18);
     check('ao tirar do render, o patrimônio volta a ser só o que está na carteira (sem saldo fantasma)', d4 && near(d4.ref, expectD4, 1e-6), `${d4?.ref} esperado ${expectD4}`);
+    check('sem saldo histórico na rede (servidor sem arquivo), o gráfico usa a reconstrução sem quebrar', (await ui(() => window.RdeskHistory.getState().nativeDays)) === 0);
     const maxRef = Math.max(...sUsd.map((p) => p.ref));
     check('o patrimônio nunca passa do que realmente entrou + ganhos plausíveis', maxRef < 160, `máximo ${maxRef.toFixed(2)} dólares`);
     check('o último ponto é o valor ao vivo de agora', sUsd[sUsd.length - 1].live && near(sUsd[sUsd.length - 1].ref, liveUsd, 1e-6));
@@ -165,6 +166,18 @@ try {
 
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
     await context.close();
+
+    // ================================================================ 6b. Saldo real de POL lido da rede (servidor com arquivo)
+    const ctxN = await browser.newContext(MOBILE);
+    const nat = await openApp(ctxN, url, chain, { history: netOpts.history, receipts: netOpts.receipts, balancesAt: () => (777n * 10n ** 18n).toString() });
+    await importWalletViaUi(nat.page);
+    await waitFn(nat.page, () => window.RdeskHistory.getState().events > 0 && window.RdeskHistory.getState().seriesReady && !window.RdeskHistory.getState().loading, null, { timeout: 30000 });
+    await nat.page.evaluate(() => window.RdeskHistory.setRef('USD'));
+    const sN = await nat.page.evaluate(() => window.RdeskHistory.getSeries());
+    const d3 = sN.find((p) => p.key === new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10));
+    const expD3 = 777 * histPrice('0x0d500b1d', 3) + (28 - 10 + 50 - 20 + 18);
+    check('com saldo histórico disponível, o gráfico usa o POL real de cada dia (não só a reconstrução)', d3 && near(d3.ref, expD3, 1e-6) && (await nat.page.evaluate(() => window.RdeskHistory.getState().nativeDays)) > 0, `${d3?.ref} esperado ${expD3}`);
+    await ctxN.close();
 
     // ================================================================ 6. Serviço de histórico fora do ar
     const ctx2 = await browser.newContext(MOBILE);
