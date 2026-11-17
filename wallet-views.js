@@ -300,6 +300,7 @@
                     const signed = BTC().signTransaction(plan, key.privateKey);
                     showOk('Transmitindo para a rede Bitcoin…');
                     const txid = await BTC().broadcast(signed.hex);
+                    global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Bitcoin enviado!' } }));
                     showOk(`✅ Bitcoin enviado! Aguarde a confirmação na rede. <a href="${esc(REG.explorerTxUrl('btc', txid))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
                     ctx.refreshBalances();
                     return;
@@ -328,6 +329,7 @@
                     : await signer.sendTransaction({ to: dest, value: amountWei });
                 showOk(`Transação enviada (${esc(tx.hash.slice(0, 10))}…). Confirmando…`);
                 await tx.wait();
+                global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Envio confirmado!' } }));
                 showOk(`✅ Envio confirmado na ${esc(chainName)}! <a href="${esc(REG.explorerTxUrl(chainId, tx.hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
                 ctx.refreshBalances();
             } catch (err) {

@@ -1,7 +1,19 @@
-# RDESK SENTINEL
+# RDESK
 
 Carteira de autocustódia no navegador, com várias contas, e piloto de liquidez Uniswap V3 (pool WPOL/USDT0 0,05% na Polygon) com faixa Sniper visível no gráfico.
 Site 100% estático, sem servidor: **https://digitalrobertlima.github.io/price-monitoring/**
+
+## Como o app foi desenhado
+
+O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
+
+- **Pouca coisa por tela.** A tela inicial tem só o saldo, três ações (Receber, Enviar, Trocar) e a lista de moedas. O resto aparece quando a pessoa precisa (filtros, contratos, endereço técnico).
+- **Linguagem simples.** Sem "gás", "pool", "seed" ou "Sniper" na tela principal; quando o termo é necessário, vem explicado ("rede é o caminho por onde a moeda viaja").
+- **Zona do polegar.** Navegação e botões principais na parte de baixo, alvos de toque grandes.
+- **Ajuda na hora certa.** Boas-vindas curtas (3 cartões) só na primeira abertura, "Primeiros passos" com progresso na tela inicial e uma dica curta na primeira vez em cada tela. Dá para rever em Menu → "Rever o tutorial".
+- **Fim marcante.** Envio, troca e render concluídos mostram uma comemoração curta.
+- **Controle total no Render.** O gráfico responde ao toque (arrastar, pinça, tocar para ver o preço) e a faixa tem alças azuis para arrastar; também dá para digitar mínimo e máximo ou usar os atalhos Estreita/Média/Larga.
+- Sem Pix: a carteira não transaciona em Pix, e a interface não sugere isso.
 
 ## O que funciona hoje
 
@@ -25,8 +37,7 @@ Site 100% estático, sem servidor: **https://digitalrobertlima.github.io/price-m
 - **Nenhuma transação foi testada na Polygon real nem em fork.** Os fluxos foram validados contra uma Polygon simulada (`tests/mock-chain.mjs`), que confere a lógica da app e as transações assinadas, não os contratos reais. Comece com valores pequenos.
 - **Lightning não é suportado.** Receber e pagar por Lightning exige um nó ou um serviço custodiante, o que não cabe numa carteira estática de autocustódia. Pedidos `lnbc…` são recusados com explicação.
 - Envio de Bitcoin e envios nas outras redes foram validados com vetores oficiais (BIP84/143/173/350) e redes simuladas, não com dinheiro real.
-- Pontes entre redes (LI.FI), a aba Lucro Real (auditoria histórica) e o comparador PIX não têm testes.
-- O comparador PIX usa taxas de referência escritas no código, não cotação ao vivo, e os provedores listados não foram verificados.
+- Pontes entre redes (LI.FI) e a aba Resultados (histórico) não têm testes automáticos completos.
 - O ganho estimado em R$/min é uma aproximação (volume de 24h e liquidez de referência).
 - Não existe robô: nada acontece com a página fechada.
 
@@ -41,13 +52,14 @@ Site 100% estático, sem servidor: **https://digitalrobertlima.github.io/price-m
 
 | Arquivo | Papel |
 |---|---|
-| `index.html`, `styles.css` | Interface (4 abas: Carteira, Render V3, PIX & Trocas, Lucro Real) |
+| `index.html`, `styles.css` | Interface (4 abas: Início, Trocar, Render, Resultados) |
 | `registry.js` | Redes, moedas, contratos, moedas adicionadas, selos |
 | `bitcoin.js` | Bitcoin nativo: endereço, montagem e assinatura da transação |
 | `qr-scanner.js` | Leitor de QR Code (câmera ou foto) |
+| `onboarding.js` | Boas-vindas, primeiros passos, dicas na primeira vez, menu e explicações |
 | `wallet-views.js` | Telas de receber, enviar, detalhe da moeda e adicionar moeda |
 | `wallet-service.js` | Cofre, gerenciador de carteiras, biometria, redes, saldos, cotações, assinatura |
-| `defi-pix-service.js` | Faixa Sniper, piloto automático, posições, trocas, comparador PIX, auditoria |
+| `defi-pix-service.js` | Faixa sugerida e faixa própria, render (Uniswap), posições, trocas, resultados |
 | `range-chart.js` | Gráfico de preço com as faixas (canvas próprio) |
 | `app.js` | Navegação, ajuda, PWA |
 | `vendor/` | ethers 5.7.2, Chart.js 4.4.1, QRCode 1.0.0, jsQR 1.4.0 |
@@ -57,7 +69,7 @@ Site 100% estático, sem servidor: **https://digitalrobertlima.github.io/price-m
 
 ```bash
 npm install && npx playwright install chromium
-npm test            # Bitcoin (vetores oficiais) + carteiras + fluxo de dinheiro + várias redes/QR/olho, tudo simulado, sem internet
+npm test            # Bitcoin (vetores oficiais) + carteiras + dinheiro + várias redes/QR/olho + experiência (tutorial, gráfico, faixa), tudo simulado
 npm run test:smoke  # rede real: saldo, cotações, contratos de todas as moedas, cotações de troca (precisa de internet)
 ```
 

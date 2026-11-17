@@ -63,13 +63,13 @@ try {
     check('faixa Sniper calculada em volta do preço', st0.sniper.min < st0.poolPrice && st0.poolPrice < st0.sniper.max,
         `$${st0.sniper.min.toFixed(4)} – $${st0.sniper.max.toFixed(4)}`);
     const chartLabel = await page.getAttribute('#earn-chart-container canvas', 'aria-label');
-    check('gráfico mostra a faixa Sniper e o preço atual', /Faixa Sniper/.test(chartLabel || '') && /Preço atual/.test(chartLabel || ''), chartLabel);
+    check('gráfico mostra a faixa Sniper e o preço atual', /Sua faixa/.test(chartLabel || '') && /Preço atual/.test(chartLabel || ''), chartLabel);
     await page.screenshot({ path: 'tests/artifacts-render-antes.png', fullPage: true });
 
     // ------------------------------------------------------------ 3. Piloto automático abre a pool
     let mark = idle();
     await page.click('#btn-start-autopilot');
-    await confirmReceipt(/Piloto Autom/);
+    await confirmReceipt(/Começar a render/);
     await waitFn(page, () => /Posição aberta|insuficiente|cancelad|rro|revert|diferente/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
     const apMsg = await page.textContent('#autopilot-feedback');
     let batch = chain.txs.slice(mark);
@@ -169,14 +169,14 @@ try {
         await page.click('.nav-tab-btn[data-tab="wallet"]');
         await page.waitForTimeout(600);
         const walletText = (await page.innerText('#tab-panel-wallet')).replace(/\s+/g, ' ');
-        check('tela inicial mostra pools zeradas e o WPOL devolvido', /Pools: R\$\s?0,00/.test(walletText) && /WPOL/.test(walletText), walletText.slice(0, 200));
+        const earningHidden = await page.evaluate(() => document.getElementById('hero-breakdown').hidden);
+        check('tela inicial some com o "rendendo" quando zera e mostra o WPOL devolvido', earningHidden && /WPOL/.test(walletText), walletText.slice(0, 200));
     }
 
     check('nenhum alerta de erro durante o fluxo', dialogs.length === 0, dialogs.join(' | '));
 
     // ------------------------------------------------------------ 7. Trocar (Uniswap V3)
     await page.click('.nav-tab-btn[data-tab="pixswap"]');
-    await page.click('.submode-btn[data-sub="dex-swap"]');
     const doSwap = async (from, to, amount) => {
         await page.selectOption('#swap-from-token', from);
         await page.selectOption('#swap-to-token', to);
@@ -187,7 +187,7 @@ try {
         const m = idle();
         await ui(() => { document.getElementById('swap-feedback').textContent = ''; });
         await page.click('#btn-execute-swap');
-        await confirmReceipt(/Confirmar Troca/);
+        await confirmReceipt(/Confirmar troca/);
         await waitFn(page, () => /concluída|rro|cancelad|insuf|revert|Too little/i.test(document.getElementById('swap-feedback')?.textContent || ''), null, { timeout: 120000 }).catch(() => {});
         return { quoted, txs: chain.txs.slice(m), msg: await page.textContent('#swap-feedback') };
     };
@@ -221,6 +221,7 @@ try {
     check('botão de inverter troca as moedas de lado e leva a quantidade junto',
         afterFlip.from === 'USDT' && afterFlip.to === 'POL' && afterFlip.amt === beforeFlip.out && Math.abs(afterFlip.out - 10) < 0.05, JSON.stringify(afterFlip));
 
+    await page.click('#subpanel-dex-swap .more-fold summary');
     const contractsText = (await page.innerText('#swap-contracts')).replace(/\s+/g, ' ');
     check('troca mostra o contrato da moeda para conferência', /0xc2132D…B58e8F/.test(contractsText) && /moeda nativa/.test(contractsText), contractsText);
 

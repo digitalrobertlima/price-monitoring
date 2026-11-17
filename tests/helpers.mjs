@@ -130,6 +130,16 @@ export async function openApp(context, url, chain, opts = {}) {
     page.on('dialog', (d) => { dialogs.push(d.message()); d.accept().catch(() => {}); });
     const cspViolations = [];
     page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); });
+    // Os testes de fluxo começam com o tutorial já visto; o teste do tutorial passa opts.onboarding = true.
+    if (!opts.onboarding) {
+        await page.addInitScript(() => {
+            try {
+                if (!localStorage.getItem('rdesk_onboarding_v1')) {
+                    localStorage.setItem('rdesk_onboarding_v1', JSON.stringify({ introDone: true, finished: true, hidden: false, did: {}, tips: { receive: 1, send: 1, pixswap: 1, earn: 1, audit: 1, addtoken: 1 } }));
+                }
+            } catch (e) {}
+        });
+    }
     const external = await mockNetwork(page, chain, opts);
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await waitFn(page, () => window.ethers && window.RdeskWallet && window.RdeskDefi && window.RdeskReceipt, null, { timeout: 60000 });

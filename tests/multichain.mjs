@@ -60,12 +60,13 @@ try {
     const row = (c, s) => rows.find((r) => r.chain === String(c) && r.symbol === s);
     check('lista mostra saldos de várias redes ao mesmo tempo (Polygon, Base, Arbitrum, Bitcoin)',
         Boolean(row(137, 'POL') && row(137, 'USDT') && row(8453, 'USDC') && row(8453, 'ETH') && row(42161, 'ETH') && row('btc', 'BTC')), rows.map((r) => `${r.symbol}@${r.chain}`).join(' '));
-    check('cada linha tem selo da moeda e nome da rede', rows.length > 0 && rows.every((r) => r.badge && r.chainBadge), rows.map((r) => r.chainBadge).join(','));
-    check('linha mostra o início e o fim do contrato', /0xc213…8e8F/.test(row(137, 'USDT')?.text || '') && /moeda da rede/.test(row(137, 'POL')?.text || ''), row(137, 'USDT')?.text);
+    check('cada linha tem o selo da moeda e diz em que rede ela está', rows.length > 0 && rows.every((r) => r.badge && /na rede /.test(r.text)), rows.map((r) => r.text.slice(0, 40)).join(' | '));
+    check('linha usa nome que qualquer um entende e esconde o contrato (fica no detalhe)', /Dólar digital \(Tether\)/.test(row(137, 'USDT')?.text || '') && !/0x/.test(row(137, 'USDT')?.text || ''), row(137, 'USDT')?.text);
     const btcBrl = (0.0037 * 90000 * USD_BRL).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     check('saldo de Bitcoin (inclui o que ainda não confirmou) aparece em R$', (row('btc', 'BTC')?.text || '').includes(btcBrl) && /0,0037/.test(row('btc', 'BTC')?.text || ''), row('btc', 'BTC')?.text);
     const filterOpts = await page.$$eval('#wallet-chain-filter option', (o) => o.map((x) => x.textContent));
     check('filtro de rede lista as 6 redes e Bitcoin', ['Polygon', 'Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Celo', 'Bitcoin'].every((n) => filterOpts.includes(n)), filterOpts.join(','));
+    await page.click('#assets-options summary');
     await page.selectOption('#wallet-chain-filter', '8453');
     const onlyBase = await page.$$eval('#wallet-assets-list .asset-row-btn', (els) => els.map((e) => e.getAttribute('data-asset-chain')));
     check('filtrar por Base mostra só moedas da Base', onlyBase.length === 2 && onlyBase.every((c) => c === '8453'), onlyBase.join(','));
@@ -247,7 +248,7 @@ try {
     await page.waitForTimeout(600);
     const goldRow = (await page.innerText('#wallet-assets-list [data-asset-symbol="GOLD"]')).replace(/\s+/g, ' ');
     const goldBrl = (42.5 * 2 * USD_BRL).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    check('moeda adicionada aparece na lista com saldo, contrato e valor em R$', /42,5 GOLD/.test(goldRow) && /0x1111…1111/.test(goldRow) && goldRow.includes(goldBrl), goldRow);
+    check('moeda adicionada aparece na lista com nome lido do contrato, saldo e valor em R$', /42,5 GOLD/.test(goldRow) && /Gold Test Token/.test(goldRow) && goldRow.includes(goldBrl), goldRow);
     check('moeda adicionada fica disponível na tela de troca', (await page.$$eval('#swap-from-token option', (o) => o.map((x) => x.value))).includes('GOLD'));
 
     await page.click('#wallet-assets-list [data-asset-symbol="GOLD"]');

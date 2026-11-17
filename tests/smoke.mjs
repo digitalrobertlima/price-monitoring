@@ -52,7 +52,7 @@ try {
     check('preço da pool Uniswap coerente com o mercado (±5%)', Math.abs(st.poolPrice - prices.POL) / prices.POL < 0.05, `pool=$${st.poolPrice.toFixed(5)} mercado=$${prices.POL}`);
     check('faixa Sniper em volta do preço real', st.sniper.min < st.poolPrice && st.poolPrice < st.sniper.max, `$${st.sniper.min.toFixed(4)} – $${st.sniper.max.toFixed(4)}`);
     const label = await page.getAttribute('#earn-chart-container canvas', 'aria-label');
-    check('gráfico com velas reais e faixa Sniper', /Faixa Sniper/.test(label || '') && (await page.evaluate(() => document.querySelector('#earn-chart-container canvas').width)) > 0, label);
+    check('gráfico com velas reais e faixa Sniper', /Sua faixa/.test(label || '') && (await page.evaluate(() => document.querySelector('#earn-chart-container canvas').width)) > 0, label);
     console.log(`Posições Uniswap V3 do endereço: ${st.positions.length}`);
 
     // ---- cotações: dólar e POL vindos de fonte ao vivo (não o valor de reserva) ----
@@ -100,7 +100,6 @@ try {
 
     // ---- Trocas: cotações reais (somente leitura, nada é assinado) ----
     await page.click('.nav-tab-btn[data-tab="pixswap"]');
-    await page.click('[data-sub="dex-swap"]');
     await waitFn(page, () => document.querySelectorAll('#swap-from-token option').length > 0, null, { timeout: 20000 });
     const quote = async (fromChain, from, toChain, to, amount) => {
         await page.selectOption('#swap-from-chain', String(fromChain));
