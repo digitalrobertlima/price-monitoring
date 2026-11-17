@@ -1472,7 +1472,9 @@
         if (overlay) overlay.classList.remove('open');
         viewTrail = [];
         if (wasOpen && fromHistory !== true && history.state && history.state.rdeskModal) {
-            try { pendingSelfBack = true; pushAfterSelfBack = false; history.back(); } catch (e) { pendingSelfBack = false; }
+            pushAfterSelfBack = false;
+            // Um "voltar" nosso já a caminho basta; um segundo voltaria duas páginas (podendo sair do app).
+            if (!pendingSelfBack) { try { pendingSelfBack = true; history.back(); } catch (e) { pendingSelfBack = false; } }
         }
         // Nada sensível (frase em criação, chave revelada, senha digitada) fica na página depois de fechar.
         createSeedDraft = null;

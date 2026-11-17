@@ -909,6 +909,12 @@
     const NATIVE_RESERVE = { POL: 3.0, ETH: 0.0015, CELO: 0.05 };
     const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
     const MULTICALL3_ABI = ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)'];
+    // Primeira promessa que der certo (Promise.any com reserva para navegadores antigos)
+    const firstSuccess = (list) => new Promise((resolve, reject) => {
+        let pending = list.length;
+        if (!pending) reject(new Error('sem tentativas'));
+        list.forEach((p) => p.then(resolve, () => { if (--pending === 0) reject(new Error('todas falharam')); }));
+    });
     const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado')), ms))]);
     const QUOTER_ABI = [
         'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
@@ -989,8 +995,6 @@
 
     // Procura a melhor rota na Uniswap V3 da Polygon: direto em cada faixa de tarifa e, se preciso, em dois saltos.
     async function quotePolygonUniswap(fromMeta, toMeta, rawIn) {
-        const provider = await window.RdeskWallet.getHealthyProvider(137);
-        const quoter = new ethers.Contract(QUOTER_V2, QUOTER_ABI, provider);
         const addrIn = uniswapAddress(fromMeta), addrOut = uniswapAddress(toMeta);
         const best = { out: ethers.constants.Zero, hops: null };
         const consider = (out, hops) => { if (out.gt(best.out)) { best.out = out; best.hops = hops; } };
@@ -1010,20 +1014,26 @@
         }))));
         const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
 
-        let results = null;
-        try {
-            const multicall = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, provider);
-            const res = await withTimeout(multicall.callStatic.aggregate3(candidates.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }))), 20000);
-            results = res.map((r, i) => (r.success ? decodeOut(candidates[i], r.returnData) : null));
-        } catch (err) {
-            // Reserva: poucas consultas por vez, cada uma com prazo.
-            results = [];
-            for (let i = 0; i < candidates.length; i += 4) {
-                const part = await Promise.allSettled(candidates.slice(i, i + 4).map((c) =>
-                    withTimeout(provider.call({ to: QUOTER_V2, data: c.data }), 8000).then((ret) => decodeOut(c, ret))));
-                part.forEach((r) => results.push(r.status === 'fulfilled' ? r.value : null));
-            }
+        // A mesma consulta vai a todos os servidores da Polygon ao mesmo tempo; vale a primeira resposta.
+        // (Um servidor público lento ou limitando pedidos não trava mais a cotação.)
+        const started = Date.now();
+        const payload = candidates.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }));
+        const rpcs = (REG.getChain(137)?.rpcs || []);
+        const attempts = rpcs.map((url) => {
+            const p = new ethers.providers.StaticJsonRpcProvider(url, 137);
+            return withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(payload), 9000)
+                .then((res) => ({ res, url }));
+        });
+        let won;
+        try { won = await firstSuccess(attempts); } catch (err) {
+            console.debug('[cotação] nenhum servidor respondeu', Date.now() - started, 'ms');
+            throw new Error('Rede indisponível para cotar agora.');
         }
+        console.debug('[cotação]', candidates.length, 'rotas em', Date.now() - started, 'ms via', won.url);
+        const results = won.res.map((r, i) => {
+            if (!r.success) return null;
+            try { return decodeOut(candidates[i], r.returnData); } catch (e) { return null; }
+        });
         // Prefere a rota direta quando ela paga praticamente o mesmo (menos contratos envolvidos).
         results.forEach((out, i) => {
             if (!out || out.isZero()) return;
