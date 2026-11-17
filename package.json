@@ -3,12 +3,14 @@
   "private": true,
   "description": "Testes automáticos do RDESK SENTINEL (o site em si continua 100% estático, sem build).",
   "scripts": {
-    "test": "node tests/ui.mjs && node tests/flow.mjs",
+    "test": "node tests/bitcoin.test.mjs && node tests/ui.mjs && node tests/flow.mjs && node tests/multichain.mjs",
+    "test:btc": "node tests/bitcoin.test.mjs",
+    "test:multichain": "node tests/multichain.mjs",
     "test:ui": "node tests/ui.mjs",
     "test:flow": "node tests/flow.mjs",
     "test:smoke": "node tests/smoke.mjs"
   },
   "devDependencies": {
-    "playwright": "1.49.1"
+    "playwright": "1.63.0"
   }
 }

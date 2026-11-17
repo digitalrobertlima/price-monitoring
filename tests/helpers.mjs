@@ -27,9 +27,9 @@ export function startStaticServer(port) {
     return new Promise((resolve) => server.listen(port, () => resolve({ server, url: `http://localhost:${port}/` })));
 }
 
-export function launch() {
+export function launch(extraArgs = []) {
     return chromium.launch({
-        args: ['--no-sandbox'],
+        args: ['--no-sandbox', ...extraArgs],
         ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {})
     });
 }
@@ -44,28 +44,85 @@ function candles(n, stepSec, base) {
     });
 }
 
-// Toda a rede externa é simulada: RPC da Polygon -> MockChain; cotações -> valores fixos; o resto é cortado.
+// Descobre a rede pelo endereço do servidor RPC.
+function chainIdFromRpcUrl(u) {
+    if (/polygon|matic/i.test(u)) return 137;
+    if (/arb/i.test(u)) return 42161;
+    if (/base/i.test(u)) return 8453;
+    if (/optimism/i.test(u)) return 10;
+    if (/celo/i.test(u)) return 42220;
+    if (/ethereum-rpc|eth\.drpc/i.test(u)) return 1;
+    return null;
+}
+
+// Toda a rede externa é simulada: RPC de cada rede -> MockChain; cotações -> valores fixos; Bitcoin -> opts.btc;
+// o resto é cortado. `chains` é a MockChain da Polygon ou um mapa { chainId: MockChain }.
 // Devolve a lista de pedidos externos feitos pela página (para conferir que nada inesperado sai).
-export async function mockNetwork(page, chain) {
+export async function mockNetwork(page, chains, opts = {}) {
+    const map = chains && typeof chains.handle === 'function' ? { 137: chains } : (chains || {});
+    const polygon = map[137];
     const external = [];
     await page.route((u) => !u.href.startsWith('http://localhost'), async (route) => {
         const req = route.request();
         const u = req.url();
         external.push(u);
-        const json = (obj) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(obj) });
-        if (req.method() === 'POST' && /polygon|matic/i.test(u)) {
+        const json = (obj) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(obj) });
+        const text = (body, status = 200) => route.fulfill({ status, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body });
+
+        // Bitcoin (API estilo Esplora)
+        if (/mempool\.space\/api|blockstream\.info\/api/.test(u)) {
+            const btc = opts.btc;
+            if (!btc) return route.abort();
+            if (/\/v1\/fees\/recommended/.test(u)) return json(btc.fees);
+            if (/\/address\/[^/]+\/utxo/.test(u)) return json(btc.utxos.map((x) => ({ txid: x.txid, vout: x.vout, value: x.value, status: { confirmed: x.confirmed !== false } })));
+            if (/\/address\/[^/]+$/.test(u)) {
+                const conf = btc.utxos.filter((x) => x.confirmed !== false).reduce((n, x) => n + x.value, 0);
+                const pend = btc.utxos.filter((x) => x.confirmed === false).reduce((n, x) => n + x.value, 0);
+                return json({ chain_stats: { funded_txo_sum: conf, spent_txo_sum: 0 }, mempool_stats: { funded_txo_sum: pend, spent_txo_sum: 0 } });
+            }
+            if (/\/tx$/.test(u) && req.method() === 'POST') { btc.broadcasts.push(req.postData()); return text(btc.txid || 'f'.repeat(64)); }
+            return route.abort();
+        }
+
+        if (req.method() === 'POST') {
+            const chain = map[chainIdFromRpcUrl(u)];
+            if (!chain) return route.abort();
             try { return json(chain.handle(JSON.parse(req.postData()))); } catch (e) { return route.abort(); }
         }
-        if (/awesomeapi.*USD-BRL/.test(u)) return json({ USDBRL: { bid: String(USD_BRL), ask: String(USD_BRL) } });
-        if (/coins\.llama\.fi\/prices\/current\/polygon/.test(u)) return json({ coins: { 'polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270': { price: chain.priceUsd } } });
-        if (/coins\.llama\.fi\/prices\/current\/coingecko/.test(u)) return json({ coins: { 'coingecko:ethereum': { price: 3000 }, 'coingecko:bitcoin': { price: 90000 } } });
-        if (/api\.binance\.com\/api\/v3\/klines/.test(u)) return json(candles(Number(new URL(u).searchParams.get('limit')) || 90, 900, chain.priceUsd));
+        if (/awesomeapi.*USD-BRL/.test(u)) return opts.failFx ? route.abort() : json({ USDBRL: { bid: String(USD_BRL), ask: String(USD_BRL) } });
+        if (/open\.er-api\.com/.test(u)) return opts.failFx === 'all' ? route.abort() : json({ rates: { BRL: USD_BRL } });
+        if (/coins\.llama\.fi\/prices\/current\//.test(u)) {
+            const keys = decodeURIComponent(u.split('/prices/current/')[1].split('?')[0]).split(',');
+            const coins = {};
+            keys.forEach((k) => {
+                if (/^polygon:0x0d500b1d/i.test(k)) coins[k] = { price: polygon ? polygon.priceUsd : POL_USD };
+                else if (k === 'coingecko:ethereum') coins[k] = { price: 3000 };
+                else if (k === 'coingecko:bitcoin') coins[k] = { price: 90000 };
+                else if (k === 'coingecko:celo') coins[k] = { price: 0.5 };
+                else if (opts.customPrices && opts.customPrices[k.split(':')[1].toLowerCase()]) coins[k] = { price: opts.customPrices[k.split(':')[1].toLowerCase()] };
+            });
+            return json({ coins });
+        }
+        if (/api\.binance\.com\/api\/v3\/klines/.test(u)) return json(candles(Number(new URL(u).searchParams.get('limit')) || 90, 900, polygon ? polygon.priceUsd : POL_USD));
         return route.abort();
     });
     return external;
 }
 
-export async function openApp(context, url, chain) {
+// Espera uma condição dentro da página (por sondagem; funciona mesmo com a política CSP do site).
+export async function waitFn(page, fn, arg, options = {}) {
+    const timeout = options.timeout ?? 30000;
+    const start = Date.now();
+    for (;;) {
+        let ok = false;
+        try { ok = await page.evaluate(fn, arg); } catch (e) { if (!/Execution context was destroyed|navigation/i.test(e.message)) throw e; }
+        if (ok) return ok;
+        if (Date.now() - start > timeout) throw new Error(`Tempo esgotado (${timeout} ms) esperando: ${String(fn).slice(0, 120)}`);
+        await page.waitForTimeout(150);
+    }
+}
+
+export async function openApp(context, url, chain, opts = {}) {
     const page = await context.newPage();
     const pageErrors = [];
     const dialogs = [];
@@ -73,9 +130,9 @@ export async function openApp(context, url, chain) {
     page.on('dialog', (d) => { dialogs.push(d.message()); d.accept().catch(() => {}); });
     const cspViolations = [];
     page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); });
-    const external = await mockNetwork(page, chain);
+    const external = await mockNetwork(page, chain, opts);
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-    await page.waitForFunction(() => window.ethers && window.RdeskWallet && window.RdeskDefi && window.RdeskReceipt, null, { timeout: 60000 });
+    await waitFn(page, () => window.ethers && window.RdeskWallet && window.RdeskDefi && window.RdeskReceipt, null, { timeout: 60000 });
     await page.waitForTimeout(800);
     return { page, pageErrors, dialogs, external, cspViolations };
 }
@@ -89,7 +146,7 @@ export async function importWalletViaUi(page, { name = 'Principal', mnemonic = T
     await page.fill('#rmw-f-seed-input', mnemonic);
     if (await page.locator('#rmw-f-pass').count()) await page.fill('#rmw-f-pass', password);
     await page.click('#rmw-f-submit');
-    await page.waitForFunction(() => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
     await page.waitForTimeout(500);
     await page.evaluate(() => window.RdeskWallet.closeModal());
 }

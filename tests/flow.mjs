@@ -1,7 +1,7 @@
 // Fluxo completo de dinheiro contra a Polygon simulada (tests/mock-chain.mjs), com cliques reais:
 // importar carteira -> piloto automático abre pool -> colher tarifas -> rebalancear -> encerrar.
 // Confere as transações que a app realmente assina.
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, USD_BRL } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, USD_BRL, waitFn } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address.toLowerCase();
@@ -23,7 +23,7 @@ const innerCalls = (batch) => batch.flatMap((t) => (t.fn === 'multicall' ? t.arg
 const idle = () => chain.txs.length;
 
 async function confirmReceipt(titleRe) {
-    await page.waitForFunction(() => { const m = document.getElementById('modal-receipt'); return m && getComputedStyle(m).display !== 'none'; }, null, { timeout: 60000 });
+    await waitFn(page, () => { const m = document.getElementById('modal-receipt'); return m && getComputedStyle(m).display !== 'none'; }, null, { timeout: 60000 });
     const title = await page.textContent('#rcp-title');
     const body = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
     check(`recibo antes de assinar: ${title}`, titleRe.test(title), body.slice(0, 230));
@@ -56,7 +56,7 @@ try {
 
     // ------------------------------------------------------------ 2. Aba Render: faixa Sniper visível
     await page.click('.nav-tab-btn[data-tab="earn"]');
-    await page.waitForFunction(() => window.RdeskDefi.getState().poolPrice > 0, null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskDefi.getState().poolPrice > 0, null, { timeout: 30000 });
     await page.waitForTimeout(1500);
     const st0 = await ui(() => window.RdeskDefi.getState());
     check('preço lido da pool Uniswap', Math.abs(st0.poolPrice - chain.priceUsd) / chain.priceUsd < 1e-6, `$${st0.poolPrice.toFixed(5)}`);
@@ -70,7 +70,7 @@ try {
     let mark = idle();
     await page.click('#btn-start-autopilot');
     await confirmReceipt(/Piloto Autom/);
-    await page.waitForFunction(() => /Posição aberta|insuficiente|cancelad|rro|revert|diferente/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
+    await waitFn(page, () => /Posição aberta|insuficiente|cancelad|rro|revert|diferente/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
     const apMsg = await page.textContent('#autopilot-feedback');
     let batch = chain.txs.slice(mark);
     console.log('   transações:', batch.map(describe).join(' -> '));
@@ -98,7 +98,7 @@ try {
     const deployedUsd = (START_POL - 3) * POL_USD;
     check('pelo menos 97% do capital entrou na pool', leftoverUsd / deployedUsd < 0.03, `sobrou $${leftoverUsd.toFixed(3)} de $${deployedUsd.toFixed(2)}`);
 
-    await page.waitForFunction(() => document.querySelectorAll('#active-positions-list .position-card').length === 1, null, { timeout: 60000 }).catch(() => {});
+    await waitFn(page, () => document.querySelectorAll('#active-positions-list .position-card').length === 1, null, { timeout: 60000 }).catch(() => {});
     const card = (await page.innerText('#active-positions-list')).replace(/\s+/g, ' ');
     check('posição aparece na tela como RENDENDO, com os 3 botões', /RENDENDO/.test(card) && /Colher Tarifas/.test(card) && /Rebalancear/.test(card) && /Encerrar Pool/.test(card), card.slice(0, 160));
     const chartLabel2 = await page.getAttribute('#earn-chart-container canvas', 'aria-label');
@@ -133,7 +133,7 @@ try {
     await ui(() => { document.getElementById('autopilot-feedback').textContent = ''; });
     await clickPosButton('Rebalancear');
     await confirmReceipt(/Rebalancear/);
-    await page.waitForFunction(() => /Posição aberta|insuficiente|cancelad|rro|revert|diferente/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
+    await waitFn(page, () => /Posição aberta|insuficiente|cancelad|rro|revert|diferente/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
     batch = chain.txs.slice(mark);
     console.log('   transações:', batch.map(describe).join(' -> '), '|', await page.textContent('#autopilot-feedback'));
     check('nenhuma transação reverteu no rebalanceamento', batch.length > 0 && batch.every((t) => t.status === 1), batch.filter((t) => !t.status).map(describe).join('; ') || dialogs.join(' | '));
@@ -148,7 +148,7 @@ try {
 
     // ------------------------------------------------------------ 6. Encerrar a pool
     if (fresh) {
-        await page.waitForFunction(() => document.querySelectorAll('#active-positions-list .position-card').length === 1, null, { timeout: 60000 }).catch(() => {});
+        await waitFn(page, () => document.querySelectorAll('#active-positions-list .position-card').length === 1, null, { timeout: 60000 }).catch(() => {});
         mark = idle();
         await clickPosButton('Encerrar Pool');
         await confirmReceipt(/Encerrar/);
@@ -158,7 +158,7 @@ try {
         const finalUsd = (fmtPol(chain.balOf(ADDR.WPOL, OWNER)) + fmtPol(chain.nativeOf(OWNER))) * newPrice + fmtUsdt(chain.balOf(ADDR.USDT0, OWNER));
         check('fundos de volta na carteira', finalUsd > 60, `≈ $${finalUsd.toFixed(2)} (WPOL ${fmtPol(chain.balOf(ADDR.WPOL, OWNER)).toFixed(2)}, USDT0 ${fmtUsdt(chain.balOf(ADDR.USDT0, OWNER)).toFixed(2)}, POL ${fmtPol(chain.nativeOf(OWNER)).toFixed(3)})`);
 
-        await page.waitForFunction((u) => {
+        await waitFn(page, (u) => {
             const b = window.RdeskWallet.getBalances().find((x) => x.chainId === 137 && x.symbol === 'USDT');
             return b && Math.abs(b.amount - u) < 0.01;
         }, fmtUsdt(chain.balOf(ADDR.USDT0, OWNER)), { timeout: 30000 }).catch(() => {});
@@ -181,14 +181,14 @@ try {
         await page.selectOption('#swap-from-token', from);
         await page.selectOption('#swap-to-token', to);
         await page.fill('#swap-amount-in', amount);
-        await page.waitForFunction(() => parseFloat(document.getElementById('swap-amount-out').value) > 0, null, { timeout: 30000 });
+        await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0, null, { timeout: 30000 });
         await page.waitForTimeout(1200); // cotação estabiliza (digitação dispara mais de uma)
         const quoted = parseFloat(await page.inputValue('#swap-amount-out'));
         const m = idle();
         await ui(() => { document.getElementById('swap-feedback').textContent = ''; });
         await page.click('#btn-execute-swap');
         await confirmReceipt(/Confirmar Troca/);
-        await page.waitForFunction(() => /concluída|rro|cancelad|insuf|revert|Too little/i.test(document.getElementById('swap-feedback')?.textContent || ''), null, { timeout: 120000 }).catch(() => {});
+        await waitFn(page, () => /concluída|rro|cancelad|insuf|revert|Too little/i.test(document.getElementById('swap-feedback')?.textContent || ''), null, { timeout: 120000 }).catch(() => {});
         return { quoted, txs: chain.txs.slice(m), msg: await page.textContent('#swap-feedback') };
     };
     let usdtBefore = fmtUsdt(chain.balOf(ADDR.USDT0, OWNER));
@@ -207,17 +207,84 @@ try {
         /concluída/.test(s2.msg) && s2.txs.every((x) => x.status === 1) && polGain > s2.quoted * 0.97 && chain.balOf(ADDR.WPOL, OWNER) === wpolBefore,
         `cotado ${s2.quoted} POL; POL nativo +${polGain.toFixed(4)} (já descontado o gás) | ${s2.msg}`);
 
-    await page.selectOption('#swap-from-token', 'BRZ').catch(() => {});
+    // Inverter: rede, moeda e quantidade trocam de lado
+    await page.selectOption('#swap-from-token', 'POL');
     await page.selectOption('#swap-to-token', 'USDT');
     await page.fill('#swap-amount-in', '10');
+    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0 && /Uniswap/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 });
+    await page.waitForTimeout(800);
+    const beforeFlip = await ui(() => ({ out: document.getElementById('swap-amount-out').value }));
+    await page.click('#btn-swap-flip');
+    await page.waitForTimeout(1500);
+    const afterFlip = await ui(() => ({ from: document.getElementById('swap-from-token').value, to: document.getElementById('swap-to-token').value,
+        amt: document.getElementById('swap-amount-in').value, out: parseFloat(document.getElementById('swap-amount-out').value) }));
+    check('botão de inverter troca as moedas de lado e leva a quantidade junto',
+        afterFlip.from === 'USDT' && afterFlip.to === 'POL' && afterFlip.amt === beforeFlip.out && Math.abs(afterFlip.out - 10) < 0.05, JSON.stringify(afterFlip));
+
+    const contractsText = (await page.innerText('#swap-contracts')).replace(/\s+/g, ' ');
+    check('troca mostra o contrato da moeda para conferência', /0xc2132D…B58e8F/.test(contractsText) && /moeda nativa/.test(contractsText), contractsText);
+
+    // Máximo de moeda nativa deixa reserva para taxas
+    await page.click('#btn-swap-flip');
+    await page.click('#btn-swap-max');
+    const maxPol = parseFloat(await page.inputValue('#swap-amount-in'));
+    check('"Máx" de POL deixa 3 POL de reserva para taxas', Math.abs(maxPol - (fmtPol(chain.nativeOf(OWNER)) - 3)) < 0.01, `máx ${maxPol} de ${fmtPol(chain.nativeOf(OWNER)).toFixed(4)}`);
+
+    // Rota em dois saltos: POL -> BRLA não tem pool direta; passa por USDT numa única transação
+    const brlaBefore = fmtPol(chain.balOf(ADDR.BRLA, OWNER));
+    const s3 = await doSwap('POL', 'BRLA', '20');
+    console.log('   transações:', s3.txs.map(describe).join(' -> '));
+    const brlaGot = fmtPol(chain.balOf(ADDR.BRLA, OWNER)) - brlaBefore;
+    const hopTx = s3.txs.find((x) => x.fn === 'exactInput');
+    check('POL → BRLA usa rota em dois saltos via USDT, numa só transação, com mínimo de saída',
+        /concluída/.test(s3.msg) && s3.txs.length === 1 && Boolean(hopTx) && hopTx.status === 1 && hopTx.args[0].amountOutMinimum.gt(0) && Math.abs(brlaGot - s3.quoted) / s3.quoted < 0.002,
+        `cotado ${s3.quoted} BRLA, recebido ${brlaGot.toFixed(4)} | ${s3.msg}`);
+
+    // Pool rasa: USDT -> BRZ pagaria 26% abaixo do mercado -> bloqueado
+    await page.selectOption('#swap-from-token', 'USDT');
+    await page.selectOption('#swap-to-token', 'BRZ');
+    await page.fill('#swap-amount-in', '5');
+    await waitFn(page, () => /Sem liquidez|pool|Uniswap/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 });
+    await page.waitForTimeout(1200);
+    const thin = { out: await page.inputValue('#swap-amount-out'), info: await page.textContent('#swap-quote-info') };
+    mark = idle();
+    await page.click('#btn-execute-swap');
     await page.waitForTimeout(2500);
-    check('par sem pool direta não oferece troca que reverteria', (await page.inputValue('#swap-amount-out')) === '--', await page.textContent('#swap-quote-info'));
+    const receiptOpen = await ui(() => getComputedStyle(document.getElementById('modal-receipt')).display !== 'none');
+    check('pool sem liquidez (26% abaixo do mercado) é bloqueada antes de assinar',
+        thin.out === '--' && /Sem liquidez/.test(thin.info) && !receiptOpen && idle() === mark, thin.info);
+
+    // Par sem nenhuma pool
+    await page.selectOption('#swap-to-token', 'WETH');
+    await page.fill('#swap-amount-in', '6');
+    await waitFn(page, () => /Não há pool/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 }).catch(() => {});
+    check('par sem pool avisa em vez de oferecer troca que reverteria', /Não há pool/.test(await page.textContent('#swap-quote-info')), await page.textContent('#swap-quote-info'));
+
+    // Outra rede: a lista de moedas acompanha a rede escolhida
+    await page.selectOption('#swap-from-chain', '8453');
+    const baseTokens = await page.$$eval('#swap-from-token option', (o) => o.map((x) => x.value));
+    check('trocar a rede muda a lista de moedas (Base: ETH, WETH, USDC)', baseTokens.join(',') === 'ETH,WETH,USDC', baseTokens.join(','));
+    await page.selectOption('#swap-from-chain', '137');
+
+    // Cotação velha nunca é executada: muda o valor e clica na hora
+    await page.selectOption('#swap-from-token', 'WPOL');
+    await page.selectOption('#swap-to-token', 'USDT');
+    await page.fill('#swap-amount-in', '7');
+    await waitFn(page, () => parseFloat(document.getElementById('swap-amount-out').value) > 0, null, { timeout: 30000 });
+    await page.waitForTimeout(900);
+    await page.fill('#swap-amount-in', '9');
+    await page.click('#btn-execute-swap');
+    await waitFn(page, () => getComputedStyle(document.getElementById('modal-receipt')).display !== 'none', null, { timeout: 30000 });
+    const staleReceipt = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
+    check('recibo sempre reflete o valor que está na tela (9, não a cotação antiga de 7)', /\b9 WPOL/.test(staleReceipt) && !/\b7 WPOL/.test(staleReceipt), staleReceipt.slice(0, 120));
+    await page.click('#btn-rcp-cancel').catch(async () => { await ui(() => document.querySelector('#modal-receipt [id*="cancel"], #modal-receipt .btn-ghost')?.click()); });
+    await page.waitForTimeout(500);
     await page.click('.nav-tab-btn[data-tab="wallet"]');
 
     // ------------------------------------------------------------ 8. Enviar cripto
     const DEST = '0x000000000000000000000000000000000000dEaD';
     for (const [sym, amount, read] of [
-        ['USDT0', '1.5', () => fmtUsdt(chain.balOf(ADDR.USDT0, DEST))],
+        ['USDT', '1.5', () => fmtUsdt(chain.balOf(ADDR.USDT0, DEST))],
         ['POL', '0.25', () => fmtPol(chain.nativeOf(DEST))]
     ]) {
         dialogs.length = 0;
@@ -227,7 +294,7 @@ try {
         await page.fill('#rmw-snd-to', DEST);
         await page.fill('#rmw-snd-amt', amount);
         await page.click('#rmw-snd-exec');
-        await page.waitForFunction(() => /confirmado|rro|insuf|inválid|revert/i.test(document.getElementById('rmw-snd-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
+        await waitFn(page, () => /confirmado|rro|insuf|inválid|revert/i.test(document.getElementById('rmw-snd-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
         const msg = await page.innerText('#rmw-snd-msg');
         check(`enviar ${amount} ${sym}: pede confirmação com o endereço e chega ao destino`,
             dialogs.length === 1 && dialogs[0].includes(DEST) && /confirmado/i.test(msg) && Math.abs(read() - Number(amount)) < 1e-9, `${msg} | destino tem ${read()}`);

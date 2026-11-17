@@ -159,11 +159,31 @@
                     close: parseFloat(k[4])
                 }));
 
+                defiState.candlesTf = tf;
                 if (rangeChart && defiState.candles.length > 0) {
                     rangeChart.setCandles(defiState.candles);
                 }
             }
         } catch (e) {}
+
+        // Reserva: velas da própria pool Uniswap quando a fonte principal não responde
+        if (!defiState.candles.length || defiState.candlesTf !== tf) {
+            try {
+                const cfg = { '15m': ['minute', 15], '1h': ['hour', 1], '4h': ['hour', 4] }[tf] || ['minute', 15];
+                const res = await fetch(`https://api.geckoterminal.com/api/v2/networks/polygon_pos/pools/${POOL_POL_USDT}/ohlcv/${cfg[0]}?aggregate=${cfg[1]}&limit=90&currency=usd&token=base`);
+                const list = res.ok ? (await res.json())?.data?.attributes?.ohlcv_list : null;
+                if (Array.isArray(list) && list.length) {
+                    const parsed = list.map((k) => ({ time: k[0], open: +k[1], high: +k[2], low: +k[3], close: +k[4] }))
+                        .filter((c) => c.open > 0 && c.close > 0).sort((a, b) => a.time - b.time);
+                    // Só aceita se o último fechamento bater com o preço conhecido do POL (evita série da moeda errada)
+                    const ref = currentSpotPrice();
+                    const last = parsed.length ? parsed[parsed.length - 1].close : 0;
+                    if (!(ref > 0) || Math.abs(last / ref - 1) < 0.2) defiState.candles = parsed;
+                    defiState.candlesTf = tf;
+                    if (rangeChart && defiState.candles.length > 0) rangeChart.setCandles(defiState.candles);
+                }
+            } catch (e) {}
+        }
 
         recalculateSniperRange();
     }
@@ -457,11 +477,11 @@
 
             const s2 = document.createElement('div');
             const totalBrl = pos.isSimulated ? 0 : pos.totalUsd * prices.USD_BRL;
-            s2.innerHTML = `<span class="muted-sm">Valor na Pool</span><br><strong>${pos.isSimulated ? 'Estudo' : window.RdeskWallet.formatBRL(totalBrl)}</strong>`;
+            s2.innerHTML = `<span class="muted-sm">Valor na Pool</span><br><strong class="money">${pos.isSimulated ? 'Estudo' : window.RdeskWallet.formatBRL(totalBrl)}</strong>`;
 
             const s3 = document.createElement('div');
             const feesBrl = pos.isSimulated ? 0 : pos.feesUsd * prices.USD_BRL;
-            s3.innerHTML = `<span class="muted-sm">Tarifas Acumuladas</span><br><strong style="color:var(--green-bright);">${pos.isSimulated ? '--' : window.RdeskWallet.formatBRL(feesBrl)}</strong>`;
+            s3.innerHTML = `<span class="muted-sm">Tarifas Acumuladas</span><br><strong class="money" style="color:var(--green-bright);">${pos.isSimulated ? '--' : window.RdeskWallet.formatBRL(feesBrl)}</strong>`;
 
             stats.append(s1, s2, s3);
 
@@ -876,275 +896,310 @@
     // =========================================================================
     // TROCA DEX (UNISWAP V3) & PONTE MULTI-REDE (LI.FI)
     // =========================================================================
-    function resolveTokenAddressForSwap(chainId, symbol) {
-        if (chainId === 137 && symbol === 'POL') return ADDR_WPOL;
-        const list = window.RdeskWallet.CHAIN_TOKENS[chainId] || [];
-        const found = list.find(t => t.symbol === symbol);
-        if (!found) return null;
-        return found.isNative ? '0x0000000000000000000000000000000000000000' : found.address;
-    }
+    // =========================================================================
+    // TROCAR MOEDAS (Uniswap V3 na Polygon, com várias faixas de tarifa e rota em
+    // dois saltos; demais redes e pontes via LI.FI)
+    // =========================================================================
+    const REG = window.RdeskRegistry;
+    const SWAP_FEE_TIERS = [100, 500, 3000, 10000];      // 0,01% 0,05% 0,3% 1%
+    const HOP_FEE_TIERS = [100, 500, 3000];
+    const SWAP_SLIPPAGE_BPS = 150;                       // 1,5%
+    const IMPACT_WARN = 0.03;                            // avisa acima de 3% de perda frente ao mercado
+    const IMPACT_BLOCK = 0.10;                           // bloqueia acima de 10%
+    const NATIVE_RESERVE = { POL: 3.0, ETH: 0.0015, CELO: 0.05 };
+    const QUOTER_ABI = [
+        'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
+        'function quoteExactInput(bytes path, uint256 amountIn) returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)'
+    ];
+    const ROUTER_ABI = [
+        'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)',
+        'function exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum)) payable returns (uint256 amountOut)'
+    ];
+    const feeLabel = (fee) => `${(fee / 10000).toLocaleString('pt-BR')}%`;
+    let swapQuoteSeq = 0;
 
     function getTokenMeta(chainId, symbol) {
-        const list = window.RdeskWallet.CHAIN_TOKENS[chainId] || [];
-        return list.find(t => t.symbol === symbol) || null;
+        return REG.getTokens(chainId).find((t) => t.symbol === symbol) || null;
+    }
+    // Endereço usado dentro da Uniswap (moeda nativa entra como a versão embrulhada)
+    function uniswapAddress(meta) {
+        return meta.isNative ? ADDR_WPOL : meta.address;
+    }
+    function tokenUnitUsd(chainId, meta) {
+        return window.RdeskWallet.unitUsdFor(meta.priceKey, chainId, meta.address);
+    }
+    function swapEls() {
+        const g = (id) => document.getElementById(id);
+        return { fc: g('swap-from-chain'), ft: g('swap-from-token'), tc: g('swap-to-chain'), tt: g('swap-to-token'), amt: g('swap-amount-in'), out: g('swap-amount-out'), info: g('swap-quote-info'), contracts: g('swap-contracts') };
+    }
+    function readSwapForm() {
+        const e = swapEls();
+        const amountText = String(e.amt?.value || '').trim().replace(',', '.');
+        return { fromChain: Number(e.fc?.value || 137), toChain: Number(e.tc?.value || 137), fromSym: e.ft?.value || '', toSym: e.tt?.value || '', amountText, amountIn: parseFloat(amountText) || 0 };
+    }
+    const swapKey = (f) => `${f.fromChain}:${f.fromSym}>${f.toChain}:${f.toSym}@${f.amountText}`;
+
+    function fillTokenSelect(select, chainId, wanted) {
+        if (!select) return;
+        const tokens = REG.getTokens(chainId);
+        select.replaceChildren(...tokens.map((t) => new Option(t.symbol, t.symbol)));
+        if (tokens.some((t) => t.symbol === wanted)) select.value = wanted;
+    }
+    // Monta as listas de rede e de moeda (as moedas mudam conforme a rede escolhida).
+    function populateSwapSelects() {
+        const e = swapEls();
+        if (!e.fc || !e.tc) return;
+        if (!e.fc.options.length) {
+            [e.fc, e.tc].forEach((sel) => sel.replaceChildren(...REG.CHAINS.map((c) => new Option(c.name, String(c.id)))));
+            e.fc.value = '137'; e.tc.value = '137';
+            fillTokenSelect(e.ft, 137, 'POL');
+            fillTokenSelect(e.tt, 137, 'USDT');
+        } else {
+            fillTokenSelect(e.ft, Number(e.fc.value), e.ft.value);
+            fillTokenSelect(e.tt, Number(e.tc.value), e.tt.value);
+        }
+        renderSwapContracts();
+    }
+    // Mostra o contrato das duas moedas para conferência.
+    function renderSwapContracts() {
+        const e = swapEls();
+        if (!e.contracts) return;
+        const f = readSwapForm();
+        const line = (label, chainId, sym) => {
+            const meta = getTokenMeta(chainId, sym);
+            if (!meta) return '';
+            const where = meta.address
+                ? `<a href="${REG.esc(REG.explorerTokenUrl(chainId, meta.address))}" target="_blank" rel="noopener noreferrer" title="${REG.esc(meta.address)}">${REG.esc(REG.shortAddress(meta.address, 8, 6))} ↗</a>`
+                : '<span>moeda nativa da rede</span>';
+            return `<div class="swap-contract-line">${REG.tokenOnChainBadge(sym, chainId, 22)}<span>${label} <strong>${REG.esc(sym)}</strong> ${REG.chainBadge(chainId)}</span>${where}</div>`;
+        };
+        e.contracts.innerHTML = line('Envia', f.fromChain, f.fromSym) + line('Recebe', f.toChain, f.toSym);
     }
 
     function updateSwapFromBalanceDisplay() {
-        const fromChain = Number(document.getElementById('swap-from-chain')?.value || 137);
-        const fromSym = document.getElementById('swap-from-token')?.value || 'POL';
-        const balances = window.RdeskWallet.getBalances();
-        const found = balances.find(b => b.chainId === fromChain && b.symbol === fromSym);
-        const avail = found ? found.amount : 0;
-
+        const f = readSwapForm();
+        const found = window.RdeskWallet.getBalances().find((b) => b.chainId === f.fromChain && b.symbol === f.fromSym);
         const balEl = document.getElementById('swap-from-bal');
-        if (balEl) balEl.textContent = `${avail.toFixed(4)} ${fromSym}`;
+        if (balEl) balEl.textContent = `${(found ? found.amount : 0).toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${f.fromSym}`;
     }
 
+    // Procura a melhor rota na Uniswap V3 da Polygon: direto em cada faixa de tarifa e, se preciso, em dois saltos.
+    async function quotePolygonUniswap(fromMeta, toMeta, rawIn) {
+        const provider = await window.RdeskWallet.getHealthyProvider(137);
+        const quoter = new ethers.Contract(QUOTER_V2, QUOTER_ABI, provider);
+        const addrIn = uniswapAddress(fromMeta), addrOut = uniswapAddress(toMeta);
+        const best = { out: ethers.constants.Zero, hops: null };
+        const consider = (out, hops) => { if (out.gt(best.out)) { best.out = out; best.hops = hops; } };
+
+        const direct = await Promise.allSettled(SWAP_FEE_TIERS.map((fee) =>
+            quoter.callStatic.quoteExactInputSingle({ tokenIn: addrIn, tokenOut: addrOut, amountIn: rawIn, fee, sqrtPriceLimitX96: 0 })));
+        direct.forEach((r, i) => { if (r.status === 'fulfilled') consider(r.value.amountOut, [{ tokenIn: addrIn, fee: SWAP_FEE_TIERS[i], tokenOut: addrOut }]); });
+
+        // Dois saltos (via USDT, WPOL ou USDC) só quando não há pool direta ou ela paga mal frente ao mercado
+        const unitIn = tokenUnitUsd(137, fromMeta), unitOut = tokenUnitUsd(137, toMeta);
+        const directValueRatio = best.hops && unitIn > 0 && unitOut > 0
+            ? (parseFloat(ethers.utils.formatUnits(best.out, toMeta.decimals)) * unitOut) / (parseFloat(ethers.utils.formatUnits(rawIn, fromMeta.decimals)) * unitIn)
+            : 0;
+        if (!best.hops || directValueRatio < 0.99) {
+            const mids = ['USDT', 'WPOL', 'USDC'].map((s) => getTokenMeta(137, s)).filter(Boolean)
+                .map((m) => m.address).filter((a) => a.toLowerCase() !== addrIn.toLowerCase() && a.toLowerCase() !== addrOut.toLowerCase());
+            const combos = [];
+            mids.forEach((mid) => HOP_FEE_TIERS.forEach((f1) => HOP_FEE_TIERS.forEach((f2) => combos.push({ mid, f1, f2 }))));
+            const hopResults = await Promise.allSettled(combos.map((c) =>
+                quoter.callStatic.quoteExactInput(ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'], [addrIn, c.f1, c.mid, c.f2, addrOut]), rawIn)));
+            hopResults.forEach((r, i) => {
+                if (r.status !== 'fulfilled') return;
+                const c = combos[i];
+                consider(r.value.amountOut, [{ tokenIn: addrIn, fee: c.f1, tokenOut: c.mid }, { tokenIn: c.mid, fee: c.f2, tokenOut: addrOut }]);
+            });
+        }
+        if (!best.hops) return null;
+        const symbolOf = (addr) => (REG.findToken(137, addr)?.symbol || REG.shortAddress(addr));
+        const label = best.hops.length === 1
+            ? `Uniswap V3 direto (tarifa ${feeLabel(best.hops[0].fee)})`
+            : `Uniswap V3 via ${symbolOf(best.hops[0].tokenOut)} (${feeLabel(best.hops[0].fee)} + ${feeLabel(best.hops[1].fee)})`;
+        return { rawOut: best.out, hops: best.hops, label };
+    }
+
+    // Calcula a cotação do formulário atual. Devolve a cotação (ou null) e atualiza a tela.
     async function refreshSwapQuote() {
-        const fromChain = Number(document.getElementById('swap-from-chain')?.value || 137);
-        const toChain = Number(document.getElementById('swap-to-chain')?.value || 137);
-        const fromSym = document.getElementById('swap-from-token')?.value || 'POL';
-        const toSym = document.getElementById('swap-to-token')?.value || 'USDT';
-        const amountIn = parseFloat(document.getElementById('swap-amount-in')?.value) || 0;
-
-        const outInput = document.getElementById('swap-amount-out');
-        const infoEl = document.getElementById('swap-quote-info');
+        const seq = ++swapQuoteSeq;
+        const e = swapEls();
+        const f = readSwapForm();
         updateSwapFromBalanceDisplay();
+        renderSwapContracts();
+        const setOut = (value, info) => {
+            if (seq !== swapQuoteSeq) return; // já existe um pedido mais novo
+            if (e.out) e.out.value = value;
+            if (e.info && info !== undefined) e.info.textContent = info;
+        };
+        const fail = (info) => { if (seq === swapQuoteSeq) defiState.swapQuote = null; setOut('--', info); return null; };
 
-        if (amountIn <= 0) {
-            if (outInput) outInput.value = '0.00';
-            defiState.swapQuote = null;
-            return;
-        }
+        if (!(f.amountIn > 0)) { defiState.swapQuote = null; setOut('0.00', 'Digite a quantidade'); return null; }
+        const fromMeta = getTokenMeta(f.fromChain, f.fromSym);
+        const toMeta = getTokenMeta(f.toChain, f.toSym);
+        if (!fromMeta || !toMeta) return fail('Moeda indisponível nesta rede');
+        if (f.fromChain === f.toChain && f.fromSym === f.toSym) return fail('Escolha moedas diferentes');
 
-        const fromMeta = getTokenMeta(fromChain, fromSym);
-        const toMeta = getTokenMeta(toChain, toSym);
-        if (!fromMeta || !toMeta) {
-            if (outInput) outInput.value = '--';
-            if (infoEl) infoEl.textContent = 'Par indisponível nesta rede';
-            defiState.swapQuote = null;
-            return;
-        }
-
-        // Caso 1: Wrap / Unwrap 1:1 POL <-> WPOL na Polygon
-        if (fromChain === 137 && toChain === 137 &&
-            ((fromSym === 'POL' && toSym === 'WPOL') || (fromSym === 'WPOL' && toSym === 'POL'))) {
-            if (outInput) outInput.value = amountIn.toFixed(4);
-            if (infoEl) infoEl.textContent = 'Conversão 1:1 (0% tarifa DEX)';
-            defiState.swapQuote = {
-                type: 'WRAP_UNWRAP',
-                fromChain,
-                toChain,
-                fromSym,
-                toSym,
-                amountIn,
-                amountOut: amountIn,
-                routeLabel: 'Contrato Oficial WPOL (1:1)'
-            };
-            return;
-        }
-
-        // Caso 2: Mesma rede Polygon -> Uniswap V3 QuoterV2
-        if (fromChain === 137 && toChain === 137) {
-            const addrIn = resolveTokenAddressForSwap(137, fromSym);
-            const addrOut = resolveTokenAddressForSwap(137, toSym);
-            if (!addrIn || !addrOut || addrIn === addrOut) return;
-
-            const prices = window.RdeskWallet.getPrices();
-            const usdIn = amountIn * (fromMeta.priceKey === 'USD' ? 1 : fromMeta.priceKey === 'BRL' ? (1 / prices.USD_BRL) : (prices[fromMeta.priceKey] || 0));
-            const unitOutUsd = toMeta.priceKey === 'USD' ? 1 : toMeta.priceKey === 'BRL' ? (1 / prices.USD_BRL) : (prices[toMeta.priceKey] || 1);
-            let estOut = unitOutUsd > 0 ? (usdIn / unitOutUsd) * 0.999 : 0;
-
-            try {
-                const provider = await window.RdeskWallet.getReadProvider(137);
-                const quoter = new ethers.Contract(
-                    QUOTER_V2,
-                    ['function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160, uint32, uint256)'],
-                    provider
-                );
-                const rawIn = ethers.utils.parseUnits(amountIn.toFixed(fromMeta.decimals), fromMeta.decimals);
-                const res = await quoter.callStatic.quoteExactInputSingle({
-                    tokenIn: addrIn,
-                    tokenOut: addrOut,
-                    amountIn: rawIn,
-                    fee: POOL_FEE,
-                    sqrtPriceLimitX96: 0
-                });
-                estOut = parseFloat(ethers.utils.formatUnits(res.amountOut, toMeta.decimals));
-            } catch (e) {
-                // Sem pool direta de 0,05% para o par: não oferece uma troca que reverteria.
-                if (outInput) outInput.value = '--';
-                if (infoEl) infoEl.textContent = 'Sem pool direta para este par na Uniswap V3 (0,05%). Troque passando por USDT.';
-                defiState.swapQuote = null;
-                return;
+        let rawIn;
+        try { rawIn = ethers.utils.parseUnits(f.amountText, fromMeta.decimals); } catch (err) { return fail('Quantidade com casas decimais demais para esta moeda'); }
+        const base = { key: swapKey(f), fromChain: f.fromChain, toChain: f.toChain, fromSym: f.fromSym, toSym: f.toSym, fromMeta, toMeta, amountIn: f.amountIn, rawIn };
+        const usdIn = f.amountIn * tokenUnitUsd(f.fromChain, fromMeta);
+        const impactOf = (amountOut) => {
+            const usdOut = amountOut * tokenUnitUsd(f.toChain, toMeta);
+            return usdIn > 0 && usdOut > 0 ? 1 - usdOut / usdIn : null;
+        };
+        const publish = (quote, info) => {
+            if (seq !== swapQuoteSeq) return null;
+            if (quote.impact !== null && quote.impact > IMPACT_BLOCK) {
+                return fail(`Sem liquidez: esta troca perderia ${(quote.impact * 100).toFixed(1)}% frente ao mercado. Tente um valor menor ou outra moeda.`);
             }
+            defiState.swapQuote = quote;
+            const warn = quote.impact !== null && quote.impact > IMPACT_WARN ? ` • ⚠️ ${(quote.impact * 100).toFixed(1)}% abaixo do mercado` : '';
+            setOut(quote.amountOut.toLocaleString('en-US', { maximumFractionDigits: 6, useGrouping: false }), info + warn);
+            return quote;
+        };
 
-            if (outInput) outInput.value = estOut.toFixed(4);
-            if (infoEl) infoEl.textContent = 'Uniswap V3 Polygon (0.05%)';
-            defiState.swapQuote = {
-                type: 'UNISWAP_V3',
-                fromChain: 137,
-                toChain: 137,
-                fromSym,
-                toSym,
-                fromMeta,
-                toMeta,
-                addrIn,
-                addrOut,
-                amountIn,
-                amountOut: estOut,
-                routeLabel: 'Uniswap V3 SwapRouter02 (Polygon)'
-            };
-            return;
+        // Caso 1: embrulhar / desembrulhar POL (1:1)
+        if (f.fromChain === 137 && f.toChain === 137 && ((f.fromSym === 'POL' && f.toSym === 'WPOL') || (f.fromSym === 'WPOL' && f.toSym === 'POL'))) {
+            return publish({ ...base, type: 'WRAP_UNWRAP', amountOut: f.amountIn, rawOut: rawIn, impact: 0, routeLabel: 'Contrato oficial WPOL (1:1)' }, 'Conversão 1:1, sem tarifa');
         }
 
-        // Caso 3: Cross-chain ou outras EVMs -> LI.FI Quote API
+        // Caso 2: Polygon -> Uniswap V3 (melhor rota)
+        if (f.fromChain === 137 && f.toChain === 137) {
+            setOut(e.out?.value || '…', 'Buscando a melhor rota…');
+            let route;
+            try { route = await quotePolygonUniswap(fromMeta, toMeta, rawIn); } catch (err) { return fail('Rede indisponível para cotar agora. Tente de novo.'); }
+            if (!route) return fail('Não há pool na Uniswap V3 para este par.');
+            const amountOut = parseFloat(ethers.utils.formatUnits(route.rawOut, toMeta.decimals));
+            return publish({ ...base, type: 'UNISWAP_V3', amountOut, rawOut: route.rawOut, hops: route.hops, impact: impactOf(amountOut), routeLabel: route.label }, route.label);
+        }
+
+        // Caso 3: outras redes ou ponte entre redes -> LI.FI
+        setOut(e.out?.value || '…', 'Consultando rota entre redes…');
         try {
-            if (infoEl) infoEl.textContent = 'Consultando ponte cross-chain...';
-            const fromTokenAddr = fromMeta.isNative ? '0x0000000000000000000000000000000000000000' : fromMeta.address;
-            const toTokenAddr = toMeta.isNative ? '0x0000000000000000000000000000000000000000' : toMeta.address;
-            const rawAmount = ethers.utils.parseUnits(amountIn.toFixed(fromMeta.decimals), fromMeta.decimals).toString();
+            const ZERO = '0x0000000000000000000000000000000000000000';
             const userAddr = window.RdeskWallet.getAddress() || '0x000000000000000000000000000000000000dEaD';
-
-            const url = `https://li.quest/v1/quote?fromChain=${fromChain}&toChain=${toChain}&fromToken=${fromTokenAddr}&toToken=${toTokenAddr}&fromAmount=${rawAmount}&fromAddress=${userAddr}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Rota cross-chain indisponível');
+            const params = new URLSearchParams({
+                fromChain: String(f.fromChain), toChain: String(f.toChain),
+                fromToken: fromMeta.isNative ? ZERO : fromMeta.address, toToken: toMeta.isNative ? ZERO : toMeta.address,
+                fromAmount: rawIn.toString(), fromAddress: userAddr, slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: 'rdesk-sentinel'
+            });
+            const res = await fetch(`https://li.quest/v1/quote?${params}`);
             const data = await res.json();
-
-            const estOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, toMeta.decimals));
-            if (outInput) outInput.value = estOut.toFixed(4);
-            if (infoEl) infoEl.textContent = `Ponte via ${data.toolDetails?.name || 'LI.FI'}`;
-
-            defiState.swapQuote = {
-                type: 'LIFI',
-                fromChain,
-                toChain,
-                fromSym,
-                toSym,
-                fromMeta,
-                toMeta,
-                amountIn,
-                amountOut: estOut,
-                lifiData: data,
-                routeLabel: `Roteador ${data.toolDetails?.name || 'LI.FI'}`
-            };
+            if (!res.ok || !data?.estimate?.toAmount) throw new Error(data?.message || 'sem rota');
+            const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, toMeta.decimals));
+            const tool = data.toolDetails?.name || 'LI.FI';
+            const minutes = Math.max(1, Math.round((data.estimate.executionDuration || 60) / 60));
+            return publish({ ...base, type: 'LIFI', amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount), impact: impactOf(amountOut), lifiData: data,
+                routeLabel: `${tool} (LI.FI) • ~${minutes} min` }, `${f.fromChain === f.toChain ? 'Troca' : 'Ponte'} via ${tool} • ~${minutes} min`);
         } catch (err) {
-            if (outInput) outInput.value = '--';
-            if (infoEl) infoEl.textContent = 'Rota indisponível para este par/rede';
-            defiState.swapQuote = null;
+            return fail('Rota indisponível para este par/rede agora.');
         }
     }
 
     async function executeActiveSwap() {
         const fb = document.getElementById('swap-feedback');
-        fb.style.color = 'var(--accent)';
-        fb.textContent = '';
+        const btn = document.getElementById('btn-execute-swap');
+        const say = (text, color = 'var(--accent)') => { fb.style.color = color; fb.textContent = text; };
+        say('');
 
-        const q = defiState.swapQuote;
-        if (!q || q.amountIn <= 0) {
-            fb.style.color = 'var(--red)';
-            fb.textContent = 'Informe uma quantidade válida para trocar.';
-            return;
-        }
+        // Garante que a cotação é exatamente a do que está na tela agora
+        let q = defiState.swapQuote;
+        if (!q || q.key !== swapKey(readSwapForm())) q = await refreshSwapQuote();
+        if (!q) { say(document.getElementById('swap-quote-info')?.textContent || 'Informe uma quantidade válida para trocar.', 'var(--red)'); return; }
 
         const prices = window.RdeskWallet.getPrices();
-        const fromMeta = getTokenMeta(q.fromChain, q.fromSym);
-        const unitUsd = fromMeta?.priceKey === 'USD' ? 1 : fromMeta?.priceKey === 'BRL' ? (1 / prices.USD_BRL) : (prices[fromMeta?.priceKey] || 0);
-        const brlVal = q.amountIn * unitUsd * prices.USD_BRL;
+        const brlIn = q.amountIn * tokenUnitUsd(q.fromChain, q.fromMeta) * prices.USD_BRL;
+        const brlOut = q.amountOut * tokenUnitUsd(q.toChain, q.toMeta) * prices.USD_BRL;
+        const minOut = q.rawOut.mul(10000 - SWAP_SLIPPAGE_BPS).div(10000);
+        const minOutText = parseFloat(ethers.utils.formatUnits(minOut, q.toMeta.decimals)).toLocaleString('pt-BR', { maximumFractionDigits: 6 });
+        const impactNote = q.impact !== null && q.impact > IMPACT_WARN ? ` • ATENÇÃO: ${(q.impact * 100).toFixed(1)}% abaixo do mercado` : '';
+        const nativeSym = REG.getTokens(q.fromChain).find((t) => t.isNative)?.symbol || '';
 
         const confirmed = await window.RdeskReceipt.confirm({
-            title: q.fromChain === q.toChain ? 'Confirmar Troca DEX' : 'Confirmar Ponte Cross-Chain',
-            sendVal: `${q.amountIn.toFixed(4)} ${q.fromSym}`,
-            sendBrl: window.RdeskWallet.formatBRL(brlVal),
-            recvVal: `~${q.amountOut.toFixed(4)} ${q.toSym}`,
-            recvBrl: window.RdeskWallet.formatBRL(brlVal * 0.998),
+            title: q.fromChain === q.toChain ? 'Confirmar Troca DEX' : 'Confirmar Ponte entre Redes',
+            sendVal: `${q.amountIn.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} ${q.fromSym} (${REG.getChain(q.fromChain).name})`,
+            sendBrl: brlIn > 0 ? window.RdeskWallet.formatBRL(brlIn) : 'sem cotação',
+            recvVal: `~${q.amountOut.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${q.toSym} (${REG.getChain(q.toChain).name})`,
+            recvBrl: brlOut > 0 ? window.RdeskWallet.formatBRL(brlOut) : 'sem cotação',
             route: q.routeLabel,
-            fee: 'R$ 0,00 (Sem taxa do app)',
-            gas: q.fromChain === 137 ? '~R$ 0,03 (Polygon)' : 'Gás da rede de origem',
-            shield: 'Proteção anti-slippage 1.5%'
+            fee: 'R$ 0,00 (sem taxa do app)',
+            gas: `Paga em ${nativeSym} na rede ${REG.getChain(q.fromChain).name}`,
+            shield: `Mínimo garantido: ${minOutText} ${q.toSym} (1,5%)${impactNote}`
         });
-
         if (!confirmed) return;
 
         try {
+            btn.disabled = true;
+            defiState.busy = true;
             const signer = await window.RdeskWallet.getSigner(q.fromChain);
             const owner = await signer.getAddress();
 
             if (q.type === 'WRAP_UNWRAP') {
-                const wpol = new ethers.Contract(
-                    ADDR_WPOL,
-                    ['function deposit() payable', 'function withdraw(uint256 wad)'],
-                    signer
-                );
-                const wei = ethers.utils.parseEther(q.amountIn.toFixed(6));
-                fb.textContent = 'Assinando conversão 1:1...';
-                const tx = q.fromSym === 'POL' ? await wpol.deposit({ value: wei }) : await wpol.withdraw(wei);
+                const wpol = new ethers.Contract(ADDR_WPOL, ['function deposit() payable', 'function withdraw(uint256 wad)'], signer);
+                say('Assinando conversão 1:1...');
+                const tx = q.fromSym === 'POL' ? await wpol.deposit({ value: q.rawIn }) : await wpol.withdraw(q.rawIn);
                 await tx.wait();
             } else if (q.type === 'UNISWAP_V3') {
-                const rawIn = ethers.utils.parseUnits(q.amountIn.toFixed(q.fromMeta.decimals), q.fromMeta.decimals);
-                const wpolBefore = q.toSym === 'POL'
-                    ? await new ethers.Contract(ADDR_WPOL, ['function balanceOf(address) view returns (uint256)'], signer).balanceOf(owner)
-                    : ethers.constants.Zero;
-                const minOut = ethers.utils.parseUnits((q.amountOut * 0.985).toFixed(q.toMeta.decimals), q.toMeta.decimals);
+                const payWithNative = Boolean(q.fromMeta.isNative);
+                const receiveNative = Boolean(q.toMeta.isNative);
+                const wpolRead = new ethers.Contract(ADDR_WPOL, ['function balanceOf(address) view returns (uint256)', 'function withdraw(uint256 wad)'], signer);
+                const wpolBefore = receiveNative ? await wpolRead.balanceOf(owner) : ethers.constants.Zero;
 
-                if (q.fromSym === 'POL') {
-                    fb.textContent = 'Etapa 1/2: Convertendo POL para WPOL...';
-                    const wpol = new ethers.Contract(ADDR_WPOL, ['function deposit() payable'], signer);
-                    const txWrap = await wpol.deposit({ value: rawIn });
-                    await txWrap.wait();
+                if (!payWithNative) {
+                    say(`Aprovando exatamente ${q.amountIn} ${q.fromSym}...`);
+                    await ensureExactErc20Approval(q.hops[0].tokenIn, SWAP_ROUTER_02, q.rawIn, signer);
                 }
-
-                fb.textContent = 'Aprovando e executando troca na Uniswap V3...';
-                await ensureExactErc20Approval(q.addrIn, SWAP_ROUTER_02, rawIn, signer);
-
-                const router = new ethers.Contract(
-                    SWAP_ROUTER_02,
-                    ['function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)'],
-                    signer
-                );
-                const txSwap = await router.exactInputSingle({
-                    tokenIn: q.addrIn,
-                    tokenOut: q.addrOut,
-                    fee: POOL_FEE,
-                    recipient: owner,
-                    amountIn: rawIn,
-                    amountOutMinimum: minOut,
-                    sqrtPriceLimitX96: 0
-                });
+                say('Executando troca na Uniswap V3...');
+                const router = new ethers.Contract(SWAP_ROUTER_02, ROUTER_ABI, signer);
+                const overrides = payWithNative ? { value: q.rawIn } : {};
+                let txSwap;
+                if (q.hops.length === 1) {
+                    txSwap = await router.exactInputSingle({ tokenIn: q.hops[0].tokenIn, tokenOut: q.hops[0].tokenOut, fee: q.hops[0].fee, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }, overrides);
+                } else {
+                    const path = ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'],
+                        [q.hops[0].tokenIn, q.hops[0].fee, q.hops[0].tokenOut, q.hops[1].fee, q.hops[1].tokenOut]);
+                    txSwap = await router.exactInput({ path, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut }, overrides);
+                }
                 await txSwap.wait();
 
-                if (q.toSym === 'POL') {
+                if (receiveNative) {
                     // O router entrega WPOL: converte o que chegou em POL nativo.
-                    fb.textContent = 'Convertendo WPOL recebido em POL...';
-                    const wpolOut = new ethers.Contract(ADDR_WPOL, ['function balanceOf(address) view returns (uint256)', 'function withdraw(uint256 wad)'], signer);
-                    const got = (await wpolOut.balanceOf(owner)).sub(wpolBefore);
+                    say('Convertendo WPOL recebido em POL...');
+                    const got = (await wpolRead.balanceOf(owner)).sub(wpolBefore);
                     if (got.gt(0)) {
-                        const txUnwrap = await wpolOut.withdraw(got);
+                        const txUnwrap = await wpolRead.withdraw(got);
                         await txUnwrap.wait();
                     }
                 }
-            } else if (q.type === 'LIFI' && q.lifiData?.transactionRequest) {
-                const txReq = q.lifiData.transactionRequest;
-                if (!q.fromMeta.isNative && q.lifiData.estimate?.approvalAddress) {
-                    const rawIn = ethers.utils.parseUnits(q.amountIn.toFixed(q.fromMeta.decimals), q.fromMeta.decimals);
-                    fb.textContent = 'Aprovando token para ponte...';
-                    await ensureExactErc20Approval(q.fromMeta.address, q.lifiData.estimate.approvalAddress, rawIn, signer);
+            } else if (q.type === 'LIFI') {
+                const txReq = q.lifiData?.transactionRequest;
+                if (!txReq || !txReq.to || !txReq.data) throw new Error('A rota não devolveu uma transação válida. Peça a cotação de novo.');
+                if (!q.fromMeta.isNative) {
+                    const spender = q.lifiData.estimate?.approvalAddress;
+                    if (!spender) throw new Error('A rota não informou o contrato a aprovar. Operação cancelada.');
+                    say(`Aprovando exatamente ${q.amountIn} ${q.fromSym}...`);
+                    await ensureExactErc20Approval(q.fromMeta.address, spender, q.rawIn, signer);
                 }
-                fb.textContent = 'Enviando transação cross-chain...';
-                const tx = await signer.sendTransaction({
-                    to: txReq.to,
-                    data: txReq.data,
-                    value: txReq.value ? ethers.BigNumber.from(txReq.value) : 0
-                });
+                say('Enviando a transação...');
+                const tx = await signer.sendTransaction({ to: txReq.to, data: txReq.data, value: txReq.value ? ethers.BigNumber.from(txReq.value) : 0 });
                 await tx.wait();
             }
 
-            fb.style.color = 'var(--green-bright)';
-            fb.textContent = `✓ Troca de ${q.amountIn} ${q.fromSym} por ${q.toSym} concluída!`;
+            defiState.swapQuote = null;
+            say(q.fromChain === q.toChain
+                ? `✓ Troca de ${q.amountIn} ${q.fromSym} por ${q.toSym} concluída!`
+                : `✓ Ponte enviada: ${q.toSym} chega na ${REG.getChain(q.toChain).name} em alguns minutos.`, 'var(--green-bright)');
             await window.RdeskWallet.refreshBalances();
+            updateSwapFromBalanceDisplay();
         } catch (err) {
-            fb.style.color = 'var(--red)';
-            fb.textContent = err?.reason || err?.message || 'Troca cancelada.';
+            const raw = err?.reason || err?.error?.message || err?.message || 'Troca cancelada.';
+            say(/Too little received|STF|slippage/i.test(raw) ? 'O preço mudou além da proteção de 1,5%. Nada foi trocado; peça a cotação de novo.'
+                : /insufficient funds/i.test(raw) ? `Saldo de ${nativeSym} insuficiente para pagar a taxa da rede.` : raw, 'var(--red)');
+        } finally {
+            btn.disabled = false;
+            defiState.busy = false;
         }
     }
 
@@ -1883,29 +1938,40 @@
             swapQuoteTimer = setTimeout(refreshSwapQuote, 350);
         };
 
-        ['swap-from-chain', 'swap-from-token', 'swap-to-chain', 'swap-to-token', 'swap-amount-in'].forEach(id => {
-            document.getElementById(id)?.addEventListener('input', triggerSwapQuote);
-            document.getElementById(id)?.addEventListener('change', triggerSwapQuote);
+        populateSwapSelects();
+        // Moeda adicionada ou removida pelo usuário: refaz as listas da troca
+        let swapTokenSignature = '';
+        window.addEventListener('rdesk:walletChanged', () => {
+            const sig = REG.loadCustomTokens().map((t) => `${t.chainId}:${t.address}`).join('|');
+            if (sig !== swapTokenSignature) { swapTokenSignature = sig; populateSwapSelects(); }
         });
+        ['swap-from-chain', 'swap-to-chain'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('change', () => { populateSwapSelects(); triggerSwapQuote(); });
+        });
+        ['swap-from-token', 'swap-to-token'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('change', () => { renderSwapContracts(); triggerSwapQuote(); });
+        });
+        document.getElementById('swap-amount-in')?.addEventListener('input', triggerSwapQuote);
 
         document.getElementById('btn-swap-max')?.addEventListener('click', () => {
-            const fromChain = Number(document.getElementById('swap-from-chain').value);
-            const fromSym = document.getElementById('swap-from-token').value;
-            const found = window.RdeskWallet.getBalances().find(b => b.chainId === fromChain && b.symbol === fromSym);
+            const f = readSwapForm();
+            const found = window.RdeskWallet.getBalances().find((b) => b.chainId === f.fromChain && b.symbol === f.fromSym);
             let avail = found ? found.amount : 0;
-            if (fromSym === 'POL') avail = Math.max(0, avail - window.RdeskWallet.GAS_RESERVE_POL);
-            else if (fromSym === 'ETH') avail = Math.max(0, avail - 0.0015);
-            document.getElementById('swap-amount-in').value = avail.toFixed(4);
+            const meta = getTokenMeta(f.fromChain, f.fromSym);
+            if (meta?.isNative) avail = Math.max(0, avail - (NATIVE_RESERVE[f.fromSym] || 0)); // deixa moeda nativa para as taxas
+            document.getElementById('swap-amount-in').value = avail > 0 ? String(Math.floor(avail * 1e6) / 1e6) : '0';
             refreshSwapQuote();
         });
 
+        // Inverter: o que eu recebia passa a ser o que envio (rede, moeda e quantidade)
         document.getElementById('btn-swap-flip')?.addEventListener('click', () => {
-            const fc = document.getElementById('swap-from-chain');
-            const tc = document.getElementById('swap-to-chain');
-            const ft = document.getElementById('swap-from-token');
-            const tt = document.getElementById('swap-to-token');
-            [fc.value, tc.value] = [tc.value, fc.value];
-            [ft.value, tt.value] = [tt.value, ft.value];
+            const e = swapEls();
+            const prev = { fc: e.fc.value, ft: e.ft.value, tc: e.tc.value, tt: e.tt.value, out: parseFloat(e.out.value) };
+            e.fc.value = prev.tc; e.tc.value = prev.fc;
+            fillTokenSelect(e.ft, Number(prev.tc), prev.tt);
+            fillTokenSelect(e.tt, Number(prev.fc), prev.ft);
+            if (prev.out > 0) e.amt.value = String(prev.out);
+            renderSwapContracts();
             refreshSwapQuote();
         });
 
@@ -1950,6 +2016,10 @@
         },
         runAudit: (force = false) => runAuditSafely(force),
         isBusy: () => Boolean(defiState.busy),
+        refreshSwapQuote: () => refreshSwapQuote(),
+        getSwapQuote: () => defiState.swapQuote ? { type: defiState.swapQuote.type, amountOut: defiState.swapQuote.amountOut, routeLabel: defiState.swapQuote.routeLabel, impact: defiState.swapQuote.impact, hops: defiState.swapQuote.hops || null } : null,
+        populateSwapSelects: () => populateSwapSelects(),
+        onPricesUpdated: () => { try { redrawChartRangeLines(); updateSwapFromBalanceDisplay(); } catch (e) {} },
         getState: () => ({
             sniper: { ...defiState.sniper },
             poolPrice: defiState.poolPrice || 0,
