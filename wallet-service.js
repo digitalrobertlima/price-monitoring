@@ -1007,6 +1007,50 @@
         return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
     }
 
+    // Confirmação de transação pelos NOSSOS servidores (não pelo da carteira conectada).
+    // A Rabby e outros servidores públicos às vezes respondem "bad response" enquanto esperam a
+    // confirmação, mesmo com a transação feita; aqui a confirmação é conferida em todos os servidores.
+    async function confirmTx(tx, chainId = 137, opts = {}) {
+        const hash = tx && (tx.hash || tx);
+        if (!hash) throw new Error('Transação sem identificador.');
+        const id = Number(chainId);
+        const urls = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
+        const providers = urls.map((u) => buildProvider(id, u));
+        const deadline = Date.now() + (opts.timeoutMs || 240000);
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        while (Date.now() < deadline) {
+            const lookups = providers.map((p) => withTimeout(p.getTransactionReceipt(hash), 7000).catch(() => null));
+            if (tx && typeof tx.wait === 'function' && !opts.skipWalletWait) lookups.push(withTimeout(tx.wait(), 7000).catch((e) => (e && e.receipt ? e.receipt : null)));
+            const receipts = (await Promise.all(lookups)).filter((r) => r && r.blockNumber);
+            if (receipts.length) {
+                const r = receipts[0];
+                if (r.status === 0) {
+                    const err = new Error('A rede recusou a transação (ela reverteu). Só a taxa da rede foi cobrada.');
+                    err.reverted = true; err.receipt = r;
+                    throw err;
+                }
+                return r;
+            }
+            await sleep(1500);
+        }
+        const explorer = REG.getChain(id)?.explorer;
+        throw new Error(`A transação foi enviada mas ainda não confirmou. Confira em ${explorer ? `${explorer}/tx/${hash}` : hash}.`);
+    }
+
+    // Erro técnico (em inglês, da biblioteca ou do servidor) -> frase que qualquer pessoa entende
+    function friendlyTxError(err, ctx = {}) {
+        const raw = String(err?.reason || err?.error?.message || err?.data?.message || err?.message || err || '');
+        if (err?.reverted) return raw;
+        if (/user rejected|user denied|rejected by user|ACTION_REJECTED|cancel/i.test(raw) || err?.code === 4001 || err?.code === 'ACTION_REJECTED') return 'Você cancelou na carteira. Nada foi enviado.';
+        if (/insufficient funds/i.test(raw)) return `Saldo de ${ctx.native || 'moeda da rede'} insuficiente para pagar a taxa da rede.`;
+        if (/Too little received|slippage|price slippage/i.test(raw)) return 'O preço mudou além da proteção. Nada foi trocado; peça a cotação de novo.';
+        if (/STF|transfer amount exceeds|exceeds balance/i.test(raw)) return 'Saldo ou autorização insuficiente para essa quantidade. Nada foi trocado.';
+        if (/cannot estimate gas|UNPREDICTABLE_GAS_LIMIT|execution reverted/i.test(raw)) return 'A rede recusaria essa operação agora (a simulação falhou). Nada foi enviado. Tente de novo em alguns segundos.';
+        if (/bad response|missing response|timeout|network|failed to fetch|SERVER_ERROR|could not detect/i.test(raw)) return 'O servidor da rede não respondeu. Atualize a carteira para conferir se a operação foi feita antes de tentar de novo.';
+        if (/nonce/i.test(raw)) return 'Há outra transação pendente na carteira. Espere ela confirmar e tente de novo.';
+        return raw.length > 160 ? `${raw.slice(0, 157)}…` : raw;
+    }
+
     // Devolve um provedor que respondeu agora; lembra qual servidor está saudável.
     async function getHealthyProvider(chainId = 137) {
         const id = Number(chainId);
@@ -2628,6 +2672,23 @@
         renderHeroAndAssets();
     }
 
+    // Quantidade legível: 2,038 BRZ em vez de 2,03796471 BRZ (Bitcoin pequeno mantém precisão)
+    function formatAmount(a) {
+        const x = Math.abs(Number(a) || 0);
+        if (x === 0) return '0';
+        return x.toLocaleString('pt-BR', x >= 1
+            ? { maximumFractionDigits: x >= 1000 ? 2 : 4 }
+            : { maximumSignificantDigits: 4 });
+    }
+    // Variação da moeda em 24 h medida na moeda de referência escolhida (Bitcoin por padrão)
+    function changeChip(b) {
+        const H = window.RdeskHistory;
+        const c = H ? H.changeVsRef(b) : null;
+        if (c === null || !Number.isFinite(c)) return '<small class="chg muted">—</small>';
+        const ref = H.REFS[H.getRef()];
+        return `<small class="chg ${c > 0.005 ? 'up' : c < -0.005 ? 'down' : ''}" title="Variação em 24 h frente ao ${esc(ref.name)}">${esc(H.fmtPct(c))}</small>`;
+    }
+
     // Nome que qualquer pessoa entende (o símbolo técnico aparece embaixo, menor)
     const FRIENDLY_NAMES = {
         BTC: 'Bitcoin', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
@@ -2649,7 +2710,7 @@
         const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
 
         set('hero-total-brl', formatBRL(totalUsd * prices.usdBrl));
-        set('hero-total-usd', `≈ US$ ${totalUsd.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        window.RdeskHistory?.renderBalance?.(); // valor na moeda de referência e variação em 24 h
         const earningEl = document.getElementById('hero-breakdown');
         if (earningEl) {
             earningEl.hidden = !(lpUsd > 0);
@@ -2711,12 +2772,12 @@
                             ${REG.tokenOnChainBadge(b.symbol, b.chainId, 38)}
                             <span class="asset-names">
                                 <strong>${esc(friendlyTokenName(b))}</strong>
-                                <span class="asset-meta">${esc(b.symbol)} • na rede ${esc(REG.getChain(b.chainId)?.name || '')}</span>
+                                <span class="asset-meta money">${esc(formatAmount(b.amount))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
                             </span>
                         </span>
                         <span class="asset-right money">
                             <strong>${b.hasPrice ? formatBRL(b.brlValue) : 'sem cotação'}</strong>
-                            <small class="muted-sm">${b.amount.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} ${esc(b.symbol)}</small>
+                            ${changeChip(b)}
                         </span>
                     </button>`).join('');
                 listEl.querySelectorAll('[data-asset-chain]').forEach((row) => {
@@ -2841,6 +2902,8 @@
         isBiometryRegistered,
         getSigner: getActiveSigner,
         getProvider: getReadProvider,
+        confirmTx,
+        friendlyTxError,
         getReadProvider,
         getChainId: () => 137,
         switchChain: switchChainOnProvider,

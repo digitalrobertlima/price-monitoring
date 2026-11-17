@@ -105,6 +105,18 @@ try {
     });
     check('rede Bitcoin: taxas e saldo consultados', !btcNet.error && btcNet.fees && Number(btcNet.fees.normal) > 0 && btcNet.bal && typeof btcNet.bal.totalSats === 'number', JSON.stringify(btcNet).slice(0, 200));
 
+    // ---- Histórico real desde a 1ª transação: extrato, resultado e gráfico ----
+    await waitFn(page, () => window.RdeskHistory && !window.RdeskHistory.getState().loading && (window.RdeskHistory.getState().events > 0 || window.RdeskHistory.getState().error), null, { timeout: 90000 }).catch(() => {});
+    const hs = await page.evaluate(() => ({ st: window.RdeskHistory.getState(), r: window.RdeskHistory.getResult(), ev: window.RdeskHistory.getEvents() }));
+    const ins = hs.ev.filter((e) => e.cls === 'IN').length, outs = hs.ev.filter((e) => e.cls === 'OUT').length;
+    console.log(`   histórico: ${hs.st.events} transações, ${ins} entradas, ${outs} saídas; colocou ${hs.r.inBrl.toFixed(2)} BRL, tirou ${hs.r.outBrl.toFixed(2)}, tem ${hs.r.eqBrl.toFixed(2)}, resultado ${hs.r.pnlBrl.toFixed(2)} BRL / ${hs.r.pnlRef} ${hs.st.ref}`);
+    check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
+    check('gráfico do patrimônio desenhado com o histórico real', hs.st.chart.points > 2 && hs.st.chart.last > 0, JSON.stringify(hs.st.chart));
+    await page.click('.nav-tab-btn[data-tab="audit"]');
+    await page.waitForSelector('.extrato-row', { timeout: 20000 }).catch(() => {});
+    check('extrato mostra as transações', (await page.locator('.extrato-row').count()) > 5);
+    await page.click('.nav-tab-btn[data-tab="wallet"]');
+
     // ---- Trocas: cotações reais (somente leitura, nada é assinado) ----
     await page.click('.nav-tab-btn[data-tab="pixswap"]');
     await waitFn(page, () => document.querySelectorAll('#swap-from-token option').length > 0, null, { timeout: 20000 });
@@ -124,7 +136,7 @@ try {
             return parseFloat(out) > 0 || /Não há|Sem liquidez|indispon|rro|não encontr/i.test(info);
         }, null, { timeout: 60000 }).catch(() => {});
         await page.waitForTimeout(500);
-        return { out: parseFloat(await page.inputValue('#swap-amount-out')), info: (await page.textContent('#swap-quote-info')).replace(/\s+/g, ' ').trim() };
+        return { out: parseFloat((await page.inputValue('#swap-amount-out')).replace(',', '.')), info: (await page.textContent('#swap-quote-info')).replace(/\s+/g, ' ').trim() };
     };
     // Diagnóstico: quanto tempo a consulta agrupada leva na rede real
     const diag = await page.evaluate(async () => {

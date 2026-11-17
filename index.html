@@ -29,6 +29,7 @@
     <script src="wallet-service.js" defer></script>
     <script src="wallet-views.js" defer></script>
     <script src="defi-pix-service.js" defer></script>
+    <script src="history.js" defer></script>
     <script src="onboarding.js" defer></script>
     <script src="app.js" defer></script>
 </head>
@@ -85,9 +86,13 @@
                     </button>
                 </div>
                 <div id="hero-total-brl" class="balance-amount money">R$ 0,00</div>
-                <div id="hero-total-usd" class="balance-sub money">≈ US$ 0,00</div>
+                <div id="hero-total-usd" class="balance-sub money">≈ 0 BTC</div>
+                <div id="hero-ref-change" class="chg" hidden></div>
                 <div id="hero-breakdown" class="balance-earning money" hidden></div>
-                <div id="hero-quote-status" class="quote-status" role="status">Buscando cotações…</div>
+                <div class="balance-meta">
+                    <button type="button" id="btn-ref-picker" class="ref-chip">Comparando com <strong>Bitcoin</strong> ▾</button>
+                    <div id="hero-quote-status" class="quote-status" role="status">Buscando cotações…</div>
+                </div>
 
                 <div class="primary-actions" role="group" aria-label="Ações principais">
                     <button type="button" id="btn-action-receive" class="action-btn">
@@ -103,6 +108,29 @@
                         <span>Trocar</span>
                     </button>
                 </div>
+            </div>
+
+            <!-- Patrimônio no tempo: entradas, saídas e o valor ao vivo -->
+            <div id="home-chart-card" class="section-card chart-card" hidden>
+                <div class="section-head">
+                    <div>
+                        <h2>Seu patrimônio</h2>
+                        <span id="home-chart-summary" class="chg"></span>
+                    </div>
+                    <div class="chip-group" id="home-chart-range" role="group" aria-label="Período">
+                        <button type="button" class="chip" data-range="7">7 dias</button>
+                        <button type="button" class="chip" data-range="30">30 dias</button>
+                        <button type="button" class="chip active" data-range="all">Tudo</button>
+                    </div>
+                </div>
+                <div id="home-chart" class="home-chart"></div>
+                <div class="chart-legend">
+                    <span><i class="dot in"></i>entrada de dinheiro</span>
+                    <span><i class="dot out"></i>saída</span>
+                    <span id="home-chart-unit" class="muted-sm"></span>
+                </div>
+                <p id="home-chart-status" class="muted-sm"></p>
+                <button type="button" id="btn-open-extrato" class="btn-text small">Ver extrato completo →</button>
             </div>
 
             <!-- Primeiros passos (só no começo; some quando tudo estiver feito) -->
@@ -256,55 +284,47 @@
         <!-- =================================================================
              RESULTADOS
              ================================================================= -->
-        <section id="tab-panel-audit" class="tab-panel" aria-label="Resultados">
-            <div class="section-card">
+        <section id="tab-panel-audit" class="tab-panel" aria-label="Extrato">
+            <div class="section-card result-card">
                 <div class="section-head">
-                    <h1>Quanto você ganhou</h1>
-                    <span id="audit-trend-pill" class="pill-badge">Aguardando</span>
+                    <h1>Seu resultado</h1>
+                    <span id="audit-trend-pill" class="pill-badge">Sem dados</span>
                 </div>
-                <p id="audit-status-text" class="muted-sm">Separa o dinheiro que entrou e saiu da carteira das movimentações internas (trocas e render).</p>
-
-                <div id="audit-progress-wrap" class="progress-line-wrap" style="display:none;">
-                    <div id="audit-progress-bar" class="progress-line-fill"></div>
-                </div>
-
+                <p class="muted-sm">Desde a sua primeira transação, comparando com <strong id="audit-ref-name">Bitcoin</strong>. <button type="button" class="btn-text small" data-open-ref>Mudar</button></p>
                 <div class="result-hero">
                     <span>Lucro ou prejuízo</span>
-                    <strong id="audit-kpi-pnl" class="money">R$ 0,00</strong>
+                    <strong id="audit-kpi-pnl" class="money">—</strong>
+                    <small id="audit-kpi-pnl-brl" class="money"></small>
                 </div>
                 <div class="stat-row three">
-                    <div class="stat"><span>Entrou</span><strong id="audit-kpi-in" class="money">R$ 0,00</strong></div>
-                    <div class="stat"><span>Saiu</span><strong id="audit-kpi-out" class="money">R$ 0,00</strong></div>
-                    <div class="stat"><span>Tem hoje</span><strong id="audit-kpi-equity" class="money">R$ 0,00</strong></div>
+                    <div class="stat"><span>Você colocou</span><strong id="audit-kpi-in" class="money">0</strong></div>
+                    <div class="stat"><span>Você tirou</span><strong id="audit-kpi-out" class="money">0</strong></div>
+                    <div class="stat"><span>Tem hoje</span><strong id="audit-kpi-equity" class="money">0</strong></div>
                 </div>
+                <div id="audit-progress-wrap" class="progress-line-wrap" style="display:none;"><div id="audit-progress-bar" class="progress-line-fill indeterminate"></div></div>
+                <p id="audit-status-text" class="muted-sm" role="status"></p>
+            </div>
 
-                <div class="chart-box-audit">
-                    <canvas id="audit-chart-canvas"></canvas>
-                </div>
-
-                <div class="section-head wrap">
+            <div class="section-card">
+                <div class="section-head">
+                    <h2>Extrato</h2>
                     <div class="chip-group">
-                        <button type="button" class="audit-filter-btn chip active" data-afilter="ALL">Tudo</button>
-                        <button type="button" class="audit-filter-btn chip" data-afilter="EXTERNAL">Entradas e saídas</button>
-                        <button type="button" class="audit-filter-btn chip" data-afilter="DEFI">Trocas e render</button>
-                    </div>
-                    <div class="chip-group">
-                        <button type="button" id="btn-audit-currency" class="chip">R$ / US$</button>
                         <button type="button" id="btn-audit-refresh" class="chip">Atualizar</button>
                         <button type="button" id="btn-export-audit-csv" class="chip">Baixar planilha</button>
                     </div>
                 </div>
-
-                <div class="table-scroll">
-                    <table class="clean-table">
-                        <thead>
-                            <tr><th>Data</th><th>Tipo</th><th>Movimento</th><th>Valor na data</th><th>Ajustar</th></tr>
-                        </thead>
-                        <tbody id="audit-events-tbody">
-                            <tr><td colspan="5" class="empty-cell">Abra uma carteira para ver o histórico desde o primeiro dia.</td></tr>
-                        </tbody>
-                    </table>
+                <div class="chip-group scroll-x" id="extrato-filters" role="group" aria-label="Filtrar extrato">
+                    <button type="button" class="chip active" data-xf="ALL">Tudo</button>
+                    <button type="button" class="chip" data-xf="IN">Entradas</button>
+                    <button type="button" class="chip" data-xf="OUT">Saídas</button>
+                    <button type="button" class="chip" data-xf="SWAP">Trocas</button>
+                    <button type="button" class="chip" data-xf="RENDER">Render</button>
                 </div>
+                <div id="extrato-list" class="extrato-list">
+                    <div class="empty-state">Abra uma carteira para ver o extrato.</div>
+                </div>
+                <button type="button" id="extrato-more" class="btn-soft full" hidden>Ver mais</button>
+                <p class="muted-sm">Toque em uma linha para ver os detalhes ou mudar como ela entra na conta do lucro.</p>
             </div>
         </section>
     </main>
@@ -314,7 +334,7 @@
         <button type="button" class="nav-tab-btn active" data-tab="wallet" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg><span>Início</span></button>
         <button type="button" class="nav-tab-btn" data-tab="pixswap" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5h13"/><path d="M17 13l3.5 3.5L17 20"/><path d="M20.5 16.5h-13"/></svg><span>Trocar</span></button>
         <button type="button" class="nav-tab-btn" data-tab="earn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4.5-4.5 3.5 3.5L19.5 7"/><path d="M15 7h4.5v4.5"/></svg><span>Render</span></button>
-        <button type="button" class="nav-tab-btn" data-tab="audit" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg><span>Resultados</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="audit" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/></svg><span>Extrato</span></button>
     </nav>
 
     <!-- =====================================================================

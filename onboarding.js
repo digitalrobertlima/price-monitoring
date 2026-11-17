@@ -183,7 +183,7 @@
         send: { title: 'Antes de enviar', text: 'Confira o endereço inteiro e a rede. Envio em blockchain <strong>não tem estorno</strong>. Na dúvida, mande um valor pequeno primeiro.' },
         pixswap: { title: 'Trocar moedas', text: 'Escolha o que você dá e o que quer receber. O app mostra quanto você recebe <strong>antes</strong> de confirmar, e bloqueia trocas que te fariam perder dinheiro.' },
         earn: { title: 'Render', text: 'O gráfico mostra o preço do POL. A faixa azul é onde seu dinheiro trabalha: <strong>arraste as alças azuis</strong> para escolher a sua, ou use a sugerida. Nada acontece até você confirmar.' },
-        audit: { title: 'Resultados', text: 'Aqui o app separa o que você colocou e tirou da carteira do que ganhou ou perdeu. Pode levar alguns segundos na primeira vez.' },
+        audit: { title: 'Seu extrato', text: 'Aqui aparecem todas as suas transações, como num extrato do banco. Em cima, quanto você ganhou ou perdeu desde o começo, comparando com a moeda que você escolher (Bitcoin, real, dólar ou ether).' },
         addtoken: { title: 'Adicionar uma moeda', text: 'Pegue o endereço do contrato no <strong>site oficial</strong> do projeto. Qualquer pessoa pode criar uma moeda com qualquer nome.' }
     };
     function maybeTip(id) {
@@ -243,6 +243,7 @@
                 <h2>Menu</h2>
                 <button type="button" data-m="wallets"><span>👛</span>Minhas carteiras</button>
                 <button type="button" data-m="addtoken"><span>＋</span>Adicionar uma moeda</button>
+                <button type="button" data-m="ref"><span>⚖️</span>Comparar com outra moeda</button>
                 <button type="button" data-m="privacy"><span>👁</span>${hidden ? 'Mostrar saldos' : 'Esconder saldos'}</button>
                 <button type="button" data-m="tutorial"><span>🎓</span>Rever o tutorial</button>
                 <button type="button" data-m="security"><span>🛡️</span>Como sua carteira é protegida</button>
@@ -257,6 +258,7 @@
                 close();
                 if (m === 'wallets') W()?.openModal(W().getAccounts().length ? 'list' : 'add');
                 else if (m === 'addtoken') document.getElementById('btn-add-token')?.click();
+                else if (m === 'ref') global.RdeskHistory?.openRefPicker();
                 else if (m === 'privacy') global.RdeskPrivacy?.set(!global.RdeskPrivacy.isHidden());
                 else if (m === 'tutorial') restart();
                 else if (m === 'security' || m === 'render') explain(m);

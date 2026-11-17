@@ -18,6 +18,8 @@ const accounts = (page) => page.evaluate(() => window.RdeskWallet.getAccounts().
 const stored = (page, key) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), key);
 // Decifra o cofre guardado, do lado do teste, para conferir exatamente o que ficou no aparelho.
 const decryptVault = (page, password) => page.evaluate(async ({ key, password }) => {
+    // o cofre é gravado de forma assíncrona (PBKDF2 600 mil iterações): espera ele aparecer
+    for (let i = 0; i < 100 && !JSON.parse(localStorage.getItem(key) || 'null')?.encryptedSecrets; i++) await new Promise((r) => setTimeout(r, 100));
     const meta = JSON.parse(localStorage.getItem(key));
     const blob = meta.encryptedSecrets;
     const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -75,6 +77,7 @@ try {
     check('carteira criada com o endereço das palavras mostradas', created.address === ethers.Wallet.fromMnemonic(words.join(' ')).address, created.address);
     check('nome com HTML é mostrado como texto (sem injeção)', (await page.locator('#rdesk-mw-sheet b').count()) === 0 && created.name === 'Caixa <b>Forte</b>');
 
+    await waitFn(page, (k) => Boolean(JSON.parse(localStorage.getItem(k) || 'null')?.encryptedSecrets), VAULT_KEY, { timeout: 15000 });
     const blob = await stored(page, VAULT_KEY);
     const raw = JSON.stringify(blob);
     check('frase não fica em texto puro no aparelho; cofre com 600 mil iterações',
