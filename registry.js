@@ -251,11 +251,24 @@
         return { active, rateBps: active ? rateBps : 0, rate: active ? rateBps / 10000 : 0, evmAddress: okAddr ? global.ethers.utils.getAddress(c.evmAddress) : '', lifiIntegrator: c.lifiIntegrator };
     }
 
+    // Valores em reais do jeito brasileiro: "1.234,56", "R$ 10", "0,5"
+    function parseBRL(text) {
+        let s = String(text || '').replace(/R\$|\s/g, '');
+        if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+        return /^\d*\.?\d+$/.test(s) ? Number(s) : null;
+    }
+    // Quantidade de moeda equivalente a um valor em reais (texto com ponto, sem zeros sobrando)
+    function coinFromBrl(brl, unitUsd, usdBrl, decimals) {
+        if (!(brl > 0) || !(unitUsd > 0) || !(usdBrl > 0)) return '';
+        const places = Math.min(Number(decimals) || 8, 8);
+        return (brl / (unitUsd * usdBrl)).toFixed(places).replace(/\.?0+$/, '');
+    }
+
     global.RdeskRegistry = {
         CHAINS, BITCOIN, BUILTIN_TOKENS,
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
         explorerTokenUrl, explorerAddressUrl, explorerTxUrl,
-        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge, creatorFee, MAX_CREATOR_BPS
+        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge, creatorFee, MAX_CREATOR_BPS, parseBRL, coinFromBrl
     };
 })(window);

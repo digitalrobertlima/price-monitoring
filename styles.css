@@ -2172,3 +2172,12 @@ li.next .step-check { border-color: var(--btc); }
 .pix-cta strong { display: block; font-size: 1rem; }
 .pix-cta small { display: block; opacity: 0.75; font-size: 0.84rem; }
 #rmw-pix-out { margin-top: 14px; }
+
+/* v30 — valores em reais */
+.brl-field { display: flex; align-items: center; gap: 8px; }
+.brl-field > span { font-weight: 700; color: #ffb35c; white-space: nowrap; }
+.brl-field input { flex: 1; min-width: 0; }
+.brl-field.small { margin-top: 8px; font-size: 0.9rem; }
+.brl-field.small input { background: transparent; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 8px 10px; color: inherit; font: inherit; }
+.rec-ask { margin: 14px 0; display: grid; gap: 8px; }
+.rec-ask-out { font-size: 0.92rem; line-height: 1.45; }

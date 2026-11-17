@@ -1091,7 +1091,17 @@
         e.contracts.innerHTML = line('Envia', f.fromChain, f.fromSym) + line('Recebe', f.toChain, f.toSym);
     }
 
+    function syncSwapBrl() {
+        const brlEl = document.getElementById('swap-amount-brl');
+        if (!brlEl || document.activeElement === brlEl) return;
+        const f = readSwapForm();
+        const meta = getTokenMeta(f.fromChain, f.fromSym);
+        const brl = meta && f.amountIn > 0 ? f.amountIn * tokenUnitUsd(f.fromChain, meta) * window.RdeskWallet.getPrices().USD_BRL : 0;
+        brlEl.value = brl > 0 ? brl.toFixed(2).replace('.', ',') : '';
+    }
+
     function updateSwapFromBalanceDisplay() {
+        syncSwapBrl();
         const f = readSwapForm();
         const found = window.RdeskWallet.getBalances().find((b) => b.chainId === f.fromChain && b.symbol === f.fromSym);
         const balEl = document.getElementById('swap-from-bal');
@@ -1735,7 +1745,17 @@
         ['swap-from-token', 'swap-to-token'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => { renderSwapContracts(); triggerSwapQuote(); });
         });
-        document.getElementById('swap-amount-in')?.addEventListener('input', triggerSwapQuote);
+        document.getElementById('swap-amount-in')?.addEventListener('input', () => { syncSwapBrl(); triggerSwapQuote(); });
+        // Digitar em reais: converte para a quantidade da moeda escolhida e cota
+        document.getElementById('swap-amount-brl')?.addEventListener('input', () => {
+            const f = readSwapForm();
+            const meta = getTokenMeta(f.fromChain, f.fromSym);
+            const brl = REG.parseBRL(document.getElementById('swap-amount-brl').value);
+            const coin = meta ? REG.coinFromBrl(brl, tokenUnitUsd(f.fromChain, meta), window.RdeskWallet.getPrices().USD_BRL, meta.decimals) : '';
+            document.getElementById('swap-amount-in').value = coin;
+            triggerSwapQuote();
+        });
+        ['swap-from-token', 'swap-from-chain'].forEach((id) => document.getElementById(id)?.addEventListener('change', updateSwapFromBalanceDisplay));
 
         document.getElementById('btn-swap-max')?.addEventListener('click', () => {
             const f = readSwapForm();
@@ -1746,6 +1766,7 @@
             if (f.fromChain === 'btc') avail = Math.max(0, avail - 0.00003); // folga para a taxa da rede Bitcoin
             const step = f.fromChain === 'btc' ? 1e8 : 1e6;
             document.getElementById('swap-amount-in').value = avail > 0 ? String(Math.floor(avail * step) / step) : '0';
+            syncSwapBrl();
             refreshSwapQuote();
         });
 
@@ -1756,6 +1777,7 @@
             e.fc.value = prev.tc; e.tc.value = prev.fc;
             fillTokenSelect(e.ft, chainOfValue(prev.tc), prev.tt);
             fillTokenSelect(e.tt, chainOfValue(prev.fc), prev.ft);
+            syncSwapBrl();
             if (prev.out > 0) e.amt.value = String(prev.out);
             renderSwapContracts();
             refreshSwapQuote();
