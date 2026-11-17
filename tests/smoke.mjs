@@ -124,7 +124,7 @@ try {
             }
             const items = all.filter((x) => typeof x === 'object');
             const toW = items.filter((x) => (x.to?.hash || '').toLowerCase() === w.toLowerCase());
-            return `total=${items.length} paginas~${Math.ceil(items.length / 50)} paraCarteira=${toW.length} comValor=${toW.filter((x) => x.value !== '0').length} amostra=${JSON.stringify(toW[0] || items[0]).slice(0, 600)} ${all.filter((x) => typeof x === 'string').join(',')}`;
+            return `total=${items.length} paginas~${Math.ceil(items.length / 50)} paraCarteira=${toW.length} comValor=${toW.filter((x) => x.value !== '0').length} amostra=${String(JSON.stringify(toW[0] || items[0] || null)).slice(0, 600)} ${all.filter((x) => typeof x === 'string').join(',')}`;
         }, WATCH_ADDRESS));
         console.log(await page.evaluate(() => window.RdeskHistory.getSeries().map((p) => `${p.key} US$${p.usd.toFixed(0)} hold ${Object.entries(p.dbg.hold).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')} | pool ${Object.entries(p.dbg.pool).map(([k, v]) => k + '=' + v.toFixed(1)).join(' ')}`).join('\n')));
         console.log(await page.evaluate(() => window.RdeskHistory.getEvents().filter((e) => e.items.length).slice(0, 400).map((e) => `${e.type} ${e.items.map((i) => (i.dir > 0 ? '+' : '-') + i.amt.toFixed(2) + i.sym + (i.peerC ? 'C' : '')).join(' ')}`).join('\n')));
