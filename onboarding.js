@@ -90,6 +90,11 @@
             text: 'Sua carteira é protegida por <strong>12 palavras</strong>. Quem tem as palavras tem o dinheiro. Anote no papel e guarde bem: se perder, ninguém consegue recuperar.'
         },
         {
+            art: '<span class="coin c1 big">₿</span>',
+            title: 'Bitcoin: a sua reserva',
+            text: 'O <strong>Bitcoin</strong> funciona sem parar desde 2009 e ninguém consegue imprimir mais. É o lugar mais seguro para guardar patrimônio a longo prazo. A <strong>Ethereum</strong> (desde 2015) vem logo depois. As redes mais novas são práticas e baratas, mas <strong>ainda estão nascendo</strong> e têm mais riscos: use para movimentar, não para guardar tudo.'
+        },
+        {
             art: '<span class="mini-actions"><b>↓</b><b>↑</b><b>⇄</b><b>↗</b></span>',
             title: 'O que dá para fazer aqui',
             text: '<strong>Receber</strong> e <strong>enviar</strong> moedas, <strong>trocar</strong> uma por outra e fazer o dinheiro <strong>render</strong>. Vamos mostrando cada coisa na hora em que você precisar.'
@@ -219,6 +224,7 @@
                 <li>Se o POL cair muito, você fica com mais POL e menos dólar (e o contrário se subir). Pode terminar com menos do que colocou.</li>
                 <li>Os ganhos mostrados são <strong>estimativas</strong>, não promessa.</li>
                 <li>Contratos podem ter falhas. Coloque só o que aceita arriscar.</li>
+                <li>O Render roda na <strong>Polygon, uma rede jovem</strong> (de 2020). Use só uma parte do seu dinheiro; sua reserva fica melhor em Bitcoin.</li>
             </ul>`,
         security: `
             <h2>Como sua carteira é protegida</h2>

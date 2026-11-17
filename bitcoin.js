@@ -163,7 +163,7 @@
     // ---------------------------------------------------------------- transação
     const OUTPUT_VBYTES = { p2wpkh: 31, p2wsh: 43, p2tr: 43, p2pkh: 34, p2sh: 32 };
     function estimateVsize(inputCount, outputTypes) {
-        return Math.ceil(10.5 + inputCount * 68 + outputTypes.reduce((n, t) => n + OUTPUT_VBYTES[t], 0));
+        return Math.ceil(10.5 + inputCount * 68 + outputTypes.reduce((n, t) => n + (typeof t === 'number' ? t : OUTPUT_VBYTES[t]), 0));
     }
     function serializeOutput(valueSats, script) {
         return concat(u64le(valueSats), varint(script.length), script);
@@ -199,8 +199,19 @@
     }
 
     // Escolhe entradas, calcula taxa e troco. Não assina. Tudo em satoshis (inteiros).
-    function planTransaction({ utxos, toAddress, amountSats, feeRate, changeAddress, sendMax = false }) {
+    // Saída OP_RETURN com uma anotação (usada pelos serviços de troca para saber o que fazer)
+    function opReturnScript(memo) {
+        const data = typeof memo === 'string' ? new TextEncoder().encode(memo) : memo;
+        if (data.length > 80) throw new Error('Anotação da troca maior que o limite do Bitcoin (80 bytes). Troca cancelada.');
+        return data.length <= 75 ? concat(Uint8Array.of(0x6a, data.length), data) : concat(Uint8Array.of(0x6a, 0x4c, data.length), data);
+    }
+
+    function planTransaction({ utxos, toAddress, amountSats, feeRate, changeAddress, sendMax = false, memo = null }) {
         const dest = addressToScript(toAddress);
+        // Com anotação: saídas na ordem [destino, OP_RETURN, troco]
+        const memoOut = memo ? { script: opReturnScript(memo), value: 0, isMemo: true } : null;
+        const memoSize = memoOut ? 9 + memoOut.script.length : null;
+        const destTypes = memoOut ? [dest.type, memoSize] : [dest.type];
         const change = addressToScript(changeAddress);
         const rate = Number(feeRate);
         if (!(rate >= 1) || rate > MAX_FEE_RATE) throw new Error(`Taxa fora do limite seguro (1 a ${MAX_FEE_RATE} sat/vB).`);
@@ -210,10 +221,12 @@
         const total = spendable.reduce((n, u) => n + u.value, 0);
 
         if (sendMax) {
-            const fee = Math.ceil(estimateVsize(spendable.length, [dest.type]) * rate);
+            const fee = Math.ceil(estimateVsize(spendable.length, destTypes) * rate);
             const amount = total - fee;
             if (amount < DUST_SATS) throw new Error('Saldo insuficiente para cobrir a taxa da rede.');
-            return { inputs: spendable, outputs: [{ script: dest.script, value: amount, address: toAddress }], amount, fee, change: 0, total, vsize: estimateVsize(spendable.length, [dest.type]) };
+            const outs = [{ script: dest.script, value: amount, address: toAddress }];
+            if (memoOut) outs.push(memoOut);
+            return { inputs: spendable, outputs: outs, amount, fee, change: 0, total, vsize: estimateVsize(spendable.length, destTypes) };
         }
 
         const amount = Math.round(Number(amountSats));
@@ -223,24 +236,25 @@
         for (const u of spendable) {
             picked.push(u);
             sum += u.value;
-            const feeWithChange = Math.ceil(estimateVsize(picked.length, [dest.type, change.type]) * rate);
+            const feeWithChange = Math.ceil(estimateVsize(picked.length, [...destTypes, change.type]) * rate);
             if (sum >= amount + feeWithChange) break;
         }
-        const feeNoChange = Math.ceil(estimateVsize(picked.length, [dest.type]) * rate);
-        const feeWithChange = Math.ceil(estimateVsize(picked.length, [dest.type, change.type]) * rate);
+        const feeNoChange = Math.ceil(estimateVsize(picked.length, destTypes) * rate);
+        const feeWithChange = Math.ceil(estimateVsize(picked.length, [...destTypes, change.type]) * rate);
         if (sum < amount + feeNoChange) {
             throw new Error(`Saldo insuficiente: faltam ${amount + feeNoChange - sum} satoshis para valor + taxa.`);
         }
         const changeValue = sum - amount - feeWithChange;
         const outputs = [{ script: dest.script, value: amount, address: toAddress }];
+        if (memoOut) outputs.push(memoOut);
         let fee, vsize;
         if (changeValue >= DUST_SATS) {
             outputs.push({ script: change.script, value: changeValue, address: changeAddress, isChange: true });
             fee = feeWithChange;
-            vsize = estimateVsize(picked.length, [dest.type, change.type]);
+            vsize = estimateVsize(picked.length, [...destTypes, change.type]);
         } else {
             fee = sum - amount; // troco menor que o mínimo da rede vira taxa
-            vsize = estimateVsize(picked.length, [dest.type]);
+            vsize = estimateVsize(picked.length, destTypes);
         }
         return { inputs: picked, outputs, amount, fee, change: changeValue >= DUST_SATS ? changeValue : 0, total: sum, vsize };
     }
@@ -249,8 +263,8 @@
     function signTransaction(plan, privateKey) {
         const pubKey = bytes(E().utils.computePublicKey(privateKey, true));
         const pubKeyHash = hash160(pubKey);
-        const version = 2, locktime = 0;
-        const inputs = plan.inputs.map((u) => ({ ...u, sequence: SEQUENCE }));
+        const version = plan.version || 2, locktime = plan.locktime || 0;
+        const inputs = plan.inputs.map((u) => ({ ...u, sequence: u.sequence ?? SEQUENCE }));
 
         // Conferência final: o que entra = o que sai + taxa. Nunca assina se a conta não fechar.
         const inSum = inputs.reduce((n, u) => n + u.value, 0);
@@ -268,6 +282,102 @@
         const full = concat(u32le(version), Uint8Array.of(0x00, 0x01), varint(inputs.length), inputsSerialized,
             varint(plan.outputs.length), outputsSerialized, ...witnesses, u32le(locktime));
         return { hex: toHex(full), txid: toHex(dsha256(base).reverse()) };
+    }
+
+    // ---------------------------------------------------------------- PSBT (BIP174) — só leitura
+    // Os serviços de troca devolvem a transação montada em PSBT. O app lê as entradas e saídas,
+    // confere tudo e assina com a própria chave (nunca assina algo que não conferiu).
+    function parsePsbt(hex) {
+        const b = bytes(hex.trim());
+        let o = 0;
+        const rd = (n) => { if (o + n > b.length) throw new Error('PSBT incompleto.'); const s = b.slice(o, o + n); o += n; return s; };
+        const rdVar = () => { const f = b[o++]; if (f < 0xfd) return f; if (f === 0xfd) { const v = b[o] | (b[o + 1] << 8); o += 2; return v; } if (f === 0xfe) { const v = new DataView(b.buffer, b.byteOffset + o, 4).getUint32(0, true); o += 4; return v; } throw new Error('PSBT grande demais.'); };
+        const magic = rd(5);
+        if (toHex(magic) !== '70736274ff') throw new Error('Não é um PSBT.');
+        const readMap = () => { const m = []; for (;;) { const kl = rdVar(); if (kl === 0) return m; const k = rd(kl); const vl = rdVar(); m.push({ k, v: rd(vl) }); } };
+        const global0 = readMap();
+        const unsigned = global0.find((x) => x.k.length === 1 && x.k[0] === 0x00);
+        if (!unsigned) throw new Error('PSBT sem transação.');
+        // transação sem assinatura
+        const tx = unsigned.v; let p = 0;
+        const t = (n) => { const s = tx.slice(p, p + n); p += n; return s; };
+        const tVar = () => { const f = tx[p++]; if (f < 0xfd) return f; if (f === 0xfd) { const v = tx[p] | (tx[p + 1] << 8); p += 2; return v; } throw new Error('Transação grande demais.'); };
+        const u32 = (s) => new DataView(s.buffer, s.byteOffset, 4).getUint32(0, true);
+        const u64 = (s) => { let v = 0n; for (let i = 7; i >= 0; i--) v = (v << 8n) | BigInt(s[i]); return Number(v); };
+        const version = u32(t(4));
+        const nIn = tVar();
+        const inputs = [];
+        for (let i = 0; i < nIn; i++) {
+            const txid = toHex(t(32).slice().reverse());
+            const vout = u32(t(4));
+            const sl = tVar(); t(sl);
+            inputs.push({ txid, vout, sequence: u32(t(4)) });
+        }
+        const nOut = tVar();
+        const outputs = [];
+        for (let i = 0; i < nOut; i++) { const value = u64(t(8)); const sl = tVar(); outputs.push({ value, script: t(sl) }); }
+        const locktime = u32(t(4));
+        // mapa de cada entrada: valor e script da saída gasta (witness_utxo)
+        inputs.forEach((inp) => {
+            const m = readMap();
+            const wu = m.find((x) => x.k.length === 1 && x.k[0] === 0x01);
+            if (wu) { inp.value = u64(wu.v.slice(0, 8)); inp.script = wu.v.slice(9, 9 + wu.v[8]); }
+        });
+        return { version, locktime, inputs, outputs };
+    }
+
+    // Descreve um script de saída: endereço (bech32/bech32m) ou anotação OP_RETURN
+    function describeScript(script) {
+        const s = script instanceof Uint8Array ? script : bytes(script);
+        if (s[0] === 0x6a) {
+            const data = s[1] === 0x4c ? s.slice(3, 3 + s[2]) : s.slice(2, 2 + s[1]);
+            return { type: 'op_return', memo: new TextDecoder().decode(data) };
+        }
+        if (s[0] === 0x00 && (s[1] === 0x14 || s[1] === 0x20) && s.length === 2 + s[1]) return { type: s[1] === 0x14 ? 'p2wpkh' : 'p2wsh', address: segwitEncode('bc', 0, s.slice(2)) };
+        if (s[0] === 0x51 && s[1] === 0x20 && s.length === 34) return { type: 'p2tr', address: segwitEncode('bc', 1, s.slice(2)) };
+        return { type: 'outro', address: null };
+    }
+
+    // Confere um PSBT de troca antes de assinar. Regras (qualquer falha cancela):
+    // 1) todas as entradas são moedas SUAS (mesmo script P2WPKH do seu endereço);
+    // 2) a 1ª saída vai exatamente para o endereço e valor cotados (depósito do serviço);
+    // 3) há uma única anotação OP_RETURN;
+    // 4) o resto volta para você (troco), exceto uma taxa do serviço pequena (≤ 1,5% ou 3.000 sat);
+    // 5) a taxa da rede é razoável (≤ 500 sat/vB e ≤ 5% do valor ou 30.000 sat).
+    function checkSwapPsbt(hex, { ownAddress, depositAddress, depositValue }) {
+        const psbt = parsePsbt(hex);
+        const own = toHex(addressToScript(ownAddress).script);
+        if (!psbt.inputs.length) throw new Error('A troca não tem entradas.');
+        psbt.inputs.forEach((i) => {
+            if (!(i.value > 0) || !i.script) throw new Error('A troca não informa o valor das moedas usadas. Cancelada por segurança.');
+            if (toHex(i.script) !== own) throw new Error('A troca tenta gastar moedas que não são suas. Cancelada.');
+        });
+        const outs = psbt.outputs.map((o) => ({ ...o, info: describeScript(o.script) }));
+        // O depósito vai para o endereço cotado. A LI.FI pode separar a taxa dela (≈0,25%) do valor: o depósito
+        // fica um pouco menor e a diferença sai numa saída à parte — somadas, nunca passam do que você pediu (+ folga).
+        const want = Number(depositValue);
+        if (outs[0].info.address !== depositAddress || outs[0].value > want || outs[0].value < want * 0.97) throw new Error('O depósito da troca não confere com a cotação. Cancelada.');
+        const memos = outs.filter((o) => o.info.type === 'op_return');
+        if (memos.length !== 1) throw new Error('A troca não tem a anotação esperada. Cancelada.');
+        let change = 0, extras = 0;
+        outs.slice(1).forEach((o) => {
+            if (o.info.type === 'op_return') { if (o.value !== 0) throw new Error('Anotação com valor. Cancelada.'); return; }
+            if (toHex(o.script) === own) change += o.value; else extras += o.value;
+        });
+        if (extras > Math.max(3000, Math.round(want * 0.015))) throw new Error('A taxa do serviço embutida na troca está alta demais. Cancelada.');
+        if (outs[0].value + extras > want + Math.max(3000, Math.round(want * 0.015))) throw new Error('A troca gastaria mais do que você pediu. Cancelada.');
+        const inSum = psbt.inputs.reduce((n, i) => n + i.value, 0);
+        const outSum = outs.reduce((n, o) => n + o.value, 0);
+        const fee = inSum - outSum;
+        const vsize = estimateVsize(psbt.inputs.length, outs.map((o) => 9 + o.script.length));
+        if (fee < 0) throw new Error('A troca gasta mais do que tem. Cancelada.');
+        if (fee / vsize > MAX_FEE_RATE || fee > Math.max(30000, Number(depositValue) * 0.05)) throw new Error('A taxa da rede Bitcoin nesta troca está alta demais. Cancelada.');
+        return {
+            version: psbt.version, locktime: psbt.locktime,
+            inputs: psbt.inputs.map((i) => ({ txid: i.txid, vout: i.vout, value: i.value, sequence: i.sequence })),
+            outputs: outs.map((o) => ({ script: o.script, value: o.value })),
+            fee, vsize, feeRate: fee / vsize, change, extras, memo: memos[0].info.memo, amount: Number(depositValue), deposit: outs[0].value, total: inSum
+        };
     }
 
     // ---------------------------------------------------------------- rede (API pública estilo Esplora)
@@ -314,7 +424,7 @@
         DUST_SATS,
         deriveFromMnemonic, deriveFromPrivateKey, publicKeyToAddress,
         isValidAddress, addressToScript,
-        planTransaction, signTransaction, estimateVsize,
+        planTransaction, signTransaction, estimateVsize, parsePsbt, describeScript, opReturnScript, checkSwapPsbt,
         fetchBalance, fetchUtxos, fetchFeeRates, broadcast,
         _internals: { bip143Sighash, derSignature, segwitEncode, segwitDecode, bech32Decode, hash160, bytes, toHex }
     };

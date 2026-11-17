@@ -210,6 +210,22 @@
         return `<span class="coin-badge-wrap" style="width:${size}px;height:${size}px;">${tokenBadge(symbol, size)}${dot}</span>`;
     }
 
+    // Maturidade de cada rede: o app incentiva guardar patrimônio onde o histórico é mais longo
+    const MATURITY = {
+        btc: { level: 'solid', since: 2009, label: 'A mais consolidada', note: 'Funciona sem parar desde 2009. É o lugar mais seguro para guardar patrimônio a longo prazo.' },
+        1: { level: 'solid', since: 2015, label: 'Consolidada', note: 'Funciona desde 2015 e é a base de quase todo o ecossistema. Boa para guardar.' },
+        137: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020: barata e rápida, mas mais nova e mais centralizada. Já teve paradas e mudanças grandes. Use para movimentar, não para guardar tudo.' },
+        8453: { level: 'young', since: 2023, label: 'Rede jovem', note: 'Rede de 2023, controlada por uma empresa (Coinbase). Prática, mas ainda nova. Use para movimentar, não para guardar tudo.' },
+        42161: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
+        10: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
+        42220: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 com pouco uso e liquidez. Mais riscos que as redes grandes.' }
+    };
+    const maturity = (chainId) => MATURITY[chainId === 'btc' || chainId === 'BTC' ? 'btc' : Number(chainId)] || { level: 'young', label: 'Rede jovem', note: 'Rede nova: mais riscos.' };
+    function maturityBadge(chainId) {
+        const m = maturity(chainId);
+        return `<span class="net-tag ${m.level}" title="${esc(m.note)}">${m.level === 'solid' ? '🛡 ' : ''}${esc(m.label)}${m.since ? ` · desde ${m.since}` : ''}</span>`;
+    }
+
     function shortAddress(address, head = 6, tail = 4) {
         const a = String(address || '');
         return a.length > head + tail + 3 ? `${a.slice(0, head)}…${a.slice(-tail)}` : a;
@@ -220,6 +236,6 @@
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
         explorerTokenUrl, explorerAddressUrl, explorerTxUrl,
-        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc
+        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge
     };
 })(window);

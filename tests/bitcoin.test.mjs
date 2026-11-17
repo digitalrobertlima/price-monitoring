@@ -110,5 +110,42 @@ check('saldo insuficiente é recusado com a quantia que falta', throwsWith(() =>
 check('taxa absurda (acima de 500 sat/vB) é recusada', throwsWith(() => BTC.planTransaction({ utxos, toAddress: dest, amountSats: 30000, feeRate: 5000, changeAddress: me.address }), /limite seguro/));
 check('plano adulterado (conta que não fecha) não é assinado', throwsWith(() => BTC.signTransaction({ ...plan, fee: plan.fee + 1 }, me.privateKey), /não fecham/));
 
+
+// ---------------------------------------------------------------- Troca de Bitcoin: anotação e PSBT
+{
+    const { buildPsbt, decodeTx } = await import('./psbt.mjs');
+    const me = a0.address;
+    const myScript = BTC.addressToScript(me).script;
+    const utxos = [{ txid: 'aa'.repeat(32), vout: 0, value: 600000 }, { txid: 'bb'.repeat(32), vout: 2, value: 50000 }];
+    // anotação (THORChain e afins): [depósito, OP_RETURN, troco]
+    const plan = BTC.planTransaction({ utxos, toAddress: 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g', amountSats: 500000, feeRate: 5, changeAddress: me, memo: '=:ETH.ETH:0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3' });
+    const desc = plan.outputs.map((o) => BTC.describeScript(o.script));
+    check('troca com anotação: saídas na ordem depósito, OP_RETURN, troco', desc[0].address === 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g' && desc[1].type === 'op_return' && desc[1].memo.startsWith('=:ETH.ETH:0x2833') && desc[2].address === me && plan.outputs[1].value === 0);
+    check('anotação maior que 80 bytes é recusada', throwsWith(() => BTC.planTransaction({ utxos, toAddress: me, amountSats: 1000, feeRate: 2, changeAddress: me, memo: 'x'.repeat(81) }), /80 bytes/));
+
+    // PSBT no formato da LI.FI/LayerSwap: [depósito p2tr, OP_RETURN, troco p2wpkh, taxa do serviço]
+    const DEP = 'bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf';
+    const depScript = BTC.addressToScript(DEP).script;
+    const feeScript = BTC.addressToScript('bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g').script;
+    const mk = (over = {}) => buildPsbt({
+        inputs: over.inputs || [{ txid: 'aa'.repeat(32), vout: 0, value: 600000, script: myScript }],
+        outputs: over.outputs || [{ value: 500000, script: depScript }, { value: 0, script: BTC.opReturnScript('17f8f75;=|lifi') }, { value: 97450, script: myScript }, { value: 1250, script: feeScript }]
+    });
+    const ok = BTC.checkSwapPsbt(mk(), { ownAddress: me, depositAddress: DEP, depositValue: '500000' });
+    check('PSBT de troca válido: depósito, troco e taxas lidos certo', ok.fee === 1300 && ok.change === 97450 && ok.extras === 1250 && ok.memo === '17f8f75;=|lifi' && ok.outputs.length === 4, JSON.stringify({ fee: ok.fee, change: ok.change, extras: ok.extras }));
+    const signed = BTC.signTransaction(ok, a0.privateKey);
+    const dec = decodeTx(signed.hex);
+    check('assinatura mantém exatamente as saídas e entradas do PSBT', dec.outs.length === 4 && dec.outs[0].value === 500000 && dec.outs[0].script === toHex(depScript) && dec.outs[3].value === 1250 && dec.ins[0].txid === 'aa'.repeat(32) && dec.ins[0].sequence === 0xfffffffd);
+    // Formato visto na rede real: a LI.FI separa os 0,25% dela do depósito (299.250 + 750 = 300.000)
+    const real = BTC.checkSwapPsbt(mk({ outputs: [{ value: 498750, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 97450 + 1250, script: myScript }, { value: 1250, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' });
+    check('PSBT real da LI.FI (taxa dela separada do depósito) é aceito', real.deposit === 498750 && real.extras === 1250, JSON.stringify({ d: real.deposit, e: real.extras }));
+    check('PSBT que tira demais do depósito é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 470000, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 128700, script: myScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /não confere/));
+    check('PSBT com depósito diferente da cotação é recusado', throwsWith(() => BTC.checkSwapPsbt(mk(), { ownAddress: me, depositAddress: DEP, depositValue: '400000' }), /não confere/));
+    check('PSBT que gasta moedas de outra pessoa é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ inputs: [{ txid: 'cc'.repeat(32), vout: 1, value: 600000, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /não são suas/));
+    check('PSBT que desvia o troco para outra pessoa é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 500000, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 98700, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /taxa do serviço/));
+    check('PSBT com taxa da rede absurda é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 500000, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 40000, script: myScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /alta demais/));
+    check('PSBT sem anotação é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 500000, script: depScript }, { value: 98700, script: myScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /anotação/));
+}
+
 console.log(`\n${pass}/${pass + failed.length} verificações passaram.`);
 if (failed.length) { console.log('Falharam:\n - ' + failed.join('\n - ')); process.exitCode = 1; }

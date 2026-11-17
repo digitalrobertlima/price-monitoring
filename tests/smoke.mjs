@@ -173,6 +173,23 @@ try {
     console.log(`   LI.FI (Base ETH → USDC, informativo): ${Number.isFinite(q3.out) ? q3.out : '--'} | ${q3.info}`);
     check('troca em outra rede (Base) termina com cotação ou aviso (não fica girando)', !/Consultando/.test(q3.info) && (q3.out > 0 || q3.info.length > 0), q3.info);
 
+    // Troca de Bitcoin real: a LI.FI devolve um PSBT e a nossa conferência precisa aceitá-lo (endereço público com saldo)
+    const btcSwap = await page.evaluate(async () => {
+        const addr = 'bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h';
+        const q = new URLSearchParams({ fromChain: '20000000000001', toChain: '137', fromToken: 'bitcoin', toToken: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', fromAmount: '300000', fromAddress: addr, toAddress: '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3', slippage: '0.015', integrator: 'rdesk-sentinel' });
+        try {
+            const r = await fetch('https://li.quest/v1/quote?' + q);
+            const d = await r.json();
+            if (!r.ok) return { skip: `${r.status} ${d.message || ''}`.slice(0, 160) };
+            const tr = d.transactionRequest;
+            const plan = window.RdeskBitcoin.checkSwapPsbt(tr.data, { ownAddress: addr, depositAddress: tr.to, depositValue: tr.value });
+            return { ok: true, tool: d.tool, fee: plan.fee, rate: plan.feeRate, extras: plan.extras, memo: plan.memo, out: d.estimate.toAmount, min: Math.round(d.estimate.executionDuration / 60) };
+        } catch (e) { return { error: String(e.message).slice(0, 200) }; }
+    });
+    console.log('   troca BTC real (LI.FI):', JSON.stringify(btcSwap));
+    if (btcSwap.skip) console.log('   (informativo: serviço sem rota agora)');
+    else check('PSBT real da troca de Bitcoin passa pela conferência do app', btcSwap.ok === true, JSON.stringify(btcSwap));
+
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));
     await context.close();

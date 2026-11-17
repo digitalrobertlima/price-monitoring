@@ -2758,10 +2758,13 @@
             }
             const filter = filterEl?.value || 'ALL';
             const showZero = Boolean(document.getElementById('wallet-show-zero')?.checked);
+            // Bitcoin sempre em primeiro (mesmo zerado: é a reserva do app), depois Ether na Ethereum, depois o resto
+            const tier = (b) => (b.chainId === 'btc' ? 0 : Number(b.chainId) === 1 && b.symbol === 'ETH' ? 1 : 2);
             const rows = balances
-                .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && (showZero || b.amount > 0 || b.isCustom))
-                .sort((a, b) => (b.usdValue - a.usdValue) || (b.amount - a.amount));
-            if (!rows.length) {
+                .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && (showZero || b.amount > 0 || b.isCustom || b.chainId === 'btc'))
+                .sort((a, b) => (tier(a) - tier(b)) || (b.usdValue - a.usdValue) || (b.amount - a.amount));
+            const nothing = !rows.length || (filter === 'ALL' && !showZero && rows.every((r) => !(r.amount > 0) && !r.isCustom));
+            if (nothing) {
                 listEl.innerHTML = filter === 'ALL'
                     ? '<div class="empty-state big"><strong>Sua carteira ainda está vazia</strong><span>Para colocar sua primeira moeda, toque em Receber e mostre o código para quem vai te enviar.</span><button type="button" class="btn-soft" data-empty-receive>Receber minha primeira moeda</button></div>'
                     : '<div class="empty-state">Nenhuma moeda nesta rede.</div>';
@@ -2774,6 +2777,7 @@
                             <span class="asset-names">
                                 <strong>${esc(friendlyTokenName(b))}</strong>
                                 <span class="asset-meta money">${esc(formatAmount(b.amount, b.symbol))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
+                                ${REG.maturity(b.chainId).level === 'solid' ? REG.maturityBadge(b.chainId) : ''}
                             </span>
                         </span>
                         <span class="asset-right money">
@@ -2898,6 +2902,7 @@
         renderQuoteStatus: () => renderQuoteStatus(),
         openView: (view, params) => { pendingViewParams = params || {}; openWalletModal(view); },
         getBitcoinAddress: () => getActiveAccount()?.btcAddress || '',
+        getBitcoinKey: () => getActiveBitcoinKey(),
         unitUsdFor,
         isBiometrySupported,
         isBiometryRegistered,

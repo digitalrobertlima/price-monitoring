@@ -2123,3 +2123,42 @@ body.privacy-on #home-chart { filter: blur(6px); }
 .result-card .stat span { font-size: 0.9rem; }
 .result-card .stat strong { font-size: 0.98rem; text-align: right; }
 .result-hero strong { font-size: clamp(1.5rem, 7vw, 2rem); line-height: 1.15; }
+
+/* =====================================================================
+   v28 — Identidade Bitcoin: laranja como cor da marca, verde só para ganhos
+   ===================================================================== */
+:root {
+    --btc: #f7931a;
+    --btc-deep: #e07b00;
+    --btc-soft: rgba(247, 147, 26, 0.14);
+}
+.skip-link, .ob-toast, .ob-dots span.on, .steps-bar span, li.done .step-check { background: var(--btc); }
+.ob-toast, .skip-link { color: #1a0f00; }
+:focus-visible { outline-color: var(--btc); }
+.who-avatar { background: linear-gradient(135deg, var(--btc), #ffc46b); color: #1a0f00; }
+.btn-primary, #btn-rcp-confirm { background: linear-gradient(180deg, #ffa53a, var(--btc-deep)); color: #1a0f00; }
+.btn-text, .step-go, .circle-flip-btn { color: var(--btc); }
+.chip.active, .tf-chip.active, .ref-picker button.on { background: var(--btc-soft); border-color: rgba(247, 147, 26, 0.5); outline-color: rgba(247, 147, 26, 0.5); color: #ffb35c; }
+.nav-tab-btn.active { background: var(--btc-soft); color: #ffb35c; }
+li.done .step-check { border-color: var(--btc); color: #1a0f00; }
+li.next .step-check { border-color: var(--btc); }
+.toggle-inline input { accent-color: var(--btc); }
+.progress-line-fill.indeterminate { background: var(--btc); }
+.coin.c1.big { width: 92px; height: 92px; font-size: 3rem; transform: rotate(-8deg); }
+
+/* Selo de maturidade da rede */
+.net-tag {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 700; white-space: nowrap; line-height: 1.5;
+}
+.net-tag.solid { background: var(--btc-soft); color: #ffb35c; border: 1px solid rgba(247, 147, 26, 0.35); }
+.net-tag.young { background: rgba(251, 191, 36, 0.08); color: #fbbf24; border: 1px dashed rgba(251, 191, 36, 0.4); }
+.asset-names .net-tag { margin-top: 4px; align-self: flex-start; }
+.net-risk {
+    display: flex; flex-direction: column; gap: 6px; margin: 12px 0; padding: 12px 14px; border-radius: 14px;
+    font-size: 0.88rem; line-height: 1.45; color: var(--text-secondary, #c9d1e0);
+}
+.net-risk .net-tag { align-self: flex-start; }
+.net-risk.solid { background: rgba(247, 147, 26, 0.07); border: 1px solid rgba(247, 147, 26, 0.25); }
+.net-risk.young { background: rgba(251, 191, 36, 0.06); border: 1px solid rgba(251, 191, 36, 0.25); }
+.receive-net { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }

@@ -134,7 +134,7 @@ export async function mockNetwork(page, chains, opts = {}) {
         const req = route.request();
         const u = req.url();
         external.push(u);
-        const json = (obj) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(obj) });
+        const json = (obj, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(obj) });
         const text = (body, status = 200) => route.fulfill({ status, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body });
 
         // Bitcoin (API estilo Esplora)
@@ -204,6 +204,11 @@ export async function mockNetwork(page, chains, opts = {}) {
             const value = [];
             for (let d = 60; d >= 0; d--) value.push({ cotacaoVenda: USD_BRL, dataHoraCotacao: `${new Date(Date.now() - d * 86400000).toISOString().slice(0, 10)} 13:00:00.000` });
             return json({ value });
+        }
+        if (/li\.quest\/v1\/quote/.test(u)) {
+            if (!opts.lifi) return json({ message: 'sem rota' }, 404);
+            const r = opts.lifi(new URL(u).searchParams);
+            return r.status ? json(r.body, r.status) : json(r);
         }
         if (/coins\.llama\.fi\/batchHistorical/.test(u)) {
             const q = JSON.parse(new URL(u).searchParams.get('coins'));
