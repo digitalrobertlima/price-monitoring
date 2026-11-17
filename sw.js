@@ -3,19 +3,24 @@
    Arquivo 2 de 7: sw.js
    ========================================================================= */
 
-const CACHE_NAME = 'rdesk-sentinel-v24';
+const CACHE_NAME = 'rdesk-sentinel-v25';
 
 const CORE_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './range-chart.js',
+  './registry.js',
+  './bitcoin.js',
+  './qr-scanner.js',
+  './wallet-views.js',
   './wallet-service.js',
   './defi-pix-service.js',
   './app.js',
   './manifest.json',
   './vendor/ethers-5.7.2.umd.min.js',
   './vendor/qrcode-1.0.0.min.js',
+  './vendor/jsqr-1.4.0.js',
   './vendor/chart-4.4.1.umd.min.js'
 ];
 

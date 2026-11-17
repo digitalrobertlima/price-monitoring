@@ -151,7 +151,28 @@
     // =========================================================================
     // 5. VINCULAÇÃO GERAL DA JORNADA DO USUÁRIO
     // =========================================================================
+    // Olho: esconde/mostra todos os saldos e valores em R$ (lembra a escolha neste aparelho)
+    const HIDE_KEY = 'rdesk_hide_balances_v1';
+    function applyBalancePrivacy(hidden) {
+        document.body.classList.toggle('privacy-on', hidden);
+        const btn = document.getElementById('btn-toggle-balances');
+        if (btn) {
+            btn.setAttribute('aria-pressed', String(hidden));
+            const label = hidden ? 'Mostrar saldos' : 'Esconder saldos';
+            btn.setAttribute('aria-label', label);
+            btn.title = label;
+        }
+    }
+    function readBalancePrivacy() { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch (e) { return false; } }
+    window.RdeskPrivacy = {
+        isHidden: () => document.body.classList.contains('privacy-on'),
+        set: (hidden) => { try { localStorage.setItem(HIDE_KEY, hidden ? '1' : '0'); } catch (e) {} applyBalancePrivacy(Boolean(hidden)); }
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
+        applyBalancePrivacy(readBalancePrivacy());
+        document.getElementById('btn-toggle-balances')?.addEventListener('click', () => window.RdeskPrivacy.set(!window.RdeskPrivacy.isHidden()));
+
         // Navegação principal das 4 abas
         document.querySelectorAll('.nav-tab-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -179,6 +200,24 @@
 
         bindMicroMentor();
         initPwaSupport();
+
+        // Lista de moedas: adicionar moeda personalizada e mostrar as sem saldo
+        document.getElementById('btn-add-token')?.addEventListener('click', () => {
+            if (!window.RdeskWallet.isConnected()) { window.RdeskWallet.openModal('add'); return; }
+            window.RdeskWallet.openView('addtoken');
+        });
+        document.getElementById('wallet-show-zero')?.addEventListener('change', () => window.RdeskWallet.renderHome());
+
+        // Cotações: busca a cada 10 s enquanto a página está visível; o "há X s" anda a cada segundo.
+        setInterval(async () => {
+            if (document.hidden || !window.RdeskWallet) return;
+            try {
+                await window.RdeskWallet.refreshPrices();
+                window.RdeskWallet.renderHome();
+                window.RdeskDefi?.onPricesUpdated?.();
+            } catch (e) {}
+        }, 10000);
+        setInterval(() => { if (!document.hidden) window.RdeskWallet?.renderQuoteStatus(); }, 1000);
 
         // Atualiza saldos, preço e posições a cada 30s enquanto a página está visível e sem operação em curso.
         setInterval(async () => {

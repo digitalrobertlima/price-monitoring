@@ -1,7 +1,7 @@
 // Gerenciador de carteiras testado com cliques reais em tela de celular:
 // criar (com prova das 3 palavras), adicionar, trocar, ver a frase, apagar,
 // bloquear/desbloquear, persistência, cópia de segurança e biometria (WebAuthn PRF).
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, TEST_PASSWORD } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, TEST_PASSWORD, waitFn } from './helpers.mjs';
 import { MockChain, ethers } from './mock-chain.mjs';
 
 const VAULT_KEY = 'rdesk_multi_vault_v2';
@@ -70,7 +70,7 @@ try {
     check('palavra errada bloqueia a criação', /não confere/.test(await page.innerText('#rmw-form-msg')) && (await accounts(page)).length === 0);
     await page.fill('#rmw-chk-w1', words[asked[0] - 1]);
     await page.click('#rmw-verify-confirm-btn');
-    await page.waitForFunction(() => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
     const created = (await accounts(page))[0];
     check('carteira criada com o endereço das palavras mostradas', created.address === ethers.Wallet.fromMnemonic(words.join(' ')).address, created.address);
     check('nome com HTML é mostrado como texto (sem injeção)', (await page.locator('#rdesk-mw-sheet b').count()) === 0 && created.name === 'Caixa <b>Forte</b>');
@@ -122,7 +122,7 @@ try {
     await page.waitForSelector('#rmw-det-delete');
     dialogs.length = 0;
     await page.click('#rmw-det-delete');
-    await page.waitForFunction(() => window.RdeskWallet.getAccounts().length === 1, null, { timeout: 15000 });
+    await waitFn(page, () => window.RdeskWallet.getAccounts().length === 1, null, { timeout: 15000 });
     check('apagar pede confirmação avisando que a chave será removida', dialogs.length === 1 && /removida deste aparelho/.test(dialogs[0]), dialogs[0]?.slice(0, 90));
     await page.waitForTimeout(2500); // regravação do cofre (PBKDF2) termina
     const after = await decryptVault(page, TEST_PASSWORD);
@@ -138,7 +138,7 @@ try {
     await page.evaluate(() => window.RdeskWallet.closeModal());
 
     await page.reload({ waitUntil: 'load' });
-    await page.waitForFunction(() => window.RdeskWallet && window.RdeskWallet.isConnected(), null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet && window.RdeskWallet.isConnected(), null, { timeout: 30000 });
     check('após recarregar: mesma carteira, cofre bloqueado',
         (await page.evaluate(() => window.RdeskWallet.getAddress())) === created.address && (await page.evaluate(() => window.RdeskWallet.isLocked())));
     await page.click('#btn-wallet-trigger');
@@ -146,18 +146,18 @@ try {
     await page.screenshot({ path: 'tests/artifacts-ui-desbloquear.png' });
     await page.fill('#rmw-pass-input', 'senha-errada-000');
     await page.click('#rmw-pass-unlock-btn');
-    await page.waitForFunction(() => (document.getElementById('rmw-unlock-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
+    await waitFn(page, () => (document.getElementById('rmw-unlock-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
     check('senha errada não desbloqueia e avisa', (await page.evaluate(() => window.RdeskWallet.isLocked())) && /incorret/i.test(await page.innerText('#rmw-unlock-msg')));
     await page.fill('#rmw-pass-input', TEST_PASSWORD);
     await page.click('#rmw-pass-unlock-btn');
-    await page.waitForFunction(() => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
     const signer = await page.evaluate(() => window.RdeskWallet.getSigner(137).then((s) => s.getAddress()));
     check('senha certa desbloqueia e o assinador usa o endereço da frase', signer === created.address);
 
     // ================================================================ 6. Cópia de segurança no IndexedDB
     await page.evaluate((k) => localStorage.removeItem(k), VAULT_KEY);
     await page.reload({ waitUntil: 'load' });
-    await page.waitForFunction(() => window.RdeskWallet, null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet, null, { timeout: 30000 });
     await page.waitForTimeout(1200);
     check('cofre é restaurado se só o localStorage for apagado', (await page.evaluate(() => window.RdeskWallet.getAddress())) === created.address);
 
@@ -178,7 +178,7 @@ try {
     await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'observação' }).click();
     await page.fill('#rmw-f-watch-input', '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3');
     await page.click('#rmw-f-submit');
-    await page.waitForFunction(() => window.RdeskWallet.getAccounts().length === 2, null, { timeout: 15000 });
+    await waitFn(page, () => window.RdeskWallet.getAccounts().length === 2, null, { timeout: 15000 });
     const watchErr = await page.evaluate(() => window.RdeskWallet.getSigner(137).then(() => '').catch((e) => e.message));
     check('endereço de observação entra na lista e não consegue assinar', (await page.evaluate(() => window.RdeskWallet.isWatchOnly())) && /Observação/.test(watchErr), watchErr);
     await page.evaluate(() => window.RdeskWallet.closeModal());
@@ -201,13 +201,13 @@ try {
     await page.waitForSelector('#rmw-pass-input');
     await page.fill('#rmw-pass-input', TEST_PASSWORD);
     await page.click('#rmw-pass-unlock-btn');
-    await page.waitForFunction(() => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await waitFn(page, () => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
     await page.evaluate(() => window.RdeskWallet.openModal('list'));
     for (const left of [1, 0]) {
         await page.evaluate(() => window.RdeskWallet.openModal('list'));
         await page.locator('[data-detail-acc]').first().click();
         await page.click('#rmw-det-delete');
-        await page.waitForFunction((n) => window.RdeskWallet.getAccounts().length === n, left, { timeout: 15000 });
+        await waitFn(page, (n) => window.RdeskWallet.getAccounts().length === n, left, { timeout: 15000 });
     }
     await page.waitForTimeout(1500);
     const emptied = await stored(page, VAULT_KEY);
@@ -230,11 +230,11 @@ try {
     await leg.page.waitForSelector('#rmw-legacy-pass');
     await leg.page.fill('#rmw-legacy-pass', 'senha-errada-000');
     await leg.page.click('#rmw-legacy-import');
-    await leg.page.waitForFunction(() => (document.getElementById('rmw-add-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
+    await waitFn(leg.page, () => (document.getElementById('rmw-add-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
     const legWrong = await leg.page.innerText('#rmw-add-msg');
     await leg.page.fill('#rmw-legacy-pass', TEST_PASSWORD);
     await leg.page.click('#rmw-legacy-import');
-    await leg.page.waitForFunction(() => window.RdeskWallet.isConnected() && localStorage.getItem('rdesk_v22_encrypted_vault') === null, null, { timeout: 30000 }).catch(() => {});
+    await waitFn(leg.page, () => window.RdeskWallet.isConnected() && localStorage.getItem('rdesk_v22_encrypted_vault') === null, null, { timeout: 30000 }).catch(() => {});
     check('cofre da versão anterior é recuperado com a senha antiga (senha errada é recusada)',
         /incorreta/i.test(legWrong) && (await leg.page.evaluate(() => window.RdeskWallet.getAddress())) === TEST_ADDR &&
         (await leg.page.evaluate(() => localStorage.getItem('rdesk_v22_encrypted_vault'))) === null, legWrong);
@@ -248,7 +248,7 @@ try {
     await bio.page.click('#btn-wallet-trigger');
     await bio.page.locator('[data-detail-acc]').first().click();
     await bio.page.click('#rmw-det-bio-btn');
-    await bio.page.waitForFunction(() => (document.getElementById('rmw-det-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
+    await waitFn(bio.page, () => (document.getElementById('rmw-det-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
     const bioMsg = await bio.page.innerText('#rmw-det-msg');
     const bioRecord = await stored(bio.page, BIO_KEY);
     check('biometria ativa com autenticador que suporta PRF', /ativada/i.test(bioMsg) && Boolean(bioRecord), bioMsg);
@@ -267,7 +267,7 @@ try {
     await noPrf.page.click('#btn-wallet-trigger');
     await noPrf.page.locator('[data-detail-acc]').first().click();
     await noPrf.page.click('#rmw-det-bio-btn');
-    await noPrf.page.waitForFunction(() => (document.getElementById('rmw-det-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
+    await waitFn(noPrf.page, () => (document.getElementById('rmw-det-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
     const noPrfMsg = await noPrf.page.innerText('#rmw-det-msg');
     check('aparelho sem PRF: biometria é recusada com aviso, nada inseguro é gravado',
         /PRF|senha/i.test(noPrfMsg) && !/ativada/i.test(noPrfMsg) && (await stored(noPrf.page, BIO_KEY)) === null, noPrfMsg);

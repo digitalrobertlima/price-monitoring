@@ -1473,3 +1473,185 @@ body {
     white-space: normal;
     line-height: 1.2;
 }
+
+/* =========================================================================
+   v25 — SELOS DE MOEDA E REDE, LISTA DE MOEDAS, CONTRATOS, LEITOR DE QR
+   ========================================================================= */
+.coin-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-family: var(--font-display); font-weight: 800; line-height: 1;
+    flex: none; user-select: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+.coin-badge-wrap { position: relative; display: inline-block; flex: none; }
+.coin-chain-dot {
+    position: absolute; right: -2px; bottom: -2px;
+    width: 38%; height: 38%; min-width: 9px; min-height: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-surface-2);
+}
+.chain-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px 2px 6px;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--chain-color) 55%, transparent);
+    background: color-mix(in srgb, var(--chain-color) 16%, transparent);
+    color: var(--text-primary);
+    font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.02em;
+    white-space: nowrap; vertical-align: middle;
+}
+.chain-dot { width: 8px; height: 8px; border-radius: 3px; background: var(--chain-color); flex: none; }
+
+.asset-row-btn {
+    width: 100%; gap: 10px;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.asset-row-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.asset-row-btn .asset-left { min-width: 0; }
+.asset-names { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.asset-names strong { font-size: 0.96rem; }
+.asset-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.asset-contract { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); }
+.asset-row-btn .asset-right { flex: none; }
+.asset-row-btn .asset-right small { font-family: var(--font-mono); font-size: 0.72rem; }
+
+.assets-toolbar {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 4px 0 12px;
+}
+.toggle-inline { display: inline-flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--text-secondary); cursor: pointer; }
+.toggle-inline input { width: 16px; height: 16px; accent-color: var(--green); }
+.assets-toolbar .mini-link-btn { font-size: 0.74rem; padding: 6px 10px; }
+
+.quote-status { margin-top: 8px; font-size: 0.72rem; font-family: var(--font-mono); color: var(--green); }
+.quote-status.stale { color: var(--amber); }
+
+.swap-contracts { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 4px; }
+.swap-contract-line {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.76rem; color: var(--text-secondary);
+}
+.swap-contract-line > span:nth-child(2) { flex: 1; min-width: 0; }
+.swap-contract-line a, .swap-contract-line > span:last-child { font-family: var(--font-mono); font-size: 0.7rem; color: var(--accent); text-decoration: none; white-space: nowrap; }
+.swap-contract-line > span:last-child { color: var(--text-muted); }
+.swap-divider { position: relative; z-index: 2; }
+.circle-flip-btn { position: relative; z-index: 3; touch-action: manipulation; }
+
+/* ---- Telas do modal de carteira (receber, enviar, moeda, adicionar moeda) ---- */
+#rdesk-mw-sheet .view-hint { font-size: 0.82rem; color: #94a3b8; margin: 2px 0 10px; line-height: 1.45; }
+#rdesk-mw-sheet .view-subtitle { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #94a3b8; margin: 16px 0 8px; }
+#rdesk-mw-sheet .view-footnote { font-size: 0.74rem; color: #7c8798; text-align: center; margin: 10px 0 0; }
+#rdesk-mw-sheet .net-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
+#rdesk-mw-sheet .net-chips::-webkit-scrollbar { display: none; }
+#rdesk-mw-sheet .net-chip {
+    flex: none; padding: 7px 8px; border-radius: 12px; cursor: pointer;
+    background: #0b0e14; border: 1px solid rgba(255, 255, 255, 0.1);
+}
+#rdesk-mw-sheet .net-chip.active { border-color: #eab308; background: rgba(234, 179, 8, 0.1); }
+#rdesk-mw-sheet .net-chip .chain-badge { border: 0; background: transparent; font-size: 0.74rem; padding: 0 2px; }
+#rdesk-mw-sheet .receive-box {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: #0b0e14; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 16px;
+}
+#rdesk-mw-sheet .receive-qr { background: #fff; padding: 12px; border-radius: 14px; }
+#rdesk-mw-sheet .receive-qr > div { width: 190px; height: 190px; }
+#rdesk-mw-sheet .receive-net { display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #cbd5e1; }
+#rdesk-mw-sheet .receive-address, #rdesk-mw-sheet .contract-code {
+    display: block; width: 100%; box-sizing: border-box;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.78rem; line-height: 1.5;
+    word-break: break-all; text-align: center; color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.04); border-radius: 10px; padding: 9px 10px;
+    user-select: all;
+}
+#rdesk-mw-sheet .contract-box {
+    display: flex; flex-direction: column; gap: 6px;
+    background: #0b0e14; border: 1px dashed rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 10px 12px; margin: 8px 0 4px;
+}
+#rdesk-mw-sheet .contract-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #38bdf8; }
+#rdesk-mw-sheet .contract-code { text-align: left; font-size: 0.74rem; }
+#rdesk-mw-sheet .contract-native { font-size: 0.78rem; color: #94a3b8; }
+#rdesk-mw-sheet .contract-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+#rdesk-mw-sheet .mini-link-btn { text-decoration: none; display: inline-block; font-size: 0.72rem; padding: 5px 9px; }
+#rdesk-mw-sheet .token-list { display: flex; flex-direction: column; gap: 6px; }
+#rdesk-mw-sheet .token-line {
+    display: flex; align-items: center; gap: 10px;
+    background: #0b0e14; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 12px; padding: 8px 10px;
+}
+#rdesk-mw-sheet .token-line-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#rdesk-mw-sheet .token-line-name strong { font-size: 0.86rem; }
+#rdesk-mw-sheet .token-line-name small { font-size: 0.7rem; color: #7c8798; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#rdesk-mw-sheet .token-line-contract {
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.68rem; color: #38bdf8;
+    background: transparent; border: 0; cursor: pointer; padding: 4px;
+}
+#rdesk-mw-sheet .token-line-native { font-size: 0.7rem; color: #7c8798; }
+#rdesk-mw-sheet .send-token-row { display: flex; align-items: center; gap: 10px; }
+#rdesk-mw-sheet .send-token-row .rmw-select { flex: 1; min-width: 0; }
+#rdesk-mw-sheet .input-with-actions { display: flex; gap: 6px; align-items: stretch; }
+#rdesk-mw-sheet .input-with-actions .rmw-input { flex: 1; min-width: 0; }
+#rdesk-mw-sheet .input-with-actions .rmw-icon-btn { flex: none; width: 44px; height: auto; min-height: 44px; font-size: 1.05rem; }
+#rdesk-mw-sheet .send-max-btn { flex: none; width: auto; margin: 0; padding: 0 14px; }
+#rdesk-mw-sheet .send-fiat { min-height: 1.1em; font-size: 0.78rem; color: #94a3b8; margin: 4px 2px 0; font-family: 'JetBrains Mono', ui-monospace, monospace; }
+#rdesk-mw-sheet .asset-hero { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; }
+#rdesk-mw-sheet .asset-hero-symbol { font-size: 1.15rem; font-weight: 800; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#rdesk-mw-sheet .asset-hero-name { font-size: 0.8rem; color: #94a3b8; margin-top: 2px; }
+#rdesk-mw-sheet .asset-balance {
+    display: flex; flex-direction: column; gap: 2px;
+    background: #0b0e14; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 12px 14px;
+}
+#rdesk-mw-sheet .asset-balance strong { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+#rdesk-mw-sheet .asset-balance span { color: #94a3b8; font-size: 0.86rem; }
+#rdesk-mw-sheet .asset-balance small { color: #f59e0b; font-size: 0.72rem; }
+#rdesk-mw-sheet .two-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+#rdesk-mw-sheet .two-btn-row > button { margin: 0; }
+#rdesk-mw-sheet .link-btn { display: block; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 8px; }
+#rdesk-mw-sheet .token-found { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; padding: 12px; border-radius: 14px; background: rgba(16, 185, 129, 0.07); border: 1px solid rgba(16, 185, 129, 0.3); }
+#rdesk-mw-sheet .token-found-balance { font-size: 0.84rem; color: #cbd5e1; }
+#rdesk-mw-sheet a { color: #38bdf8; }
+
+/* ---- Leitor de QR Code ---- */
+.qr-scan-overlay {
+    position: fixed; inset: 0; z-index: 100000;
+    background: rgba(4, 6, 10, 0.96);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.qr-scan-card { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; color: var(--text-primary); }
+.qr-scan-head { display: flex; align-items: center; gap: 12px; }
+.qr-scan-title { font-family: var(--font-display); font-size: 1.02rem; }
+.qr-scan-btn-icon {
+    width: 44px; height: 44px; border-radius: 12px; cursor: pointer;
+    background: var(--bg-surface-2); border: 1px solid var(--border-strong); color: var(--text-primary); font-size: 1.1rem;
+}
+.qr-scan-viewport { position: relative; aspect-ratio: 1 / 1; border-radius: 20px; overflow: hidden; background: #000; }
+.qr-scan-viewport video { width: 100%; height: 100%; object-fit: cover; }
+.qr-scan-frame { position: absolute; inset: 14%; border: 3px solid var(--green-bright); border-radius: 18px; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); }
+.qr-scan-msg { margin: 0; text-align: center; font-size: 0.84rem; color: var(--text-secondary); line-height: 1.45; }
+.qr-scan-file {
+    text-align: center; cursor: pointer; padding: 12px; border-radius: var(--radius-md);
+    background: var(--bg-surface-2); border: 1px solid var(--border-strong); font-size: 0.86rem; font-weight: 600;
+}
+
+/* ===================== v25: olho para esconder saldos ===================== */
+.hero-label-row { display: flex; align-items: center; gap: 8px; }
+.eye-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--border-subtle); background: rgba(255,255,255,0.04);
+    color: var(--text-secondary); cursor: pointer; padding: 0;
+}
+.eye-btn:hover, .eye-btn:focus-visible { color: var(--text-primary); border-color: var(--border-strong); }
+.eye-btn .eye-closed { display: none; }
+body.privacy-on .eye-btn .eye-open { display: none; }
+body.privacy-on .eye-btn .eye-closed { display: inline; }
+body.privacy-on .money { position: relative; color: transparent !important; text-shadow: none !important; user-select: none; }
+body.privacy-on .money * { color: transparent !important; visibility: hidden; }
+body.privacy-on .money::after {
+    content: "••••••"; visibility: visible;
+    position: absolute; inset: 0; display: flex; align-items: center;
+    color: var(--text-secondary); letter-spacing: 0.12em; overflow: hidden; white-space: nowrap;
+    -webkit-text-fill-color: var(--text-secondary);
+}
+body.privacy-on .hero-amount.money::after { color: var(--text-primary); -webkit-text-fill-color: var(--text-primary); }
+body.privacy-on .asset-right.money::after { justify-content: flex-end; }
+body.privacy-on .hero-breakdown.money::after { padding: 0 12px; }

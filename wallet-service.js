@@ -16,22 +16,12 @@
     const MIN_PASSWORD_LENGTH = 8;
     const AUTO_LOCK_MS = 10 * 60 * 1000;
     // Gorjeta mínima (gwei) aceita pelos validadores; o padrão do ethers v5 (1,5) é recusado na Polygon.
-    const MIN_PRIORITY_FEE_GWEI = { 137: 30 };
+    const REG = window.RdeskRegistry;
+    const MIN_PRIORITY_FEE_GWEI = Object.fromEntries(REG.CHAINS.filter((c) => c.minTipGwei).map((c) => [c.id, c.minTipGwei]));
     const IDB_NAME = 'rdesk_vault_backup';
 
-    const POLYGON_RPCS = [
-        'https://polygon-bor-rpc.publicnode.com',
-        'https://1rpc.io/matic',
-        'https://polygon.drpc.org'
-    ];
-
-    const CHAIN_RPC_LISTS = {
-        137:   POLYGON_RPCS,
-        42161: ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com'],
-        8453:  ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'],
-        10:    ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com'],
-        1:     ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org']
-    };
+    const CHAIN_RPC_LISTS = Object.fromEntries(REG.CHAINS.map((c) => [c.id, c.rpcs]));
+    const POLYGON_RPCS = CHAIN_RPC_LISTS[137];
     const CHAIN_RPCS = Object.fromEntries(Object.entries(CHAIN_RPC_LISTS).map(([id, list]) => [id, list[0]]));
 
     const ERC20_ABI = [
@@ -61,6 +51,10 @@
             polUsd: 0.088,
             ethUsd: 0,
             btcUsd: 0,
+            celoUsd: 0,
+            custom: {},        // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
+            usdBrlLive: false, // false = ainda usando valor de reserva
+            polLive: false,
             updatedAt: 0
         }
     };
@@ -159,6 +153,9 @@
             USD_BRL: usdBrl,
             ETH: Number(state.prices.ethUsd) || 0,
             BTC: Number(state.prices.btcUsd) || 0,
+            CELO: Number(state.prices.celoUsd) || 0,
+            live: Boolean(state.prices.usdBrlLive && state.prices.polLive),
+            usdBrlLive: Boolean(state.prices.usdBrlLive),
             POL: polUsd,
             MATIC: polUsd,
             WPOL: polUsd,
@@ -178,32 +175,68 @@
         if (!(p > 0)) return;
         if (!state.prices.polLiveAt || Date.now() - state.prices.polLiveAt > 5 * 60 * 1000) {
             state.prices.polUsd = p;
+            state.prices.polLive = true; // preço lido direto da pool na blockchain
         }
     }
 
+    const fetchJson = (url) => fetch(url, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+    // Dólar em reais: tenta três fontes independentes, na ordem.
+    async function fetchUsdBrl() {
+        const a = await fetchJson('https://economia.awesomeapi.com.br/last/USD-BRL');
+        let v = parseFloat(a?.USDBRL?.bid);
+        if (v > 2 && v < 20) return v;
+        const b = await fetchJson('https://open.er-api.com/v6/latest/USD');
+        v = parseFloat(b?.rates?.BRL);
+        if (v > 2 && v < 20) return v;
+        const c = await fetchJson('https://api.frankfurter.app/latest?from=USD&to=BRL');
+        v = parseFloat(c?.rates?.BRL);
+        return v > 2 && v < 20 ? v : null;
+    }
+
+    let pricesInFlight = null;
     async function refreshLiveMarketPrices() {
-        try {
-            const [fxRes, polRes, majorsRes] = await Promise.all([
-                fetch('https://economia.awesomeapi.com.br/last/USD-BRL', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
-                fetch('https://coins.llama.fi/prices/current/polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
-                fetch('https://coins.llama.fi/prices/current/coingecko:ethereum,coingecko:bitcoin', { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
-            ]);
-            const ethPrice = parseFloat(majorsRes?.coins?.['coingecko:ethereum']?.price);
-            const btcPrice = parseFloat(majorsRes?.coins?.['coingecko:bitcoin']?.price);
-            if (Number.isFinite(ethPrice) && ethPrice > 0) state.prices.ethUsd = ethPrice;
-            if (Number.isFinite(btcPrice) && btcPrice > 0) state.prices.btcUsd = btcPrice;
-            if (fxRes?.USDBRL?.bid) {
-                const parsedFx = parseFloat(fxRes.USDBRL.bid);
-                if (Number.isFinite(parsedFx) && parsedFx > 0) state.prices.usdBrl = parsedFx;
-            }
-            const polPrice = polRes?.coins?.['polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270']?.price;
-            if (polPrice && Number.isFinite(parseFloat(polPrice))) {
-                state.prices.polUsd = parseFloat(polPrice);
-                state.prices.polLiveAt = Date.now();
-            }
-            state.prices.updatedAt = Date.now();
-        } catch (e) {}
-        return getNormalizedPricesObject();
+        if (pricesInFlight) return pricesInFlight;
+        pricesInFlight = (async () => {
+            try {
+                const WPOL_KEY = 'polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
+                const customKeys = REG.loadCustomTokens().map((t) => `${REG.getChain(t.chainId).llama}:${t.address}`);
+                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', ...customKeys];
+                const [fx, coinsRes] = await Promise.all([
+                    fetchUsdBrl(),
+                    fetchJson(`https://coins.llama.fi/prices/current/${keys.join(',')}`)
+                ]);
+                const price = (k) => { const n = parseFloat(coinsRes?.coins?.[k]?.price); return Number.isFinite(n) && n > 0 ? n : null; };
+
+                if (fx) { state.prices.usdBrl = fx; state.prices.usdBrlLive = true; }
+                if (price('coingecko:ethereum')) state.prices.ethUsd = price('coingecko:ethereum');
+                if (price('coingecko:bitcoin')) state.prices.btcUsd = price('coingecko:bitcoin');
+                if (price('coingecko:celo')) state.prices.celoUsd = price('coingecko:celo');
+                if (price(WPOL_KEY)) {
+                    state.prices.polUsd = price(WPOL_KEY);
+                    state.prices.polLiveAt = Date.now();
+                    state.prices.polLive = true;
+                }
+                REG.loadCustomTokens().forEach((t) => {
+                    const v = price(`${REG.getChain(t.chainId).llama}:${t.address}`);
+                    if (v) state.prices.custom[`${t.chainId}:${t.address.toLowerCase()}`] = v;
+                });
+
+                // Reserva para ETH/BTC quando a fonte principal falha
+                if (!state.prices.ethUsd || !state.prices.btcUsd) {
+                    const tick = await fetchJson('https://api.binance.com/api/v3/ticker/price?symbols=%5B%22ETHUSDT%22,%22BTCUSDT%22%5D');
+                    (Array.isArray(tick) ? tick : []).forEach((row) => {
+                        const v = parseFloat(row.price);
+                        if (!(v > 0)) return;
+                        if (row.symbol === 'ETHUSDT' && !state.prices.ethUsd) state.prices.ethUsd = v;
+                        if (row.symbol === 'BTCUSDT' && !state.prices.btcUsd) state.prices.btcUsd = v;
+                    });
+                }
+                state.prices.updatedAt = Date.now();
+            } catch (e) {}
+            return getNormalizedPricesObject();
+        })();
+        try { return await pricesInFlight; } finally { pricesInFlight = null; }
     }
 
     function getPricesSyncOrRefresh() {
@@ -330,6 +363,7 @@
     }
 
     async function persistVaultToStorage() {
+        ensureBtcAddresses();
         const existing = readVaultMetaFromStorage();
         let encryptedSecrets = existing?.encryptedSecrets || null;
 
@@ -540,8 +574,8 @@
             password
         };
         state.isLocked = false;
-        if (Number(meta.encryptedSecrets.iterations) !== PBKDF2_ITERATIONS) {
-            await persistVaultToStorage(); // regrava com a proteção atual
+        if (Number(meta.encryptedSecrets.iterations) !== PBKDF2_ITERATIONS || ensureBtcAddresses()) {
+            await persistVaultToStorage(); // regrava com a proteção atual / endereços Bitcoin
         }
         touchAutoLock();
         notifyAccountChanged();
@@ -696,6 +730,42 @@
         try { indexedDB.deleteDatabase('RDESK_V22_SECURE_VAULT'); } catch (e) {}
     }
 
+    // Endereço Bitcoin (BIP84) de cada conta com chave; é público e fica salvo para aparecer mesmo com o cofre bloqueado.
+    function ensureBtcAddresses() {
+        if (!state.unlockedSecrets || !window.RdeskBitcoin) return false;
+        let changed = false;
+        state.accounts.forEach((acc) => {
+            if (acc.btcAddress) return;
+            try {
+                if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) {
+                    acc.btcAddress = window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0).address;
+                    changed = true;
+                } else if (acc.type === 'pk' && state.unlockedSecrets.pkMap[acc.id]) {
+                    acc.btcAddress = window.RdeskBitcoin.deriveFromPrivateKey(state.unlockedSecrets.pkMap[acc.id]).address;
+                    changed = true;
+                }
+            } catch (e) {}
+        });
+        return changed;
+    }
+
+    // Chave Bitcoin da conta ativa (só com o cofre aberto).
+    function getActiveBitcoinKey() {
+        const acc = getActiveAccount();
+        if (!acc) throw new Error('Nenhuma carteira ativa.');
+        if (acc.type !== 'seed' && acc.type !== 'pk') throw new Error('Bitcoin só está disponível em carteiras criadas ou importadas neste app (frase ou chave privada).');
+        if (state.isLocked || !state.unlockedSecrets) {
+            openWalletModal('unlock');
+            throw new Error('Cofre bloqueado. Desbloqueie para enviar Bitcoin.');
+        }
+        touchAutoLock();
+        const key = acc.type === 'seed'
+            ? window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0)
+            : window.RdeskBitcoin.deriveFromPrivateKey(state.unlockedSecrets.pkMap[acc.id]);
+        if (acc.btcAddress && key.address !== acc.btcAddress) throw new Error('Erro interno: endereço Bitcoin não confere com a chave.');
+        return key;
+    }
+
     async function deriveNextAccountFromSeed(seedGroupId) {
         if (!state.unlockedSecrets || !state.unlockedSecrets.masterSeedMap[seedGroupId]) {
             throw new Error('Desbloqueie o cofre para derivar novas contas desta frase-semente.');
@@ -822,15 +892,17 @@
             await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexChainId }] });
             return true;
         } catch (switchErr) {
-            if (switchErr && switchErr.code === 4902 && targetId === 137) {
+            const chain = REG.getChain(targetId);
+            if (switchErr && switchErr.code === 4902 && chain) {
+                const nativeToken = REG.getTokens(targetId).find((t) => t.isNative);
                 await eth.request({
                     method: 'wallet_addEthereumChain',
                     params: [{
-                        chainId: '0x89',
-                        chainName: 'Polygon Mainnet',
-                        nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
-                        rpcUrls: ['https://polygon-bor-rpc.publicnode.com'],
-                        blockExplorerUrls: ['https://polygonscan.com/']
+                        chainId: hexChainId,
+                        chainName: chain.name,
+                        nativeCurrency: { name: nativeToken.symbol, symbol: nativeToken.symbol, decimals: 18 },
+                        rpcUrls: [chain.rpcs[0]],
+                        blockExplorerUrls: [chain.explorer + '/']
                     }]
                 });
                 return true;
@@ -918,7 +990,7 @@
     // =========================================================================
     // 6. PROVIDER, SIGNER MULTI-CHAIN & LEITURA DE SALDOS REAIS
     // =========================================================================
-    const NETWORK_NAMES = { 137: 'matic', 42161: 'arbitrum', 8453: 'base', 10: 'optimism', 1: 'homestead' };
+    const NETWORK_NAMES = { 137: 'matic', 42161: 'arbitrum', 8453: 'base', 10: 'optimism', 1: 'homestead', 42220: 'celo' };
     const preferredRpcIndex = {};
 
     function buildProvider(chainId, rpcUrl) {
@@ -989,9 +1061,14 @@
             if (!eth) throw new Error('Extensão Rabby não encontrada.');
             await eth.request({ method: 'eth_requestAccounts' });
             if (chainId) {
-                await switchChainOnProvider(chainId).catch(() => {});
+                await switchChainOnProvider(chainId);
             }
-            return new ethers.providers.Web3Provider(eth).getSigner();
+            const web3 = new ethers.providers.Web3Provider(eth, 'any');
+            const net = await web3.getNetwork();
+            if (chainId && net.chainId !== Number(chainId)) {
+                throw new Error(`A Rabby está na rede errada. Troque para ${REG.getChain(chainId)?.name || chainId} e tente de novo.`);
+            }
+            return web3.getSigner();
         }
         if (state.isLocked || !state.unlockedSecrets) {
             openWalletModal('unlock');
@@ -1274,6 +1351,11 @@
                 border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
                 padding: 11px; font-weight: 600; font-size: 0.9rem; cursor: pointer; margin-top: 8px;
             }
+            .rmw-alert-warn {
+                background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.38); color: #fde68a;
+                border-radius: 12px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.45; margin: 10px 0;
+            }
+            .rmw-alert-warn strong { color: #fff; }
             .rmw-btn-danger {
                 width: 100%; background: rgba(239, 68, 68, 0.14); color: #f87171;
                 border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px;
@@ -1352,6 +1434,15 @@
         } else {
             currentView = 'list';
         }
+        viewTrail = [];
+        viewParams = pendingViewParams || {};
+        pendingViewParams = null;
+        if (!overlay.classList.contains('open')) {
+            // Se o "voltar" disparado pelo fechamento anterior ainda não chegou, a entrada nova
+            // só é criada depois dele (senão aquele voltar fecharia esta janela recém-aberta).
+            if (pendingSelfBack) pushAfterSelfBack = true;
+            else { try { history.pushState({ rdeskModal: true }, ''); } catch (e) {} }
+        }
         overlay.classList.add('open');
         renderModal();
         refreshAllAccountsBalances();
@@ -1375,9 +1466,16 @@
         openWalletModal('send');
     }
 
-    function closeWalletModal() {
+    function closeWalletModal(fromHistory) {
         const overlay = document.getElementById('rdesk-mw-overlay');
+        const wasOpen = overlay && overlay.classList.contains('open');
         if (overlay) overlay.classList.remove('open');
+        viewTrail = [];
+        if (wasOpen && fromHistory !== true && history.state && history.state.rdeskModal) {
+            pushAfterSelfBack = false;
+            // Um "voltar" nosso já a caminho basta; um segundo voltaria duas páginas (podendo sair do app).
+            if (!pendingSelfBack) { try { pendingSelfBack = true; history.back(); } catch (e) { pendingSelfBack = false; } }
+        }
         // Nada sensível (frase em criação, chave revelada, senha digitada) fica na página depois de fechar.
         createSeedDraft = null;
         overlay?.querySelector('.rmw-sheet')?.replaceChildren();
@@ -1387,14 +1485,98 @@
         const sheet = document.getElementById('rdesk-mw-sheet');
         if (!sheet) return;
 
-        if (currentView === 'unlock') renderUnlockView(sheet);
+        trackViewTrail();
+        if (externalViews[currentView]) externalViews[currentView](sheet, viewContext);
+        else if (currentView === 'unlock') renderUnlockView(sheet);
         else if (currentView === 'add') renderAddMethodView(sheet);
         else if (currentView === 'form') renderFormView(sheet);
         else if (currentView === 'detail') renderDetailView(sheet);
-        else if (currentView === 'receive') renderReceiveView(sheet);
-        else if (currentView === 'send') renderSendView(sheet);
         else renderListView(sheet);
+        ensureBackButton(sheet);
+        sheet.querySelectorAll('[data-scan-for]').forEach((btn) => {
+            if (btn.dataset.scanBound || !window.RdeskQrScanner) return;
+            btn.dataset.scanBound = '1';
+            window.RdeskQrScanner.attach(btn, sheet.querySelector('#' + btn.getAttribute('data-scan-for')), { raw: btn.hasAttribute('data-scan-raw'), title: 'Ler QR Code' });
+        });
     }
+
+    // ---- Navegação: toda tela que não é a primeira ganha um botão "voltar" ----
+    const externalViews = {};
+    let viewTrail = [];
+    let viewParams = {};
+    let pendingViewParams = null;
+    const trailParams = {};
+    function trackViewTrail() {
+        const idx = viewTrail.lastIndexOf(currentView);
+        if (idx >= 0) viewTrail.length = idx + 1;
+        else viewTrail.push(currentView);
+        trailParams[currentView] = viewParams;
+    }
+    function navigateTo(view, params) {
+        viewParams = params || {};
+        currentView = view;
+        renderModal();
+    }
+    function goBackOrClose() {
+        if (viewTrail.length > 1) {
+            viewTrail.pop();
+            currentView = viewTrail[viewTrail.length - 1];
+            viewParams = trailParams[currentView] || {};
+            renderModal();
+        } else {
+            closeWalletModal();
+        }
+    }
+    function ensureBackButton(sheet) {
+        if (viewTrail.length < 2) return;
+        if (sheet.querySelector('#rmw-back-btn, #rmw-verify-back, #rmw-form-back, #rmw-det-back, [data-rmw-back]')) return;
+        const title = sheet.querySelector('.rmw-title');
+        if (!title) return;
+        const btn = document.createElement('button');
+        btn.className = 'rmw-icon-btn';
+        btn.setAttribute('data-rmw-back', '1');
+        btn.setAttribute('aria-label', 'Voltar');
+        btn.textContent = '←';
+        btn.onclick = goBackOrClose;
+        title.prepend(btn);
+    }
+    // Botão "voltar" do celular/navegador fecha a tela atual do modal em vez de sair do app.
+    let pendingSelfBack = false, pushAfterSelfBack = false;
+    window.addEventListener('popstate', () => {
+        const overlay = document.getElementById('rdesk-mw-overlay');
+        if (pendingSelfBack) { // voltar que nós mesmos pedimos ao fechar a janela
+            pendingSelfBack = false;
+            if (pushAfterSelfBack && overlay && overlay.classList.contains('open')) { try { history.pushState({ rdeskModal: true }, ''); } catch (e) {} }
+            pushAfterSelfBack = false;
+            return;
+        }
+        if (!overlay || !overlay.classList.contains('open')) return;
+        if (viewTrail.length > 1) {
+            history.pushState({ rdeskModal: true }, '');
+            goBackOrClose();
+        } else {
+            closeWalletModal(true);
+        }
+    });
+
+    const viewContext = {
+        get params() { return viewParams; },
+        esc: (v) => esc(v),
+        navigate: navigateTo,
+        back: goBackOrClose,
+        close: () => closeWalletModal(),
+        copy: (t) => copyToClipboardSafe(t),
+        drawQr: (target, text, size) => drawLocalQr(target, text, size),
+        getActiveAccount: () => getActiveAccount(),
+        getSigner: (chainId) => getActiveSigner(chainId),
+        getBitcoinKey: () => getActiveBitcoinKey(),
+        getHealthyProvider: (chainId) => getHealthyProvider(chainId),
+        getBalances: () => getBalancesArray(),
+        refreshBalances: () => refreshBalancesCompat(),
+        prices: () => getNormalizedPricesObject(),
+        formatBRL: (v) => formatBRL(v),
+        isLocked: () => state.isLocked
+    };
 
     // -------------------------------------------------------------------------
     // TELA RECEBER (QR CODE + COPIAR ENDEREÇO — 100% COMPATÍVEL COM RABBY MOBILE)
@@ -1407,143 +1589,6 @@
             return;
         }
         new QRCode(target, { text, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
-    }
-
-    function renderReceiveView(sheet) {
-        const acc = getActiveAccount();
-        if (!acc) { currentView = 'add'; renderModal(); return; }
-        sheet.innerHTML = `
-            <div class="rmw-header">
-                <div class="rmw-title">
-                    <button class="rmw-icon-btn" id="rmw-rec-list" title="Trocar carteira">👛</button>
-                    ↓ Receber Cripto (Polygon)
-                </div>
-                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
-            </div>
-
-            <div style="text-align:center;padding:8px 0 12px;">
-                <div style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(130,71,229,0.2);color:#c4b5fd;font-size:0.75rem;font-weight:700;margin-bottom:8px;">
-                    Rede Polygon Mainnet (Chain ID 137)
-                </div>
-                <div style="font-weight:800;font-size:1.05rem;color:#fff;margin-bottom:10px;">
-                    ${esc(acc.name)}
-                </div>
-                <div style="background:#ffffff;border:1px solid rgba(234,179,8,0.35);border-radius:16px;padding:12px;display:inline-block;">
-                    <div id="rmw-rec-qr" style="width:190px;height:190px;"></div>
-                </div>
-            </div>
-
-            <div class="rmw-secret-box" style="text-align:center;font-size:0.84rem;color:#f8fafc;">
-                ${acc.address}
-            </div>
-
-            <div style="font-size:0.76rem;color:#94a3b8;text-align:center;margin:8px 0 10px;">
-                Envie apenas ativos da rede <strong style="color:#fff;">Polygon</strong> (POL, WPOL, USDT0, BRZ ou BRLA) para este endereço.
-            </div>
-
-            <button class="rmw-btn-primary" id="rmw-rec-copy-btn">📋 Copiar Endereço Completo</button>
-            ${navigator.share ? `<button class="rmw-btn-secondary" id="rmw-rec-share-btn">📤 Compartilhar Endereço</button>` : ''}
-        `;
-
-        drawLocalQr(sheet.querySelector('#rmw-rec-qr'), acc.address, 190);
-        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
-        sheet.querySelector('#rmw-rec-list').onclick = () => { currentView = 'list'; renderModal(); };
-
-        sheet.querySelector('#rmw-rec-copy-btn').onclick = async () => {
-            await copyToClipboardSafe(acc.address);
-            const btn = sheet.querySelector('#rmw-rec-copy-btn');
-            btn.textContent = '✅ Endereço Copiado!';
-            setTimeout(() => { btn.textContent = '📋 Copiar Endereço Completo'; }, 2000);
-        };
-
-        sheet.querySelector('#rmw-rec-share-btn')?.addEventListener('click', () => {
-            navigator.share({ title: `Carteira ${acc.name} (Polygon)`, text: acc.address }).catch(() => {});
-        });
-    }
-
-    // -------------------------------------------------------------------------
-    // TELA ENVIAR (TRANSFERÊNCIA DIRETA NA POLYGON)
-    // -------------------------------------------------------------------------
-    function renderSendView(sheet) {
-        const acc = getActiveAccount();
-        if (!acc) { currentView = 'add'; renderModal(); return; }
-        const bal = getActiveAccountBalances();
-
-        sheet.innerHTML = `
-            <div class="rmw-header">
-                <div class="rmw-title">
-                    <button class="rmw-icon-btn" id="rmw-snd-list">👛</button>
-                    ↑ Enviar Ativos (Polygon)
-                </div>
-                <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
-            </div>
-
-            <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">
-                De: <strong style="color:#fff;">${esc(acc.name)}</strong> (${acc.address.slice(0, 6)}...${acc.address.slice(-4)})
-            </div>
-
-            <label class="rmw-label">Moeda</label>
-            <select class="rmw-select" id="rmw-snd-token">
-                <option value="USDT0">USDT0 (Saldo: ${bal.usdt0.toFixed(4)})</option>
-                <option value="POL">POL Nativo (Saldo: ${bal.pol.toFixed(4)})</option>
-                <option value="WPOL">WPOL (Saldo: ${bal.wpol.toFixed(4)})</option>
-                <option value="BRZ">BRZ (Saldo: ${bal.brz.toFixed(2)})</option>
-                <option value="BRLA">BRLA (Saldo: ${bal.brla.toFixed(2)})</option>
-            </select>
-
-            <label class="rmw-label">Endereço de Destino (0x...)</label>
-            <input type="text" class="rmw-input" id="rmw-snd-to" placeholder="0x...">
-
-            <label class="rmw-label">Quantidade</label>
-            <input type="number" class="rmw-input" id="rmw-snd-amt" step="any" placeholder="0.00">
-
-            <div id="rmw-snd-msg"></div>
-            <button class="rmw-btn-primary" id="rmw-snd-exec">Assinar e Enviar na Polygon</button>
-        `;
-
-        sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
-        sheet.querySelector('#rmw-snd-list').onclick = () => { currentView = 'list'; renderModal(); };
-
-        sheet.querySelector('#rmw-snd-exec').onclick = async () => {
-            const sendBtn = sheet.querySelector('#rmw-snd-exec');
-            const msgBox = sheet.querySelector('#rmw-snd-msg');
-            msgBox.innerHTML = '';
-            const sym = sheet.querySelector('#rmw-snd-token').value;
-            const to = sheet.querySelector('#rmw-snd-to').value.trim();
-            const amtStr = sheet.querySelector('#rmw-snd-amt').value.trim();
-
-            try {
-                if (!ethers.utils.isAddress(to)) throw new Error('Endereço de destino inválido.');
-                if (!amtStr || !(parseFloat(amtStr) > 0)) throw new Error('Informe uma quantidade válida.');
-                const dest = ethers.utils.getAddress(to);
-                const meta = TOKENS_META[sym];
-                const amountWei = ethers.utils.parseUnits(amtStr, meta.decimals);
-
-                // Última conferência antes de assinar: envio em blockchain não tem estorno.
-                if (!confirm(`Enviar ${amtStr} ${sym} na rede Polygon para:\n\n${dest}\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) return;
-
-                sendBtn.disabled = true;
-                const signer = await getActiveSigner(137);
-
-                msgBox.innerHTML = `<div class="rmw-alert-ok">Aguardando assinatura na carteira...</div>`;
-                let tx;
-                if (!meta.address) {
-                    tx = await signer.sendTransaction({ to: dest, value: amountWei });
-                } else {
-                    const contract = new ethers.Contract(meta.address, ERC20_ABI, signer);
-                    tx = await contract.transfer(dest, amountWei);
-                }
-
-                msgBox.innerHTML = `<div class="rmw-alert-ok">Transação enviada (${tx.hash.slice(0, 10)}...) Confirmando...</div>`;
-                await tx.wait();
-                msgBox.innerHTML = `<div class="rmw-alert-ok">✅ Envio confirmado na Polygon!</div>`;
-                refreshAllAccountsBalances();
-            } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err?.reason || err?.message || 'Envio cancelado.')}</div>`;
-            } finally {
-                sendBtn.disabled = false;
-            }
-        };
     }
 
     // -------------------------------------------------------------------------
@@ -1575,7 +1620,7 @@
                             <div style="font-size:0.78rem;color:#94a3b8;font-family:monospace;margin-top:2px;">
                                 ${acc.address.slice(0, 8)}...${acc.address.slice(-6)}
                             </div>
-                            <div style="font-size:0.76rem;color:#00e676;margin-top:2px;">
+                            <div class="money" style="font-size:0.76rem;color:#00e676;margin-top:2px;">
                                 ${bal ? `~R$ ${bal.brl.toFixed(2)} (${bal.summary})` : 'Consultando saldo...'}
                             </div>
                         </div>
@@ -2057,18 +2102,25 @@
             ${activeFormMode === 'import-seed' ? `
                 <label class="rmw-label">Frase-Semente (12 ou 24 palavras separadas por espaço)</label>
                 <textarea class="rmw-textarea" id="rmw-f-seed-input" placeholder="word1 word2 word3 ..."></textarea>
+                <button type="button" class="rmw-btn-secondary" data-scan-for="rmw-f-seed-input" data-scan-raw="1" style="margin-top:6px;padding:8px;">📷 Ler a frase de um QR Code</button>
                 <label class="rmw-label">Índice da Conta HD (BIP44 — padrão #0)</label>
                 <input type="number" class="rmw-input" id="rmw-f-hd-index" value="0" min="0" max="50">
             ` : ''}
 
             ${activeFormMode === 'import-pk' ? `
                 <label class="rmw-label">Chave Privada (64 caracteres hexadecimais)</label>
-                <input type="password" class="rmw-input" id="rmw-f-pk-input" placeholder="0x...">
+                <div class="input-with-actions">
+                    <input type="password" class="rmw-input" id="rmw-f-pk-input" placeholder="0x..." autocomplete="off">
+                    <button type="button" class="rmw-icon-btn" data-scan-for="rmw-f-pk-input" data-scan-raw="1" title="Ler QR Code" aria-label="Ler QR Code">📷</button>
+                </div>
             ` : ''}
 
             ${activeFormMode === 'watch-only' ? `
                 <label class="rmw-label">Endereço Público da Carteira (0x...)</label>
-                <input type="text" class="rmw-input" id="rmw-f-watch-input" placeholder="0x2833...">
+                <div class="input-with-actions">
+                    <input type="text" class="rmw-input" id="rmw-f-watch-input" placeholder="0x2833..." autocomplete="off" autocapitalize="off" spellcheck="false">
+                    <button type="button" class="rmw-icon-btn" data-scan-for="rmw-f-watch-input" title="Ler QR Code" aria-label="Ler QR Code">📷</button>
+                </div>
             ` : ''}
 
             ${activeFormMode !== 'watch-only' && (needsPassword || isLockedExisting) ? `
@@ -2309,10 +2361,17 @@
                 ? `Apagar "${acc.name}" (${acc.address.slice(0, 6)}...${acc.address.slice(-4)})?\n\nA chave desta carteira será removida deste aparelho. Sem o backup da frase ou da chave privada, os fundos ficam inacessíveis para sempre.`
                 : `Remover "${acc.name}" (${acc.address.slice(0, 6)}...${acc.address.slice(-4)}) desta lista?`;
             if (!confirm(warning)) return;
+            const viewAtClick = currentView;
+            const paramsAtClick = viewParams;
+            const inspectingAtClick = inspectingAccountId;
             try {
                 await deleteSingleAccount(acc.id);
-                currentView = state.accounts.length ? 'list' : 'add';
-                renderModal();
+                // Só muda de tela se a pessoa ainda está nesta mesma tela (não atropela uma navegação feita enquanto salvava).
+                const overlayOpen = document.getElementById('rdesk-mw-overlay')?.classList.contains('open');
+                if (overlayOpen && currentView === viewAtClick && viewParams === paramsAtClick && inspectingAccountId === inspectingAtClick) {
+                    currentView = state.accounts.length ? 'list' : 'add';
+                    renderModal();
+                }
             } catch (err) {
                 msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
@@ -2331,8 +2390,9 @@
             const id = (btn.id || '').toLowerCase();
             const label = (btn.textContent || '').trim().toLowerCase();
 
-            const isReceiveBtn = id === 'btn-action-receive' || id === 'btn-receive' || btn.getAttribute('data-action') === 'receive' || /^↓?\s*receber$/i.test(label);
-            const isSendBtn = id === 'btn-action-send' || id === 'btn-send' || btn.getAttribute('data-action') === 'send' || /^↑?\s*enviar$/i.test(label);
+            if (btn.closest('#rdesk-mw-overlay')) return; // botões de dentro do modal têm seus próprios destinos
+            const isReceiveBtn = id === 'btn-action-receive' || id === 'btn-receive' || btn.getAttribute('data-action') === 'receive';
+            const isSendBtn = id === 'btn-action-send' || id === 'btn-send' || btn.getAttribute('data-action') === 'send';
 
             if (isReceiveBtn) {
                 setTimeout(() => {
@@ -2433,41 +2493,16 @@
     // =========================================================================
     const GAS_RESERVE_POL = 3.0;
 
-    const CHAIN_NAMES = { 137: 'Polygon', 42161: 'Arbitrum', 8453: 'Base', 10: 'Optimism', 1: 'Ethereum' };
+    const CHAIN_NAMES = Object.fromEntries([...REG.CHAINS, REG.BITCOIN].map((c) => [c.id, c.name]));
 
     // priceKey: 'USD' = 1 dólar | 'BRL' = 1 real | demais = chave em getPrices()
-    const CHAIN_TOKENS = {
-        137: [
-            { symbol: 'POL',  address: null, decimals: 18, isNative: true, priceKey: 'POL' },
-            { symbol: 'WPOL', address: TOKENS_META.WPOL.address, decimals: 18, priceKey: 'POL' },
-            { symbol: 'USDT', address: TOKENS_META.USDT0.address, decimals: 6, priceKey: 'USD' },
-            { symbol: 'USDC', address: TOKENS_META.USDC.address, decimals: 6, priceKey: 'USD' },
-            { symbol: 'BRZ',  address: TOKENS_META.BRZ.address, decimals: 18, priceKey: 'BRL' },
-            { symbol: 'BRLA', address: TOKENS_META.BRLA.address, decimals: 18, priceKey: 'BRL' },
-            { symbol: 'WBTC', address: '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6', decimals: 8, priceKey: 'BTC' }
-        ],
-        42161: [
-            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', address: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', decimals: 6, priceKey: 'USD' },
-            { symbol: 'USDC', address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831', decimals: 6, priceKey: 'USD' },
-            { symbol: 'WBTC', address: '0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f', decimals: 8, priceKey: 'BTC' }
-        ],
-        8453: [
-            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDC', address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', decimals: 6, priceKey: 'USD' }
-        ],
-        10: [
-            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', address: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', decimals: 6, priceKey: 'USD' },
-            { symbol: 'USDC', address: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6, priceKey: 'USD' }
-        ],
-        1: [
-            { symbol: 'ETH',  address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
-            { symbol: 'USDT', address: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6, priceKey: 'USD' },
-            { symbol: 'USDC', address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, priceKey: 'USD' },
-            { symbol: 'WBTC', address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', decimals: 8, priceKey: 'BTC' }
-        ]
-    };
+    // Lista viva de moedas por rede (oficiais + adicionadas pelo usuário), sempre lida do registro.
+    const CHAIN_TOKENS = new Proxy({}, {
+        get: (_, key) => (typeof key === 'string' && /^\d+$/.test(key) ? REG.getTokens(Number(key)) : undefined),
+        has: (_, key) => Boolean(REG.getChain(Number(key))),
+        ownKeys: () => REG.CHAINS.map((c) => String(c.id)),
+        getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true })
+    });
 
     state.lpUsd = 0;
     state.chainBalances = {}; // { [addrLower]: [{ chainId, symbol, amount }] }
@@ -2482,8 +2517,9 @@
         return (Number.isFinite(n) ? n : 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     }
 
-    function unitUsdFor(priceKey) {
+    function unitUsdFor(priceKey, chainId, address) {
         const p = getNormalizedPricesObject();
+        if (!priceKey) return address ? (state.prices.custom[`${chainId}:${String(address).toLowerCase()}`] || 0) : 0;
         if (priceKey === 'USD') return 1;
         if (priceKey === 'BRL') return 1 / p.usdBrl;
         return Number(p[priceKey]) || 0;
@@ -2511,13 +2547,19 @@
 
         const usdBrl = getNormalizedPricesObject().usdBrl;
         const arr = (list || []).map((b) => {
+            if (b.chainId === 'btc') {
+                const usdBtc = b.amount * unitUsdFor('BTC');
+                return { chainId: 'btc', symbol: 'BTC', amount: b.amount, pending: b.pending || 0, usdValue: usdBtc, brlValue: usdBtc * usdBrl, address: null, hasPrice: unitUsdFor('BTC') > 0 };
+            }
             const meta = (CHAIN_TOKENS[b.chainId] || []).find((t) => t.symbol === b.symbol);
-            const usdValue = b.amount * unitUsdFor(meta ? meta.priceKey : 'USD');
-            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl };
+            if (!meta) return null; // moeda removida da lista
+            const unit = unitUsdFor(meta.priceKey, b.chainId, meta.address);
+            const usdValue = b.amount * unit;
+            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl, address: meta.address || null, isCustom: Boolean(meta.isCustom), hasPrice: unit > 0 };
         });
 
         // Mantém as propriedades antigas (pol, wpol, usdt0, totalUsd...) por compatibilidade
-        return Object.assign(arr, getActiveAccountBalances());
+        return Object.assign(arr.filter(Boolean), getActiveAccountBalances());
     }
 
     async function refreshChainBalancesForActive() {
@@ -2548,12 +2590,24 @@
             });
         });
 
+        // Bitcoin nativo (endereço próprio, derivado da mesma frase)
+        if (acc.btcAddress && window.RdeskBitcoin) {
+            jobs.push((async () => {
+                try {
+                    const b = await window.RdeskBitcoin.fetchBalance(acc.btcAddress);
+                    return { chainId: 'btc', symbol: 'BTC', amount: b.totalSats / 1e8, pending: b.pendingSats / 1e8, ok: true };
+                } catch (e) {
+                    return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false };
+                }
+            })());
+        }
+
         const results = await Promise.all(jobs);
         const previous = state.chainBalances[addr.toLowerCase()] || [];
 
         // Se uma consulta falhar (RPC fora do ar), mantém o último saldo conhecido em vez de zerar
         state.chainBalances[addr.toLowerCase()] = results.map((r) => {
-            if (r.ok) return { chainId: r.chainId, symbol: r.symbol, amount: r.amount };
+            if (r.ok) return { chainId: r.chainId, symbol: r.symbol, amount: r.amount, pending: r.pending || 0 };
             const old = previous.find((p) => p.chainId === r.chainId && p.symbol === r.symbol);
             return { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0 };
         });
@@ -2616,23 +2670,53 @@
                 listEl.innerHTML = '<div class="empty-state">Conecte ou crie sua carteira para visualizar seus saldos em Reais.</div>';
                 return;
             }
-            const filter = document.getElementById('wallet-chain-filter')?.value || 'ALL';
+            const filterEl = document.getElementById('wallet-chain-filter');
+            if (filterEl && filterEl.options.length <= 1) {
+                [...REG.CHAINS, REG.BITCOIN].forEach((c) => filterEl.add(new Option(c.name, String(c.id))));
+            }
+            const filter = filterEl?.value || 'ALL';
+            const showZero = Boolean(document.getElementById('wallet-show-zero')?.checked);
             const rows = balances
-                .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && b.amount > 0)
-                .sort((a, b) => b.usdValue - a.usdValue);
+                .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && (showZero || b.amount > 0 || b.isCustom))
+                .sort((a, b) => (b.usdValue - a.usdValue) || (b.amount - a.amount));
             if (!rows.length) {
                 listEl.innerHTML = '<div class="empty-state">Nenhum saldo encontrado nesta seleção. Toque em Receber para depositar.</div>';
             } else {
                 listEl.innerHTML = rows.map((b) => `
-                    <div class="asset-row">
-                        <div class="asset-left"><strong>${b.symbol}</strong><small class="muted-sm"> ${CHAIN_NAMES[b.chainId] || b.chainId}</small></div>
-                        <div class="asset-right" style="text-align:right;">
-                            <strong>${formatBRL(b.brlValue)}</strong><br>
-                            <small class="muted-sm">${b.amount.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${b.symbol}</small>
-                        </div>
-                    </div>`).join('');
+                    <button type="button" class="asset-row asset-row-btn" data-asset-chain="${esc(b.chainId)}" data-asset-symbol="${esc(b.symbol)}">
+                        <span class="asset-left">
+                            ${REG.tokenOnChainBadge(b.symbol, b.chainId, 38)}
+                            <span class="asset-names">
+                                <strong>${esc(b.symbol)}</strong>
+                                <span class="asset-meta">${REG.chainBadge(b.chainId, true)}<span class="asset-contract">${b.address ? esc(REG.shortAddress(b.address)) : 'moeda da rede'}</span></span>
+                            </span>
+                        </span>
+                        <span class="asset-right money">
+                            <strong>${b.hasPrice ? formatBRL(b.brlValue) : 'sem cotação'}</strong>
+                            <small class="muted-sm">${b.amount.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} ${esc(b.symbol)}</small>
+                        </span>
+                    </button>`).join('');
+                listEl.querySelectorAll('[data-asset-chain]').forEach((row) => {
+                    row.onclick = () => {
+                        const raw = row.getAttribute('data-asset-chain');
+                        walletApi.openView('asset', { chainId: raw === 'btc' ? 'btc' : Number(raw), symbol: row.getAttribute('data-asset-symbol') });
+                    };
+                });
             }
         }
+        renderQuoteStatus();
+    }
+
+    // Estado das cotações: ao vivo x valor de reserva (nunca mostra um número antigo como se fosse atual)
+    function renderQuoteStatus() {
+        const statusEl = document.getElementById('hero-quote-status');
+        if (!statusEl) return;
+        const stale = !state.prices.usdBrlLive || !state.prices.polLive;
+        const age = state.prices.updatedAt ? Math.round((Date.now() - state.prices.updatedAt) / 1000) : null;
+        if (!state.prices.updatedAt) statusEl.textContent = 'Buscando cotações…';
+        else if (stale) statusEl.textContent = '⚠️ Cotação indisponível agora: valores em R$ são aproximados';
+        else statusEl.textContent = `● Cotações ao vivo • atualizadas há ${age < 2 ? 'instantes' : age + ' s'}`;
+        statusEl.classList.toggle('stale', stale);
     }
 
     function bindCompatUi() {
@@ -2724,6 +2808,12 @@
         CHAIN_NAMES,
         notePoolPrice,
         getHealthyProvider,
+        registerView: (name, renderFn) => { externalViews[name] = renderFn; },
+        renderHome: () => renderHeroAndAssets(),
+        renderQuoteStatus: () => renderQuoteStatus(),
+        openView: (view, params) => { pendingViewParams = params || {}; openWalletModal(view); },
+        getBitcoinAddress: () => getActiveAccount()?.btcAddress || '',
+        unitUsdFor,
         isBiometrySupported,
         isBiometryRegistered,
         getSigner: getActiveSigner,

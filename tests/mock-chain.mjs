@@ -16,8 +16,13 @@ export const ADDR = {
     POOL: '0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7',
     NFPM: '0xc36442b4a4522e871399cd717abdd847ab11fe88',
     ROUTER: '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45',
-    QUOTER: '0x61ffe014ba17989e743c5f6cb21bf9697530b21e'
+    QUOTER: '0x61ffe014ba17989e743c5f6cb21bf9697530b21e',
+    USDC: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+    BRZ: '0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc',
+    BRLA: '0xe6a537a407488807f0bbeb0038b79004f19dddfb'
 };
+const DECIMALS = { [ADDR.USDT0]: 6, [ADDR.USDC]: 6 };
+const decimalsOf = (token) => DECIMALS[token.toLowerCase()] ?? 18;
 
 const I = {
     erc20: new ethers.utils.Interface([
@@ -37,10 +42,12 @@ const I = {
         'function ticks(int24) view returns (uint128, int128, uint256, uint256, int56, uint160, uint32, bool)'
     ]),
     quoter: new ethers.utils.Interface([
-        'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)'
+        'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
+        'function quoteExactInput(bytes path, uint256 amountIn) returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)'
     ]),
     router: new ethers.utils.Interface([
-        'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)'
+        'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)',
+        'function exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum)) payable returns (uint256 amountOut)'
     ]),
     nfpm: new ethers.utils.Interface([
         'function balanceOf(address) view returns (uint256)',
@@ -67,9 +74,18 @@ function deepClone(v) {
     return out;
 }
 
+const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11';
+const MC_IFACE = new ethers.utils.Interface(['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)']);
+
 export class MockChain {
-    constructor({ polPriceUsd = 0.09 } = {}) {
-        this.chainId = 137;
+    constructor({ polPriceUsd = 0.09, chainId = 137 } = {}) {
+        this.chainId = chainId;
+        // Outras pools além da principal WPOL/USDT0 0,05%: { a, b, fee, rate = quantas unidades de b por 1 de a }
+        this.extraPools = chainId !== 137 ? [] : [
+            { a: ADDR.USDT0, b: ADDR.BRLA, fee: 100, rate: 5.4 },   // pool saudável
+            { a: ADDR.USDT0, b: ADDR.USDC, fee: 100, rate: 1 },
+            { a: ADDR.USDT0, b: ADDR.BRZ, fee: 500, rate: 4.0 }     // pool rasa: paga 26% abaixo do mercado
+        ];
         this.block = 70000000;
         this.gasPrice = 120n * 10n ** 9n; // base fee realista em horário movimentado
         this.tick = Math.floor(Math.log(polPriceUsd * 1e-12) / Math.log(1.0001));
@@ -84,6 +100,11 @@ export class MockChain {
     sqrtAt(tick) { return Math.sqrt(Math.pow(1.0001, tick)); }
 
     // ------------------------------------------------------------ utilidades de saldo
+    fundToken(token, addr, humanAmount) {
+        const t = lower(token);
+        this.state.erc20[t] ??= {};
+        this.state.erc20[t][lower(addr)] = BigInt(Math.round(humanAmount * 10 ** Math.min(decimalsOf(t), 9))) * 10n ** BigInt(Math.max(0, decimalsOf(t) - 9));
+    }
     fundNative(addr, pol) { this.state.native[lower(addr)] = ethers.utils.parseEther(String(pol)).toBigInt(); }
     nativeOf(addr, s = this.state) { return s.native[lower(addr)] || 0n; }
     balOf(token, addr, s = this.state) { return s.erc20[lower(token)]?.[lower(addr)] || 0n; }
@@ -99,6 +120,11 @@ export class MockChain {
         if (cur < amt) throw new Revert('STF (aprovação insuficiente)');
         s.allow[lower(token)][lower(owner)][lower(spender)] = cur - amt;
         this._debit(s, token, owner, amt, 'STF (saldo insuficiente)');
+    }
+    // Registra um token qualquer (para testar "adicionar moeda")
+    registerToken(address, { symbol, name, decimals }) {
+        (this.contracts ??= {})[lower(address)] = { symbol, name, decimals };
+        DECIMALS[lower(address)] = decimals;
     }
     accrueFees(tokenId, owed0, owed1) {
         const p = this.state.positions[String(tokenId)];
@@ -125,7 +151,23 @@ export class MockChain {
             s.native[to] = (s.native[to] || 0n) + value;
             return '0x';
         }
+        if (to === MULTICALL3) { // Multicall3.aggregate3: várias chamadas numa só (falhas viram success=false)
+            const [calls] = MC_IFACE.decodeFunctionData('aggregate3', data);
+            this.multicalls = (this.multicalls || 0) + 1;
+            const out = calls.map((c) => {
+                try { return [true, this.exec(s, { from, to: c.target, data: c.callData })]; } catch (e) {
+                    if (!(e instanceof Revert) || !c.allowFailure) throw e;
+                    return [false, '0x'];
+                }
+            });
+            return MC_IFACE.encodeFunctionResult('aggregate3', [out]);
+        }
         const special = [ADDR.POOL, ADDR.NFPM, ADDR.ROUTER, ADDR.QUOTER].includes(to);
+        const meta = this.contracts?.[to];
+        if (meta && (sel === '0x95d89b41' || sel === '0x06fdde03' || sel === '0x313ce567')) { // symbol(), name(), decimals() de um token registrado no teste
+            if (sel === '0x313ce567') return ethers.utils.defaultAbiCoder.encode(['uint8'], [meta.decimals]);
+            return ethers.utils.defaultAbiCoder.encode(['string'], [sel === '0x95d89b41' ? meta.symbol : meta.name]);
+        }
         const isErc20Call = !special && Object.keys(I.erc20.functions).some((sig) => I.erc20.getSighash(sig) === sel);
         if (isErc20Call) {
             s.erc20[to] ??= {}; // qualquer outro token (USDC, BRZ, WETH...) existe com saldo zero
@@ -135,7 +177,7 @@ export class MockChain {
             switch (f.name) {
                 case 'balanceOf': return enc([this.balOf(to, a[0], s)]);
                 case 'allowance': return enc([this.allowanceOf(to, a[0], a[1], s)]);
-                case 'decimals': return enc([to === ADDR.USDT0 ? 6 : 18]);
+                case 'decimals': return enc([decimalsOf(to)]);
                 case 'approve': {
                     const cur = this.allowanceOf(to, from, a[0], s);
                     // USDT clássico: não permite trocar aprovação não-zero por outra não-zero
@@ -168,15 +210,38 @@ export class MockChain {
 
         const quote = (tokenIn, tokenOut, amountIn, fee) => {
             tokenIn = lower(tokenIn); tokenOut = lower(tokenOut);
-            if (Number(fee) !== 500) throw new Revert('pool inexistente neste fee tier');
-            const net = Number(amountIn) * (1 - 0.0005);
-            if (tokenIn === ADDR.WPOL && tokenOut === ADDR.USDT0) return BigInt(Math.floor(net * this.price));
-            if (tokenIn === ADDR.USDT0 && tokenOut === ADDR.WPOL) return BigInt(Math.floor(net / this.price));
-            throw new Revert('par não suportado na simulação');
+            const net = Number(amountIn) * (1 - Number(fee) / 1e6);
+            if (Number(fee) === 500 && tokenIn === ADDR.WPOL && tokenOut === ADDR.USDT0) return BigInt(Math.floor(net * this.price));
+            if (Number(fee) === 500 && tokenIn === ADDR.USDT0 && tokenOut === ADDR.WPOL) return BigInt(Math.floor(net / this.price));
+            const pool = this.extraPools.find((p) => p.fee === Number(fee) && ((p.a === tokenIn && p.b === tokenOut) || (p.b === tokenIn && p.a === tokenOut)));
+            if (!pool) throw new Revert('pool inexistente neste fee tier');
+            const human = net / 10 ** decimalsOf(tokenIn);
+            const outHuman = pool.a === tokenIn ? human * pool.rate : human / pool.rate;
+            return BigInt(Math.floor(outHuman * 10 ** decimalsOf(tokenOut)));
         };
+        // Caminho da Uniswap: token(20) + fee(3) + token(20) [+ fee(3) + token(20)]
+        const decodePath = (pathHex) => {
+            const raw = pathHex.slice(2);
+            const hops = [];
+            let pos = 0;
+            let tokenIn = '0x' + raw.slice(0, 40); pos = 40;
+            while (pos < raw.length) {
+                const fee = parseInt(raw.slice(pos, pos + 6), 16); pos += 6;
+                const tokenOut = '0x' + raw.slice(pos, pos + 40); pos += 40;
+                hops.push({ tokenIn, fee, tokenOut });
+                tokenIn = tokenOut;
+            }
+            if (!hops.length) throw new Revert('caminho inválido');
+            return hops;
+        };
+        const quotePath = (hops, amountIn) => hops.reduce((amt, h) => quote(h.tokenIn, h.tokenOut, amt, h.fee), amountIn);
 
         if (to === ADDR.QUOTER) {
             const f = I.quoter.getFunction(sel);
+            if (f.name === 'quoteExactInput') {
+                const [pathHex, amountIn] = I.quoter.decodeFunctionData(f, data);
+                return I.quoter.encodeFunctionResult(f, [quotePath(decodePath(pathHex), big(amountIn)), [], [], 200000]);
+            }
             const [p] = I.quoter.decodeFunctionData(f, data);
             return I.quoter.encodeFunctionResult(f, [quote(p.tokenIn, p.tokenOut, big(p.amountIn), p.fee), 0, 0, 120000]);
         }
@@ -184,15 +249,19 @@ export class MockChain {
         if (to === ADDR.ROUTER) {
             const f = I.router.getFunction(sel);
             const [p] = I.router.decodeFunctionData(f, data);
+            const hops = f.name === 'exactInput' ? decodePath(p.path) : [{ tokenIn: p.tokenIn, fee: p.fee, tokenOut: p.tokenOut }];
             const amountIn = big(p.amountIn);
-            const out = quote(p.tokenIn, p.tokenOut, amountIn, p.fee);
+            const out = quotePath(hops, amountIn);
             if (out < big(p.amountOutMinimum)) throw new Revert('Too little received');
+            const tokenIn = lower(hops[0].tokenIn), tokenOut = lower(hops[hops.length - 1].tokenOut);
             if (value > 0n) {
-                if (lower(p.tokenIn) !== ADDR.WPOL || value !== amountIn) throw new Revert('valor nativo incoerente');
+                if (tokenIn !== ADDR.WPOL || value !== amountIn) throw new Revert('valor nativo incoerente');
             } else {
-                this._pull(s, p.tokenIn, from, ADDR.ROUTER, amountIn);
+                s.erc20[tokenIn] ??= {};
+                this._pull(s, tokenIn, from, ADDR.ROUTER, amountIn);
             }
-            this._credit(s, p.tokenOut, p.recipient, out);
+            s.erc20[tokenOut] ??= {};
+            this._credit(s, tokenOut, p.recipient, out);
             return I.router.encodeFunctionResult(f, [out]);
         }
 
@@ -290,6 +359,7 @@ export class MockChain {
         if (to === ADDR.ROUTER) return tryIface(I.router, 'SwapRouter02');
         if (to === ADDR.WPOL) return tryIface(I.erc20, 'WPOL');
         if (to === ADDR.USDT0) return tryIface(I.erc20, 'USDT0');
+        if (data && data.length >= 10 && tryIface(I.erc20, 'ERC20')) return { ...tryIface(I.erc20, 'ERC20'), contract: `ERC20(${to.slice(0, 8)})` };
         if (!data || data === '0x') return { contract: 'POL', fn: 'envio', args: [to, value] };
         return { contract: to, fn: data.slice(0, 10), args: [] };
     }
@@ -310,7 +380,7 @@ export class MockChain {
                 case 'eth_maxPriorityFeePerGas': return ok(hex(2n * 10n ** 9n)); // alguns RPCs sugerem menos que o mínimo aceito
                 case 'eth_getBalance': return ok(hex(this.nativeOf(p[0])));
                 case 'eth_getTransactionCount': return ok(hex(this.state.nonces[lower(p[0])] || 0));
-                case 'eth_getCode': return ok(Object.values(ADDR).includes(lower(p[0])) ? '0x60' : '0x');
+                case 'eth_getCode': return ok(Object.values(ADDR).includes(lower(p[0])) || this.contracts?.[lower(p[0])] ? '0x60' : '0x');
                 case 'eth_getLogs': return ok([]);
                 case 'eth_getBlockByNumber': return ok({
                     number: hex(this.block), hash: ethers.utils.hexZeroPad(hex(this.block), 32), parentHash: ethers.constants.HashZero,
@@ -339,15 +409,16 @@ export class MockChain {
                     const tx = ethers.utils.parseTransaction(p[0]);
                     const from = lower(tx.from);
                     const value = tx.value.toBigInt();
-                    const gasUsed = 180000n;
+                    const gasUsed = (!tx.data || tx.data === '0x') ? 21000n : 180000n;
                     // Regra real da Polygon: gorjeta abaixo de 25 gwei é recusada pelos nós.
                     const tipCap = (tx.maxPriorityFeePerGas || tx.gasPrice).toBigInt();
-                    if (tipCap < 25n * 10n ** 9n) return fail(`transaction underpriced: gas tip cap ${tipCap}, minimum needed 25000000000`);
+                    if (this.chainId === 137 && tipCap < 25n * 10n ** 9n) return fail(`transaction underpriced: gas tip cap ${tipCap}, minimum needed 25000000000`);
                     const maxFee = (tx.maxFeePerGas || tx.gasPrice).toBigInt();
                     if (maxFee < this.gasPrice / 2n) return fail('max fee per gas less than block base fee');
                     const price = this.gasPrice / 2n + tipCap < maxFee ? this.gasPrice / 2n + tipCap : maxFee;
                     const gasCost = gasUsed * price;
-                    if (this.nativeOf(from) < value + gasCost) return fail('insufficient funds for gas * price + value');
+                    // Nó de verdade exige saldo para o pior caso: limite de gás x taxa máxima + valor.
+                    if (this.nativeOf(from) < value + tx.gasLimit.toBigInt() * maxFee) return fail('insufficient funds for gas * price + value');
                     const expectedNonce = this.state.nonces[from] || 0;
                     if (tx.nonce !== expectedNonce) return fail(`nonce incorreto: veio ${tx.nonce}, esperado ${expectedNonce}`);
                     this.state.nonces[from] = expectedNonce + 1;

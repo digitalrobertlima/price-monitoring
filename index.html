@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090b10">
     <!-- Só roda script deste próprio site; nada embutido, nada de terceiros -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
     <meta name="description" content="RDESK SENTINEL — Carteira de autocustódia com várias contas, piloto de liquidez Uniswap V3 e faixa Sniper.">
     <title>RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido</title>
 
@@ -18,11 +18,16 @@
     <!-- Bibliotecas servidas do próprio repositório, com hash de integridade (nenhum script de terceiros) -->
     <script src="vendor/ethers-5.7.2.umd.min.js" integrity="sha384-Htz1SE4Sl5aitpvFgr2j0sfsGUIuSXI6t8hEyrlQ93zflEF3a29bH2AvkUROUw7J" defer></script>
     <script src="vendor/qrcode-1.0.0.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" defer></script>
+    <script src="vendor/jsqr-1.4.0.js" integrity="sha384-cZTKky7cz5Oq0xyzxf7MB8E+03uCPGEe6K+lSuL2ozIvIaDDEhBkA8CmFyncqXwm" defer></script>
     <script src="vendor/chart-4.4.1.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" defer></script>
 
     <!-- Núcleo RDESK -->
     <script src="range-chart.js" defer></script>
+    <script src="registry.js" defer></script>
+    <script src="bitcoin.js" defer></script>
+    <script src="qr-scanner.js" defer></script>
     <script src="wallet-service.js" defer></script>
+    <script src="wallet-views.js" defer></script>
     <script src="defi-pix-service.js" defer></script>
     <script src="app.js" defer></script>
 </head>
@@ -102,12 +107,19 @@
                 </div>
 
                 <div class="hero-balance-block">
-                    <span class="hero-label">Patrimônio Total Consolidado</span>
-                    <h1 id="hero-total-brl" class="hero-amount">R$ 0,00</h1>
-                    <div id="hero-total-usd" class="hero-sub">$ 0.00 • Cotação Dólar: R$ 5,650</div>
-                    <div id="hero-breakdown" class="hero-breakdown">
+                    <div class="hero-label-row">
+                        <span class="hero-label">Patrimônio Total Consolidado</span>
+                        <button type="button" id="btn-toggle-balances" class="eye-btn" aria-pressed="false" aria-label="Esconder saldos" title="Esconder saldos">
+                            <svg class="eye-open" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                            <svg class="eye-closed" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
+                    <h1 id="hero-total-brl" class="hero-amount money">R$ 0,00</h1>
+                    <div id="hero-total-usd" class="hero-sub money">$ 0.00 • Cotação Dólar: R$ 5,650</div>
+                    <div id="hero-breakdown" class="hero-breakdown money">
                         Livre na Carteira: R$ 0,00  •  Rendendo em Pools: R$ 0,00
                     </div>
+                    <div id="hero-quote-status" class="quote-status" role="status">Buscando cotações…</div>
                 </div>
 
                 <!-- 4 AÇÕES ESSENCIAIS EM 1 TOQUE -->
@@ -136,16 +148,16 @@
                 <div class="card-header-row">
                     <div>
                         <h2 class="card-title">Suas Moedas</h2>
-                        <p class="card-subtitle">Saldos somados nas redes Polygon, Arbitrum, Base, Optimism e Ethereum</p>
+                        <p class="card-subtitle">Polygon, Ethereum, Base, Arbitrum, Optimism, Celo e Bitcoin. Toque numa moeda para ver o contrato.</p>
                     </div>
                     <select id="wallet-chain-filter" class="compact-select" aria-label="Filtrar por rede">
                         <option value="ALL">Todas as Redes</option>
-                        <option value="137">Polygon</option>
-                        <option value="42161">Arbitrum</option>
-                        <option value="8453">Base</option>
-                        <option value="10">Optimism</option>
-                        <option value="1">Ethereum</option>
                     </select>
+                </div>
+
+                <div class="assets-toolbar">
+                    <label class="toggle-inline"><input type="checkbox" id="wallet-show-zero"> Mostrar moedas sem saldo</label>
+                    <button type="button" id="btn-add-token" class="mini-link-btn">+ Adicionar moeda</button>
                 </div>
 
                 <div id="wallet-assets-list" class="assets-list">
@@ -173,7 +185,7 @@
                 <div class="earn-metrics-row">
                     <div class="mini-stat-box">
                         <span>Saldo Livre p/ Investir</span>
-                        <strong id="earn-free-brl">R$ 0,00</strong>
+                        <strong id="earn-free-brl" class="money">R$ 0,00</strong>
                     </div>
                     <div class="mini-stat-box">
                         <span>Ganho estimado (aprox.)</span>
@@ -310,26 +322,11 @@
                 <div class="swap-box-clean">
                     <div class="swap-row-head">
                         <span>Você envia</span>
-                        <span>Disponível: <strong id="swap-from-bal">0.00</strong> <button type="button" id="btn-swap-max" class="mini-link-btn">Máx</button></span>
+                        <span>Disponível: <strong id="swap-from-bal" class="money">0.00</strong> <button type="button" id="btn-swap-max" class="mini-link-btn">Máx</button></span>
                     </div>
                     <div class="two-col-inputs">
-                        <select id="swap-from-chain" class="field-input">
-                            <option value="137">Polygon</option>
-                            <option value="42161">Arbitrum</option>
-                            <option value="8453">Base</option>
-                            <option value="10">Optimism</option>
-                            <option value="1">Ethereum</option>
-                        </select>
-                        <select id="swap-from-token" class="field-input">
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="USDT">USDT</option>
-                            <option value="USDC">USDC</option>
-                            <option value="BRZ">BRZ</option>
-                            <option value="BRLA">BRLA</option>
-                            <option value="ETH">ETH</option>
-                            <option value="WBTC">WBTC</option>
-                        </select>
+                        <select id="swap-from-chain" class="field-input"></select>
+                        <select id="swap-from-token" class="field-input"></select>
                     </div>
                     <input type="number" id="swap-amount-in" class="field-input big-num" value="25" min="0" step="0.01" placeholder="0.00">
                 </div>
@@ -344,26 +341,13 @@
                         <span id="swap-quote-info">Cotação em tempo real</span>
                     </div>
                     <div class="two-col-inputs">
-                        <select id="swap-to-chain" class="field-input">
-                            <option value="137">Polygon</option>
-                            <option value="42161">Arbitrum</option>
-                            <option value="8453">Base</option>
-                            <option value="10">Optimism</option>
-                            <option value="1">Ethereum</option>
-                        </select>
-                        <select id="swap-to-token" class="field-input">
-                            <option value="USDT">USDT</option>
-                            <option value="BRZ">BRZ</option>
-                            <option value="BRLA">BRLA</option>
-                            <option value="USDC">USDC</option>
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="ETH">ETH</option>
-                            <option value="WBTC">WBTC</option>
-                        </select>
+                        <select id="swap-to-chain" class="field-input"></select>
+                        <select id="swap-to-token" class="field-input"></select>
                     </div>
                     <input type="text" id="swap-amount-out" class="field-input big-num" readonly value="0.00">
                 </div>
+
+                <div id="swap-contracts" class="swap-contracts"></div>
 
                 <button type="button" id="btn-execute-swap" class="btn-cta-full">Revisar Troca em Reais (R$)</button>
                 <div id="swap-feedback" class="feedback-text"></div>
@@ -394,19 +378,19 @@
                 <div class="audit-kpis-grid">
                     <div class="mini-stat-box">
                         <span>Total Aportado (Entradas)</span>
-                        <strong id="audit-kpi-in">R$ 0,00</strong>
+                        <strong id="audit-kpi-in" class="money">R$ 0,00</strong>
                     </div>
                     <div class="mini-stat-box">
                         <span>Total Sacado (Saídas)</span>
-                        <strong id="audit-kpi-out">R$ 0,00</strong>
+                        <strong id="audit-kpi-out" class="money">R$ 0,00</strong>
                     </div>
                     <div class="mini-stat-box">
                         <span>Patrimônio Atual</span>
-                        <strong id="audit-kpi-equity">R$ 0,00</strong>
+                        <strong id="audit-kpi-equity" class="money">R$ 0,00</strong>
                     </div>
                     <div class="mini-stat-box highlight">
                         <span>Lucro / Prejuízo Líquido</span>
-                        <strong id="audit-kpi-pnl">R$ 0,00</strong>
+                        <strong id="audit-kpi-pnl" class="money">R$ 0,00</strong>
                     </div>
                 </div>
 
