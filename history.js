@@ -665,7 +665,7 @@
         const pill = document.getElementById('audit-trend-pill');
         if (pill) {
             pill.className = `pill-badge ${!st.events.length ? '' : r.pnlRef >= 0 ? 'safe' : 'danger'}`;
-            pill.textContent = !st.events.length ? 'Sem dados' : r.pnlRef >= 0 ? 'No lucro' : 'No prejuízo';
+            pill.textContent = !st.events.length ? 'Sem dados' : `${r.pnlRef >= 0 ? 'Lucro' : 'Prejuízo'} em ${REFS[st.ref].unit === 'US$' ? 'dólar' : REFS[st.ref].unit}`;
         }
 
         if (!has) { box.innerHTML = '<div class="empty-state">Abra uma carteira para ver o extrato.</div>'; return; }

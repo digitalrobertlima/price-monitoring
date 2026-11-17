@@ -2118,3 +2118,8 @@ body.privacy-on .result-hero .money::after { color: var(--text-primary); -webkit
 .ref-picker button > span:first-child { font-weight: 800; color: #fbbf24; }
 body.privacy-on .eq-tip .money, body.privacy-on #home-chart-summary { visibility: hidden; }
 body.privacy-on #home-chart { filter: blur(6px); }
+.result-card .stat-row.three { grid-template-columns: 1fr; gap: 6px; }
+.result-card .stat { flex-direction: row; justify-content: space-between; align-items: center; padding: 10px 14px; }
+.result-card .stat span { font-size: 0.9rem; }
+.result-card .stat strong { font-size: 0.98rem; text-align: right; }
+.result-hero strong { font-size: clamp(1.5rem, 7vw, 2rem); line-height: 1.15; }
