@@ -38,7 +38,7 @@
         ETH: { id: 'ETH', name: 'Ether', unit: 'ETH', llama: 'coingecko:ethereum', hint: 'Mostra se você ficou mais rico ou mais pobre em ether.' }
     };
     const REF_KEY = 'rdesk_ref_currency_v1';
-    const CACHE_PREFIX = 'rdesk_history_v3_'; // v3: inclui o POL devolvido pelos contratos
+    const CACHE_PREFIX = 'rdesk_history_v4_'; // v3: inclui o POL devolvido pelos contratos
     const PAGE_SIZE = 40;
 
     const W = () => global.RdeskWallet;
@@ -307,8 +307,17 @@
         }
         return out;
     }
+    // Só contratos que embrulham/desembrulham POL de forma conhecida (Uniswap e o próprio WPOL).
+    // Em pontes e agregadores o POL enviado segue adiante sem virar WPOL: lá não há "sobra" a deduzir.
+    const NATIVE_AWARE = new Set([
+        NFPM, WPOL,
+        '0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45', // SwapRouter02
+        '0xec7be89e9d109e7e3fec59c222cf297125fefda2', // Universal Router
+        '0x643770e279d5d0733f21d6dc03a8efbabf3255b4', // Universal Router (anterior)
+        '0x1095692a6237d83c6a72f3f5efedb9a670c49223'  // Universal Router (v4)
+    ]);
     async function addNativeReturns(list, wallet) {
-        const need = list.filter((e) => e.ok && e.fromSelf && e.to && e.contractTouched && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
+        const need = list.filter((e) => e.ok && e.fromSelf && NATIVE_AWARE.has(e.to) && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
         if (!need.length) return;
         const receipts = await fetchReceipts(need.map((e) => e.hash));
         const word = (hex) => Number(global.ethers.utils.formatEther(global.ethers.BigNumber.from(hex || '0x0')));
