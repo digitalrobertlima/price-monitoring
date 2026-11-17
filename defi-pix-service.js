@@ -1013,12 +1013,22 @@
             const won = await firstSuccess(attempts);
             return won.res.map((r, k) => { if (!r.success) return null; try { return decodeOut(group[k], r.returnData); } catch (e) { return null; } });
         };
+        // Uma rota sozinha, com teto de gás: pool quase sem liquidez faz o simulador da Uniswap gastar
+        // gás sem fim, e isso derrubava o grupo inteiro.
+        const runSingle = async (c) => {
+            const attempts = providers.map((p) => withTimeout(p.call({ to: QUOTER_V2, data: c.data, gasLimit: 3000000 }), 9000));
+            try { return decodeOut(c, await firstSuccess(attempts)); } catch (e) { return null; }
+        };
         const runAll = async (cands, size) => {
             const groups = [];
             for (let i = 0; i < cands.length; i += size) groups.push(cands.slice(i, i + size));
             const settled = await Promise.allSettled(groups.map(runGroup));
-            if (settled.every((s) => s.status === 'rejected')) throw new Error('Rede indisponível para cotar agora.');
-            return settled.flatMap((s, gi) => (s.status === 'fulfilled' ? s.value : groups[gi].map(() => null)));
+            const out = [];
+            for (let gi = 0; gi < groups.length; gi++) {
+                if (settled[gi].status === 'fulfilled') out.push(...settled[gi].value);
+                else out.push(...(await Promise.all(groups[gi].map(runSingle))));
+            }
+            return out;
         };
         const started = Date.now();
 

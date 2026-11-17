@@ -2361,10 +2361,17 @@
                 ? `Apagar "${acc.name}" (${acc.address.slice(0, 6)}...${acc.address.slice(-4)})?\n\nA chave desta carteira será removida deste aparelho. Sem o backup da frase ou da chave privada, os fundos ficam inacessíveis para sempre.`
                 : `Remover "${acc.name}" (${acc.address.slice(0, 6)}...${acc.address.slice(-4)}) desta lista?`;
             if (!confirm(warning)) return;
+            const viewAtClick = currentView;
+            const paramsAtClick = viewParams;
+            const inspectingAtClick = inspectingAccountId;
             try {
                 await deleteSingleAccount(acc.id);
-                currentView = state.accounts.length ? 'list' : 'add';
-                renderModal();
+                // Só muda de tela se a pessoa ainda está nesta mesma tela (não atropela uma navegação feita enquanto salvava).
+                const overlayOpen = document.getElementById('rdesk-mw-overlay')?.classList.contains('open');
+                if (overlayOpen && currentView === viewAtClick && viewParams === paramsAtClick && inspectingAccountId === inspectingAtClick) {
+                    currentView = state.accounts.length ? 'list' : 'add';
+                    renderModal();
+                }
             } catch (err) {
                 msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
