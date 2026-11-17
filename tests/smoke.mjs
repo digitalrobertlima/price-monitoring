@@ -110,6 +110,7 @@ try {
     const hs = await page.evaluate(() => ({ st: window.RdeskHistory.getState(), r: window.RdeskHistory.getResult(), ev: window.RdeskHistory.getEvents() }));
     const ins = hs.ev.filter((e) => e.cls === 'IN').length, outs = hs.ev.filter((e) => e.cls === 'OUT').length;
     console.log(`   histórico: ${hs.st.events} transações, ${ins} entradas, ${outs} saídas; colocou ${hs.r.inBrl.toFixed(2)} BRL, tirou ${hs.r.outBrl.toFixed(2)}, tem ${hs.r.eqBrl.toFixed(2)}, resultado ${hs.r.pnlBrl.toFixed(2)} BRL / ${hs.r.pnlRef} ${hs.st.ref}`);
+    if (process.env.HIST_DEBUG) console.log(await page.evaluate(() => window.RdeskHistory.getEvents().filter((e) => e.cls === 'IN' || e.cls === 'OUT').map((e) => `${e.cls} ${e.title} ${e.items.map((i) => (i.dir > 0 ? '+' : '-') + i.amt.toFixed(2) + i.sym + (i.peerC ? '(C)' : '')).join(' ')}`).join('\n')));
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     check('gráfico do patrimônio desenhado com o histórico real', hs.st.chart.points > 2 && hs.st.chart.last > 0, JSON.stringify(hs.st.chart));
     await page.click('.nav-tab-btn[data-tab="audit"]');

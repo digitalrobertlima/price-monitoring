@@ -23,6 +23,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: for f in range-chart.js registry.js bitcoin.js qr-scanner.js wallet-views.js onboarding.js history.js wallet-service.js defi-pix-service.js app.js sw.js; do node --check "$f"; done
       - run: npm run test:smoke
+        env:
+          HIST_DEBUG: ${{ github.ref == 'refs/heads/ci/hist'       - run: npm run test:smoke      - run: npm run test:smoke '1' || '' }}
 
   fluxo:
     name: Carteiras, várias redes, Bitcoin e fluxo de dinheiro (redes simuladas)
