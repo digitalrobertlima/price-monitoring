@@ -1025,6 +1025,7 @@
                 .then((res) => ({ res, url }));
         });
         let won;
+        attempts.forEach((p, i) => p.catch((err) => console.debug('[cotação] servidor', i, 'falhou:', String(err && (err.reason || err.message)).slice(0, 160))));
         try { won = await firstSuccess(attempts); } catch (err) {
             console.debug('[cotação] nenhum servidor respondeu', Date.now() - started, 'ms');
             throw new Error('Rede indisponível para cotar agora.');
@@ -1057,7 +1058,12 @@
     function refreshSwapQuote() {
         const key = swapKey(readSwapForm());
         if (swapInFlight && swapInFlight.key === key) return swapInFlight.promise;
-        const promise = computeSwapQuote().finally(() => { if (swapInFlight && swapInFlight.promise === promise) swapInFlight = null; });
+        const t0 = Date.now();
+        console.debug('[cotação] início', key);
+        const promise = computeSwapQuote().finally(() => {
+            console.debug('[cotação] fim', key, Date.now() - t0, 'ms');
+            if (swapInFlight && swapInFlight.promise === promise) swapInFlight = null;
+        });
         swapInFlight = { key, promise };
         return promise;
     }
