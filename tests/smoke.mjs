@@ -113,7 +113,12 @@ try {
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
-    check('patrimônio do gráfico nunca passa muito do que realmente entrou (sem saldo fantasma)', maxBrl <= hs.r.inBrl * 1.3, `máximo R$ ${maxBrl.toFixed(2)} vs entradas R$ ${hs.r.inBrl.toFixed(2)}`);
+    const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
+    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}`);
+    // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela
+    check('patrimônio do gráfico nunca passa muito do que realmente entrou (ou avisa que é estimativa)',
+        maxBrl <= hs.r.inBrl * 1.3 || (hs.st.nativeMissing > 0 && /estimativa/.test(chartNote)),
+        `máximo R$ ${maxBrl.toFixed(2)} vs entradas R$ ${hs.r.inBrl.toFixed(2)}; faltaram ${hs.st.nativeMissing} dias; aviso: ${chartNote}`);
     check('gráfico do patrimônio desenhado com o histórico real', hs.st.chart.points > 2 && hs.st.chart.last > 0, JSON.stringify(hs.st.chart));
     await page.click('.nav-tab-btn[data-tab="audit"]');
     await page.waitForSelector('.extrato-row', { timeout: 20000 }).catch(() => {});

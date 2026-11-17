@@ -163,6 +163,7 @@ try {
     await page.click('.nav-tab-btn[data-tab="wallet"]');
     await page.click('#btn-open-extrato');
     check('"Ver extrato completo" leva ao extrato', await ui(() => document.getElementById('tab-panel-audit').classList.contains('active')));
+    check('sem servidor de arquivo, o gráfico avisa que alguns dias são estimativa', (await ui(() => window.RdeskHistory.getState().nativeMissing)) > 0 && /estimativa/.test(await ui(() => document.getElementById('home-chart-status').textContent)));
 
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
     await context.close();
@@ -177,6 +178,7 @@ try {
     const d3 = sN.find((p) => p.key === new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10));
     const expD3 = 777 * histPrice('0x0d500b1d', 3) + (28 - 10 + 50 - 20 + 18);
     check('com saldo histórico disponível, o gráfico usa o POL real de cada dia (não só a reconstrução)', d3 && near(d3.ref, expD3, 1e-6) && (await nat.page.evaluate(() => window.RdeskHistory.getState().nativeDays)) > 0, `${d3?.ref} esperado ${expD3}`);
+    check('com todos os dias conferidos, nenhum aviso de estimativa', (await nat.page.evaluate(() => window.RdeskHistory.getState().nativeMissing)) === 0 && !/estimativa/.test(await nat.page.evaluate(() => document.getElementById('home-chart-status').textContent)));
     await ctxN.close();
 
     // ================================================================ 6. Serviço de histórico fora do ar

@@ -823,7 +823,7 @@
             recvVal: 'Tarifas acumuladas em WPOL + USDT0',
             recvBrl: window.RdeskWallet.formatBRL(pos.feesUsd * prices.USD_BRL),
             route: 'Uniswap V3 NFPM collect()',
-            fee: 'R$ 0,00',
+            fee: REG.creatorFee().active ? creatorFeeText(pos.feesUsd * prices.USD_BRL * REG.creatorFee().rate, ' (só sobre o que rendeu)') : 'R$ 0,00',
             gas: '~R$ 0,02 (Polygon)',
             shield: 'Liquidez da pool permanece ativa'
         });
@@ -835,16 +835,24 @@
             const MAX_U128 = ethers.BigNumber.from('340282366920938463463374607431768211455');
             const nfpm = new ethers.Contract(
                 NFPM_ADDRESS,
-                ['function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) payable returns (uint256, uint256)'],
+                ['function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) payable returns (uint256, uint256)',
+                    'function positions(uint256) view returns (uint96, address, address token0, address token1, uint24, int24, int24, uint128, uint256, uint256, uint128, uint128)'],
                 signer
             );
-            const tx = await nfpm.collect({
-                tokenId: pos.tokenId,
-                recipient: owner,
-                amount0Max: MAX_U128,
-                amount1Max: MAX_U128
-            });
+            const collectArgs = { tokenId: pos.tokenId, recipient: owner, amount0Max: MAX_U128, amount1Max: MAX_U128 };
+            const cf = REG.creatorFee();
+            // Com a taxa do criador ligada: lê antes quanto vai sair, para cobrar só sobre o que rendeu
+            const preview = cf.active ? await nfpm.callStatic.collect(collectArgs, { from: owner }).catch(() => null) : null;
+            const tx = await nfpm.collect(collectArgs);
             await window.RdeskWallet.confirmTx(tx, POLYGON_ID);
+            if (cf.active && preview) {
+                try {
+                    const p = await nfpm.positions(pos.tokenId);
+                    for (const [token, amt] of [[p.token0, preview[0]], [p.token1, preview[1]]]) {
+                        await payCreatorFee(signer, POLYGON_ID, { address: token, isNative: false }, ethers.BigNumber.from(amt).mul(cf.rateBps).div(10000));
+                    }
+                } catch (e) { console.warn('taxa do criador não enviada', e); }
+            }
             await window.RdeskWallet.refreshBalances();
             await refreshUniswapPositions();
         } catch (err) {
@@ -978,6 +986,49 @@
     const BTC_META = { symbol: 'BTC', name: 'Bitcoin', address: null, decimals: 8, isNative: true, priceKey: 'BTC' };
     const LIFI_BTC_CHAIN = '20000000000001';
     const chainOfValue = (v) => (v === 'btc' ? 'btc' : Number(v || 137));
+    // Contrato oficial da LI.FI (mesmo endereço em todas as redes EVM que o app usa)
+    const LIFI_DIAMOND = '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae';
+    const lc = (s) => String(s || '').toLowerCase();
+
+    // Confere a resposta da LI.FI ANTES de mostrar o recibo: um serviço comprometido não consegue
+    // desviar o dinheiro para outro contrato, outro destinatário ou outro valor.
+    function checkLifiQuote(data, { fromChain, rawIn, fromAddress, toAddress, fromNative, amountUsd }) {
+        const a = data.action || {};
+        const tr = data.transactionRequest || {};
+        if (String(a.fromAmount) !== rawIn.toString()) throw new Error('O valor da rota não confere com o que você digitou. Cancelada.');
+        if (lc(a.fromAddress) !== lc(fromAddress)) throw new Error('A rota foi montada para outra carteira. Cancelada.');
+        const sameAddr = String(toAddress).startsWith('bc1') ? a.toAddress === toAddress : lc(a.toAddress) === lc(toAddress);
+        if (!sameAddr) {
+            throw new Error('A rota entregaria o dinheiro para outro endereço. Cancelada.');
+        }
+        if (fromChain === 'btc') return; // o lado Bitcoin é conferido no PSBT
+        if (lc(tr.to) !== LIFI_DIAMOND) throw new Error('A rota pede para assinar com um contrato desconhecido. Cancelada.');
+        const spender = data.estimate?.approvalAddress;
+        if (!fromNative && lc(spender) !== LIFI_DIAMOND) throw new Error('A rota pede autorização para um contrato desconhecido. Cancelada.');
+        if (tr.chainId && Number(tr.chainId) !== Number(fromChain)) throw new Error('A rota é de outra rede. Cancelada.');
+        const value = ethers.BigNumber.from(tr.value || '0');
+        if (fromNative) {
+            if (value.gt(rawIn.mul(1005).div(1000))) throw new Error('A rota cobraria mais do que você digitou. Cancelada.');
+        } else if (value.gt(0)) {
+            const nativeMeta = tokensOf(fromChain).find((x) => x.isNative);
+            const nativeUsd = parseFloat(ethers.utils.formatEther(value)) * (nativeMeta ? tokenUnitUsd(fromChain, nativeMeta) : 0);
+            if (!(nativeUsd <= Math.max(2, amountUsd * 0.03))) throw new Error('A rota cobraria uma taxa extra alta na moeda da rede. Cancelada.');
+        }
+    }
+    // Parte do criador (desligada por padrão; ver RdeskRegistry.creatorFee)
+    async function payCreatorFee(signer, chainId, meta, raw) {
+        const cf = REG.creatorFee();
+        if (!cf.active || !raw || raw.lte(0)) return null;
+        const tx = meta.isNative
+            ? await signer.sendTransaction({ to: cf.evmAddress, value: raw })
+            : await new ethers.Contract(meta.address, ['function transfer(address,uint256) returns (bool)'], signer).transfer(cf.evmAddress, raw);
+        await window.RdeskWallet.confirmTx(tx, chainId);
+        return tx.hash;
+    }
+    const creatorFeeText = (brl, extra = '') => {
+        const cf = REG.creatorFee();
+        return cf.active ? `Taxa do criador (${(cf.rateBps / 100).toLocaleString('pt-BR')}%): ${window.RdeskWallet.formatBRL(brl)}${extra}` : `R$ 0,00 (sem taxa do app)${extra}`;
+    };
     const tokensOf = (chainId) => (chainId === 'btc' ? [BTC_META] : REG.getTokens(chainId));
     function getTokenMeta(chainId, symbol) {
         return tokensOf(chainId).find((t) => t.symbol === symbol) || null;
@@ -1003,7 +1054,9 @@
     function fillTokenSelect(select, chainId, wanted) {
         if (!select) return;
         const tokens = tokensOf(chainId);
-        select.replaceChildren(...tokens.map((t) => new Option(t.symbol, t.symbol)));
+        // Deixa claro o que é Bitcoin de verdade e o que é só um token que representa Bitcoin
+        const label = (t) => (chainId === 'btc' ? 'BTC — Bitcoin nativo' : /^(WBTC|CBBTC)$/i.test(t.symbol) ? `${t.symbol} — Bitcoin pareado (token)` : t.symbol);
+        select.replaceChildren(...tokens.map((t) => new Option(label(t), t.symbol)));
         if (tokens.some((t) => t.symbol === wanted)) select.value = wanted;
     }
     // Monta as listas de rede e de moeda (as moedas mudam conforme a rede escolhida).
@@ -1202,10 +1255,14 @@
         if (f.fromChain === 137 && f.toChain === 137) {
             setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Buscando a melhor rota…');
             let route;
-            try { route = await quotePolygonUniswap(fromMeta, toMeta, rawIn); } catch (err) { return fail('Rede indisponível para cotar agora. Tente de novo.'); }
+            const cfU = REG.creatorFee();
+            const creatorFeeRaw = cfU.active ? rawIn.mul(cfU.rateBps).div(10000) : ethers.constants.Zero;
+            const swapRaw = rawIn.sub(creatorFeeRaw);
+            try { route = await quotePolygonUniswap(fromMeta, toMeta, swapRaw); } catch (err) { return fail('Rede indisponível para cotar agora. Tente de novo.'); }
             if (!route) return fail('Não há pool na Uniswap V3 para este par.');
             const amountOut = parseFloat(ethers.utils.formatUnits(route.rawOut, toMeta.decimals));
-            return publish({ ...base, type: 'UNISWAP_V3', amountOut, rawOut: route.rawOut, hops: route.hops, impact: impactOf(amountOut), routeLabel: route.label }, route.label);
+            const creatorFeeBrl = parseFloat(ethers.utils.formatUnits(creatorFeeRaw, fromMeta.decimals)) * tokenUnitUsd(137, fromMeta) * window.RdeskWallet.getPrices().USD_BRL;
+            return publish({ ...base, rawIn: swapRaw, totalRaw: rawIn, creatorFeeRaw, creatorFeeBrl, type: 'UNISWAP_V3', amountOut, rawOut: route.rawOut, hops: route.hops, impact: impactOf(amountOut), routeLabel: route.label }, route.label);
         }
 
         // Caso 3: outras redes ou ponte entre redes -> LI.FI
@@ -1216,11 +1273,15 @@
             const params = new URLSearchParams({
                 fromChain: String(f.fromChain), toChain: String(f.toChain),
                 fromToken: fromMeta.isNative ? ZERO : fromMeta.address, toToken: toMeta.isNative ? ZERO : toMeta.address,
-                fromAmount: rawIn.toString(), fromAddress: userAddr, slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: 'rdesk-sentinel'
+                fromAmount: rawIn.toString(), fromAddress: userAddr, slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: REG.creatorFee().lifiIntegrator
             });
+            if (REG.creatorFee().active) params.set('fee', String(REG.creatorFee().rate));
             const res = await withTimeout(fetch(`https://li.quest/v1/quote?${params}`), 25000);
             const data = await res.json();
             if (!res.ok || !data?.estimate?.toAmount) throw new Error(data?.message || 'sem rota');
+            try {
+                checkLifiQuote(data, { fromChain: f.fromChain, rawIn, fromAddress: userAddr, toAddress: userAddr, fromNative: fromMeta.isNative, amountUsd: f.amountIn * tokenUnitUsd(f.fromChain, fromMeta) });
+            } catch (err) { return fail(err.message); }
             const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, toMeta.decimals));
             const tool = data.toolDetails?.name || 'LI.FI';
             const minutes = Math.max(1, Math.round((data.estimate.executionDuration || 60) / 60));
@@ -1244,8 +1305,9 @@
             fromChain: lifiChain(f.fromChain), toChain: lifiChain(f.toChain),
             fromToken: lifiToken(f.fromChain, base.fromMeta), toToken: lifiToken(f.toChain, base.toMeta),
             fromAmount: base.rawIn.toString(), fromAddress: fromBtc ? btcAddress : evmAddress, toAddress: f.toChain === 'btc' ? btcAddress : evmAddress,
-            slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: 'rdesk-sentinel'
+            slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: REG.creatorFee().lifiIntegrator
         });
+        if (REG.creatorFee().active) params.set('fee', String(REG.creatorFee().rate));
         let data;
         try {
             const res = await withTimeout(fetch(`https://li.quest/v1/quote?${params}`), 30000);
@@ -1256,6 +1318,10 @@
             }
         } catch (err) { return fail('Serviço de rotas indisponível agora. Tente de novo.'); }
         if (seq !== swapQuoteSeq) return null;
+        try {
+            checkLifiQuote(data, { fromChain: f.fromChain, rawIn: base.rawIn, fromAddress: fromBtc ? btcAddress : evmAddress, toAddress: f.toChain === 'btc' ? btcAddress : evmAddress,
+                fromNative: Boolean(base.fromMeta.isNative), amountUsd: base.amountIn * tokenUnitUsd(f.fromChain, base.fromMeta) });
+        } catch (err) { return fail(err.message); }
         const prices = window.RdeskWallet.getPrices();
         const usdBrl = prices.USD_BRL;
         const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, base.toMeta.decimals));
@@ -1322,12 +1388,14 @@
             recvVal: `~${q.amountOut.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${q.toSym} (${REG.getChain(q.toChain).name})`,
             recvBrl: brlOut > 0 ? window.RdeskWallet.formatBRL(brlOut) : 'sem cotação',
             route: q.routeLabel,
-            fee: q.serviceBrl !== undefined ? `Serviço de troca (${q.tool}): ${window.RdeskWallet.formatBRL(q.serviceBrl)} • app: R$ 0,00` : 'R$ 0,00 (sem taxa do app)',
+            fee: q.serviceBrl !== undefined
+                ? `Serviço de troca (${q.tool}): ${window.RdeskWallet.formatBRL(q.serviceBrl)}${REG.creatorFee().active ? ' (inclui a taxa do criador)' : ' • app: R$ 0,00'}`
+                : q.creatorFeeRaw ? creatorFeeText(q.creatorFeeBrl) : 'R$ 0,00 (sem taxa do app)',
             gas: q.btcPlan
                 ? `${q.btcPlan.fee.toLocaleString('pt-BR')} sat ≈ ${window.RdeskWallet.formatBRL(q.networkBrl)} (rede Bitcoin)`
                 : q.networkBrl !== undefined ? `≈ ${window.RdeskWallet.formatBRL(q.networkBrl)} em ${nativeSym} (rede ${REG.getChain(q.fromChain).name})` : `Paga em ${nativeSym} na rede ${REG.getChain(q.fromChain).name}`,
             shield: (q.fromChain === 'btc' || q.toChain === 'btc')
-                ? `Mínimo: ${minOutText} ${q.toSym}. Durante ~${q.minutes} min o valor fica com o ${q.tool}; se a troca falhar, ele devolve para você.${impactNote}`
+                ? `Mínimo: ${minOutText} ${q.toSym}.${q.toChain === 'btc' ? ` Chega como BTC nativo (rede Bitcoin) no seu endereço ${REG.shortAddress(window.RdeskWallet.getBitcoinAddress(), 8, 6)}.` : ''} Durante ~${q.minutes} min o valor fica com o ${q.tool}; se a troca falhar, ele devolve para você.${impactNote}`
                 : `Mínimo garantido: ${minOutText} ${q.toSym} (1,5%)${impactNote}`
         });
         if (!confirmed) return;
@@ -1385,6 +1453,10 @@
                 txSwap = await router[method](...args, overrides);
                 await window.RdeskWallet.confirmTx(txSwap, POLYGON_ID);
 
+                if (q.creatorFeeRaw && q.creatorFeeRaw.gt(0)) {
+                    say('Enviando a taxa do criador…');
+                    try { await payCreatorFee(signer, POLYGON_ID, q.fromMeta, q.creatorFeeRaw); } catch (e) { console.warn('taxa do criador não enviada', e); }
+                }
                 if (receiveNative) {
                     // O router entrega WPOL: converte o que chegou em POL nativo.
                     say('Convertendo WPOL recebido em POL...');
@@ -1397,6 +1469,8 @@
             } else if (q.type === 'LIFI') {
                 const txReq = q.lifiData?.transactionRequest;
                 if (!txReq || !txReq.to || !txReq.data) throw new Error('A rota não devolveu uma transação válida. Peça a cotação de novo.');
+                checkLifiQuote(q.lifiData, { fromChain: q.fromChain, rawIn: q.rawIn, fromAddress: owner, toAddress: q.toChain === 'btc' ? window.RdeskWallet.getBitcoinAddress() : owner,
+                    fromNative: Boolean(q.fromMeta.isNative), amountUsd: q.amountIn * tokenUnitUsd(q.fromChain, q.fromMeta) });
                 if (!q.fromMeta.isNative) {
                     const spender = q.lifiData.estimate?.approvalAddress;
                     if (!spender) throw new Error('A rota não informou o contrato a aprovar. Operação cancelada.');

@@ -1774,7 +1774,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         };
 
@@ -1786,7 +1786,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         };
 
@@ -1923,7 +1923,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                sheet.querySelector('#rmw-add-msg').innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                sheet.querySelector('#rmw-add-msg').innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         });
 
@@ -2692,9 +2692,9 @@
 
     // Nome que qualquer pessoa entende (o símbolo técnico aparece embaixo, menor)
     const FRIENDLY_NAMES = {
-        BTC: 'Bitcoin', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
+        BTC: 'Bitcoin (nativo)', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
         USDT: 'Dólar digital (Tether)', USDC: 'Dólar digital (USD Coin)', BRZ: 'Real digital (BRZ)', BRLA: 'Real digital (BRLA)',
-        WETH: 'Ether embrulhado', WBTC: 'Bitcoin embrulhado', CBBTC: 'Bitcoin embrulhado (Coinbase)'
+        WETH: 'Ether embrulhado', WBTC: 'Bitcoin pareado (token WBTC)', CBBTC: 'Bitcoin pareado (token da Coinbase)'
     };
     function friendlyTokenName(b) {
         if (b.isCustom) return b.name || b.symbol;

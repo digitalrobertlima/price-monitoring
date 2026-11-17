@@ -321,20 +321,38 @@
     ]);
     // Saldo REAL de POL nativo no fim de cada dia com movimento, lido da rede (o histórico não mostra
     // todo POL que chega de contratos). Corrige o gráfico mesmo quando algum retorno não foi deduzido.
+    // Servidores com histórico antigo (arquivo) primeiro; os outros só completam o que faltar.
+    // Faz até 3 rodadas: lotes de 20, depois lotes de 5 com pausa, depois um a um (servidores públicos
+    // limitam pedidos grandes e às vezes respondem com erro no meio do lote).
     async function rpcBatch(calls) {
-        const urls = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const base = global.RdeskRegistry?.getChain(137)?.rpcs || [];
+        const urls = [...base.filter((u) => /drpc/.test(u)), ...base.filter((u) => !/drpc/.test(u))];
         const out = new Array(calls.length).fill(null);
-        for (let i = 0; i < calls.length; i += 20) {
-            const chunk = calls.slice(i, i + 20);
-            const body = chunk.map((c, k) => ({ jsonrpc: '2.0', id: k, method: c[0], params: c[1] }));
-            for (const u of urls) {
-                try {
-                    const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-                    const j = await r.json();
-                    if (!Array.isArray(j)) throw new Error('sem lote');
-                    j.forEach((x) => { if (x && x.result !== undefined && x.result !== null) out[i + x.id] = x.result; });
-                    if (chunk.every((_, k) => out[i + k] !== null)) break;
-                } catch (e) { /* próximo servidor */ }
+        const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+        const post = async (u, body) => {
+            const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const timer = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
+            try {
+                const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctl?.signal });
+                return await r.json();
+            } finally { if (timer) clearTimeout(timer); }
+        };
+        for (const size of [20, 5, 1]) {
+            const missing = out.map((v, i) => (v === null ? i : -1)).filter((i) => i >= 0);
+            if (!missing.length) break;
+            for (let m = 0; m < missing.length; m += size) {
+                const idx = missing.slice(m, m + size);
+                const body = idx.map((ci, k) => ({ jsonrpc: '2.0', id: k, method: calls[ci][0], params: calls[ci][1] }));
+                for (const u of urls) {
+                    try {
+                        const j = await post(u, size === 1 ? body[0] : body);
+                        (Array.isArray(j) ? j : [j]).forEach((x) => {
+                            if (x && x.result !== undefined && x.result !== null && idx[x.id] !== undefined) out[idx[x.id]] = x.result;
+                        });
+                        if (idx.every((ci) => out[ci] !== null)) break;
+                    } catch (e) { /* próximo servidor */ }
+                }
+                if (size < 20) await pause(150);
             }
         }
         return out;
@@ -342,11 +360,15 @@
     async function loadNativeBalances(wallet) {
         const lastBlockOfDay = {};
         st.events.forEach((e) => { const k = dayKey(e.unix); if (e.block > (lastBlockOfDay[k] || 0)) lastBlockOfDay[k] = e.block; });
-        const days = Object.keys(lastBlockOfDay).sort().slice(-400);
+        const today = todayKey();
+        const days = Object.keys(lastBlockOfDay).sort().slice(-400).filter((k) => k === today || !Number.isFinite(st.nativeEnd[k]));
+        st.nativeMissing = 0;
         if (!days.length) return;
         setProgress('Conferindo o saldo de POL de cada dia…');
         const res = await rpcBatch(days.map((k) => ['eth_getBalance', [wallet, `0x${lastBlockOfDay[k].toString(16)}`]]));
         days.forEach((k, i) => { if (res[i]) st.nativeEnd[k] = Number(global.ethers.utils.formatEther(res[i])); });
+        // Dias que nenhum servidor conseguiu ler: o gráfico desses dias é uma estimativa (avisa na tela)
+        st.nativeMissing = days.filter((k) => !Number.isFinite(st.nativeEnd[k])).length;
     }
 
     async function addNativeReturns(list, wallet) {
@@ -551,7 +573,7 @@
         const w = lower(W()?.getAddress());
         if (!w) { st.wallet = ''; st.events = []; renderAll(); return; }
         if (w !== st.wallet) {
-            st.wallet = w; st.events = []; st.savedAt = 0; st.seriesReady = false; st.shown = PAGE_SIZE;
+            st.wallet = w; st.events = []; st.savedAt = 0; st.seriesReady = false; st.shown = PAGE_SIZE; st.nativeEnd = {}; st.nativeMissing = 0;
             loadOverrides(w);
             if (loadCache(w)) renderAll();
         }
@@ -567,7 +589,7 @@
                 st.events = events;
                 st.savedAt = Date.now();
                 setProgress('Buscando os preços de cada dia…');
-                st.nativeEnd = {};
+                // Saldos reais já conferidos antes continuam valendo (o passado não muda); só completa o que falta
                 await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices(), loadNativeBalances(w).catch(() => {})]);
                 saveCache();
             } catch (err) {
@@ -623,7 +645,8 @@
         }
         if (st.range !== 'all') pts = pts.slice(-Number(st.range) - 1);
         const others = (W()?.getBalances() || []).some((b) => b.chainId !== 137 && b.usdValue > 0.5);
-        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (others ? 'O histórico é da rede Polygon; as outras redes entram a partir de hoje.' : ''));
+        const partial = st.nativeMissing > 0 ? `Alguns dias são estimativa (${st.nativeMissing} sem conferência na rede). Toque em Atualizar no Extrato para conferir. ` : '';
+        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (partial + (others ? 'O histórico é da rede Polygon; as outras redes entram a partir de hoje.' : '')));
         chart.set(pts, st.ref);
     }
 
@@ -942,7 +965,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };

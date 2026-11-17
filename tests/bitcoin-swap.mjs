@@ -44,6 +44,7 @@ function lifi(q) {
         });
         const usd = (amount / 1e8) * 90000 * 0.996 - 1.35; // taxas do serviço saem do valor
         return {
+            action: { fromAmount: String(amount), fromAddress: q.get('fromAddress'), toAddress: q.get('toAddress') },
             tool: 'layerswap', toolDetails: { name: 'LayerSwap' },
             estimate: { toAmount: String(Math.round(usd * 1e6)), toAmountMin: String(Math.round(usd * 0.99 * 1e6)), executionDuration: 1620,
                 feeCosts: [{ name: 'LIFI Fixed Fee', amountUSD: '0.80' }, { name: 'LayerSwap fee', amountUSD: '0.55' }], gasCosts: [{ amountUSD: '0.50' }] },
@@ -54,10 +55,11 @@ function lifi(q) {
     const sats = Math.round((Number(q.get('fromAmount')) / 1e6) / 90000 * 1e8 * 0.995);
     polygon.lifiPull = { token: ADDR.USDT0, amount: BigInt(q.get('fromAmount')) };
     return {
+        action: { fromAmount: q.get('fromAmount'), fromAddress: q.get('fromAddress'), toAddress: lifiMode === 'evilto' ? 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g' : q.get('toAddress') },
         tool: 'relaydepository', toolDetails: { name: 'Relay' },
         estimate: { toAmount: String(sats), toAmountMin: String(Math.round(sats * 0.99)), executionDuration: 1500, approvalAddress: LIFI,
             feeCosts: [{ name: 'LIFI Fixed Fee', amountUSD: '0.75' }, { name: 'Relayer fee', amountUSD: '0.70' }], gasCosts: [{ amountUSD: '0.02' }] },
-        transactionRequest: { to: LIFI, data: '0xa3443faa' + '00'.repeat(64), value: '0x0', chainId: 137 }
+        transactionRequest: { to: lifiMode === 'evilcontract' ? '0x000000000000000000000000000000000000bEEF' : LIFI, data: '0xa3443faa' + '00'.repeat(64), value: '0x0', chainId: 137 }
     };
 }
 
@@ -87,6 +89,10 @@ try {
     // ================================================================ 1. Bitcoin na lista de redes
     const chains = await page.$$eval('#swap-from-chain option', (o) => o.map((x) => x.textContent));
     check('Bitcoin aparece primeiro na lista de redes da troca', chains[0] === 'Bitcoin', chains.join(','));
+    await page.selectOption('#swap-to-chain', '137');
+    const polyOpts = await page.$$eval('#swap-to-token option', (o) => o.map((x) => x.textContent));
+    await page.selectOption('#swap-from-chain', 'btc');
+    check('troca diferencia "BTC — Bitcoin nativo" de "WBTC — Bitcoin pareado (token)"', (await page.$$eval('#swap-from-token option', (o) => o.map((x) => x.textContent)))[0] === 'BTC — Bitcoin nativo' && polyOpts.includes('WBTC — Bitcoin pareado (token)'), polyOpts.join(','));
 
     // ================================================================ 2. BTC -> USDT na Polygon
     const q1 = await quote('btc', 'BTC', '137', 'USDT', '0.005');
@@ -125,12 +131,20 @@ try {
     check('valor pequeno demais: avisa quanto as taxas levariam', /As taxas levariam \d+%/.test(q4.info), q4.info);
 
     // ================================================================ 4. USDT na Polygon -> BTC
+    lifiMode = 'evilcontract';
+    const qe1 = await quote('137', 'USDT', 'btc', 'BTC', '101');
+    check('rota da LI.FI com contrato desconhecido é recusada antes de assinar', /contrato desconhecido/.test(qe1.info), qe1.info);
+    lifiMode = 'evilto';
+    const qe2 = await quote('137', 'USDT', 'btc', 'BTC', '102');
+    check('rota que entregaria o BTC em outro endereço é recusada', /outro endereço/.test(qe2.info), qe2.info);
+    lifiMode = 'ok';
     const q5 = await quote('137', 'USDT', 'btc', 'BTC', '100');
     check('cotação USDT (Polygon) → BTC nativo, com o endereço bc1 como destino', /Relay/.test(q5.info) && parseFloat(q5.out.replace(',', '.')) > 0.001 && lifiCalls.at(-1).toAddress === OWNER_BTC && lifiCalls.at(-1).toToken === 'bitcoin', `${q5.out} | ${q5.info}`);
     await page.click('#btn-execute-swap');
     await waitFn(page, () => getComputedStyle(document.getElementById('modal-receipt')).display !== 'none', null, { timeout: 20000 });
     const rcp2 = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
-    check('recibo da ida para o Bitcoin: taxas em reais e aviso de custódia', rcp2.includes(brl(0.75 + 0.70)) && /≈ R\$ 0,11 em POL/.test(rcp2) && /fica com o Relay/.test(rcp2), rcp2.slice(0, 300));
+    check('recibo da ida para o Bitcoin deixa claro que chega BTC nativo no endereço bc1', /Chega como BTC nativo \(rede Bitcoin\) no seu endereço bc1q/.test(rcp2), rcp2.slice(0, 500));
+        check('recibo da ida para o Bitcoin: taxas em reais e aviso de custódia', rcp2.includes(brl(0.75 + 0.70)) && /≈ R\$ 0,11 em POL/.test(rcp2) && /fica com o Relay/.test(rcp2), rcp2.slice(0, 300));
     await page.click('#btn-rcp-confirm');
     await waitFn(page, () => /chega|rro/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 60000 });
     const lifiTx = (polygon.lifiCalls || []).at(-1);
