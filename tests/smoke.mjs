@@ -120,6 +120,30 @@ try {
     check('extrato mostra as transações', (await page.locator('.extrato-row').count()) > 5);
     await page.click('.nav-tab-btn[data-tab="wallet"]');
 
+    console.log('LIFIBTC:', await page.evaluate(async () => {
+        const BTC = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
+        const EVM = '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3';
+        const cases = [
+            ['BTC>ETH@1', `fromChain=BTC&toChain=1&fromToken=bitcoin&toToken=0x0000000000000000000000000000000000000000&fromAddress=${BTC}&toAddress=${EVM}&fromAmount=500000`],
+            ['BTC>USDT@137', `fromChain=BTC&toChain=137&fromToken=bitcoin&toToken=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&fromAddress=${BTC}&toAddress=${EVM}&fromAmount=500000`],
+            ['BTC>USDC@8453', `fromChain=BTC&toChain=8453&fromToken=bitcoin&toToken=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&fromAddress=${BTC}&toAddress=${EVM}&fromAmount=500000`],
+            ['USDT@137>BTC', `fromChain=137&toChain=20000000000001&fromToken=0xc2132D05D31c914a87C6611C10748AEb04B58e8F&toToken=bitcoin&fromAddress=${EVM}&toAddress=${BTC}&fromAmount=300000000`],
+            ['POL@137>BTC', `fromChain=137&toChain=20000000000001&fromToken=0x0000000000000000000000000000000000000000&toToken=bitcoin&fromAddress=${EVM}&toAddress=${BTC}&fromAmount=3000000000000000000000`],
+            ['ETH@8453>BTC', `fromChain=8453&toChain=20000000000001&fromToken=0x0000000000000000000000000000000000000000&toToken=bitcoin&fromAddress=${EVM}&toAddress=${BTC}&fromAmount=100000000000000000`]
+        ];
+        const out = [];
+        for (const [n, q] of cases) {
+            try {
+                const r = await fetch(`https://li.quest/v1/quote?${q}&slippage=0.01`);
+                const j = await r.json();
+                if (!r.ok) { out.push(`${n}: HTTP ${r.status} ${String(j.message || '').slice(0, 160)}`); continue; }
+                const tr = j.transactionRequest || {};
+                out.push(`${n}: tool=${j.tool} out=${j.estimate?.toAmount} min=${j.estimate?.toAmountMin} dur=${j.estimate?.executionDuration}s fees=${(j.estimate?.feeCosts || []).map((f) => f.name + ':' + f.amountUSD).join(',')} gas=${(j.estimate?.gasCosts || []).map((g) => g.amountUSD).join(',')} to=${tr.to} value=${tr.value} data=${String(tr.data).slice(0, 140)} keys=${Object.keys(tr).join(',')}`);
+            } catch (e) { out.push(`${n}: erro ${e.message}`); }
+            await new Promise((r) => setTimeout(r, 1500));
+        }
+        return out.join('\n');
+    }));
     // ---- Trocas: cotações reais (somente leitura, nada é assinado) ----
     await page.click('.nav-tab-btn[data-tab="pixswap"]');
     await waitFn(page, () => document.querySelectorAll('#swap-from-token option').length > 0, null, { timeout: 20000 });
