@@ -100,6 +100,7 @@ try {
 
     // ---- Trocas: cotações reais (somente leitura, nada é assinado) ----
     await page.click('.nav-tab-btn[data-tab="pixswap"]');
+    await page.click('[data-sub="dex-swap"]');
     await waitFn(page, () => document.querySelectorAll('#swap-from-token option').length > 0, null, { timeout: 20000 });
     const quote = async (fromChain, from, toChain, to, amount) => {
         await page.selectOption('#swap-from-chain', String(fromChain));
