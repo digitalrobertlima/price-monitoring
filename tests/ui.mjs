@@ -18,6 +18,8 @@ const accounts = (page) => page.evaluate(() => window.RdeskWallet.getAccounts().
 const stored = (page, key) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), key);
 // Decifra o cofre guardado, do lado do teste, para conferir exatamente o que ficou no aparelho.
 const decryptVault = (page, password) => page.evaluate(async ({ key, password }) => {
+    // o cofre é gravado de forma assíncrona (PBKDF2 600 mil iterações): espera ele aparecer
+    for (let i = 0; i < 100 && !JSON.parse(localStorage.getItem(key) || 'null')?.encryptedSecrets; i++) await new Promise((r) => setTimeout(r, 100));
     const meta = JSON.parse(localStorage.getItem(key));
     const blob = meta.encryptedSecrets;
     const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
