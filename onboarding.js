@@ -248,6 +248,7 @@
             <div class="ob-menu">
                 <h2>Menu</h2>
                 <button type="button" data-m="wallets"><span>👛</span>Minhas carteiras</button>
+                <button type="button" data-m="pix"><span>💸</span>Receber por Pix</button>
                 <button type="button" data-m="addtoken"><span>＋</span>Adicionar uma moeda</button>
                 <button type="button" data-m="ref"><span>⚖️</span>Comparar com outra moeda</button>
                 <button type="button" data-m="privacy"><span>👁</span>${hidden ? 'Mostrar saldos' : 'Esconder saldos'}</button>
@@ -264,6 +265,7 @@
                 close();
                 if (m === 'wallets') W()?.openModal(W().getAccounts().length ? 'list' : 'add');
                 else if (m === 'addtoken') document.getElementById('btn-add-token')?.click();
+                else if (m === 'pix') W()?.openView('pix');
                 else if (m === 'ref') global.RdeskHistory?.openRefPicker();
                 else if (m === 'privacy') global.RdeskPrivacy?.set(!global.RdeskPrivacy.isHidden());
                 else if (m === 'tutorial') restart();
