@@ -1139,14 +1139,15 @@
         const acc = getActiveAccount();
         const topBtn = document.querySelector('#btn-wallet-trigger, #wallet-chip-btn, #btn-connect-wallet, [data-wallet-open]');
         if (topBtn) {
+            // Cabeçalho mostra quem está usando, sem endereço (o endereço fica em "Receber")
             if (!acc) {
-                topBtn.textContent = '🔑 Conectar / Criar Carteira';
+                topBtn.innerHTML = '<span class="who-avatar" aria-hidden="true">+</span><span class="who-text"><small>Bem-vindo</small><strong>Começar</strong></span>';
             } else {
-                const lockIcon = (acc.type === 'seed' || acc.type === 'pk')
-                    ? (state.isLocked ? '🔒' : '🔓')
-                    : (acc.type === 'rabby' ? '🦊' : '👁️');
-                topBtn.textContent = `${lockIcon} ${acc.name} (${acc.address.slice(0, 6)}..${acc.address.slice(-4)})`;
+                const kind = acc.type === 'watch' ? 'Só observando' : acc.type === 'rabby' ? 'Rabby' : (state.isLocked ? 'Trancada' : 'Carteira');
+                topBtn.innerHTML = `<span class="who-avatar" aria-hidden="true" style="background:${getAvatarGradient(acc.address)}">${esc(String(acc.name || 'C').trim().charAt(0).toUpperCase() || 'C')}</span>` +
+                    `<span class="who-text"><small>${kind}</small><strong>${esc(acc.name)}</strong></span><span class="who-caret" aria-hidden="true">▾</span>`;
             }
+            topBtn.setAttribute('aria-label', acc ? `Carteira ${acc.name}. Toque para trocar ou adicionar carteiras` : 'Começar: criar ou abrir uma carteira');
         }
 
         const banner = document.getElementById('wallet-lock-banner');
@@ -1294,7 +1295,7 @@
             @media (min-width: 640px) { #rdesk-mw-overlay { align-items: center; } }
             .rmw-sheet {
                 width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
-                background: #11151f; border: 1px solid rgba(234, 179, 8, 0.3);
+                background: #141925; border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 20px; padding: 18px; color: #f1f5f9;
                 box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -1316,7 +1317,7 @@
                 display: flex; align-items: center; justify-content: space-between; gap: 10px;
                 cursor: pointer; transition: border-color 0.2s, background 0.2s;
             }
-            .rmw-acc-card.active { border-color: #eab308; background: rgba(234, 179, 8, 0.09); }
+            .rmw-acc-card.active { border-color: #34d399; background: rgba(52, 211, 153, 0.09); }
             .rmw-avatar {
                 width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
                 display: flex; align-items: center; justify-content: center;
@@ -1327,7 +1328,7 @@
                 background: rgba(255,255,255,0.08); color: #94a3b8; text-transform: uppercase;
             }
             .rmw-badge.seed { background: rgba(0, 230, 118, 0.14); color: #00e676; }
-            .rmw-badge.pk { background: rgba(234, 179, 8, 0.16); color: #eab308; }
+            .rmw-badge.pk { background: rgba(52, 211, 153, 0.16); color: #34d399; }
             .rmw-badge.rabby { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
             .rmw-opt-btn {
                 width: 100%; background: #181e2c; border: 1px solid rgba(255,255,255,0.09);
@@ -1335,13 +1336,13 @@
                 display: flex; align-items: center; gap: 12px; color: #f8fafc;
                 cursor: pointer; text-align: left; font-size: 0.94rem; font-weight: 600;
             }
-            .rmw-opt-btn:hover { border-color: #eab308; background: #1e2638; }
+            .rmw-opt-btn:hover { border-color: #34d399; background: #1e2638; }
             .rmw-opt-ico {
                 width: 34px; height: 34px; border-radius: 10px; display: flex;
                 align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
             }
             .rmw-btn-primary {
-                width: 100%; background: #eab308; color: #090b10; border: none;
+                width: 100%; background: #34d399; color: #090b10; border: none;
                 border-radius: 12px; padding: 12px; font-weight: 800; font-size: 0.94rem;
                 cursor: pointer; margin-top: 6px;
             }
@@ -1352,7 +1353,7 @@
                 padding: 11px; font-weight: 600; font-size: 0.9rem; cursor: pointer; margin-top: 8px;
             }
             .rmw-alert-warn {
-                background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.38); color: #fde68a;
+                background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.38); color: #fde68a;
                 border-radius: 12px; padding: 10px 12px; font-size: 0.8rem; line-height: 1.45; margin: 10px 0;
             }
             .rmw-alert-warn strong { color: #fff; }
@@ -1378,7 +1379,7 @@
             }
             .rmw-words-grid {
                 display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
-                background: #090b10; border: 1px dashed #eab308; border-radius: 12px;
+                background: #090b10; border: 1px dashed #34d399; border-radius: 12px;
                 padding: 10px; margin-top: 8px;
             }
             .rmw-word-pill {
@@ -1388,7 +1389,7 @@
             }
             .rmw-word-num { color: #64748b; font-size: 0.72rem; margin-right: 4px; }
             .rmw-secret-box {
-                background: #090b10; border: 1px dashed #eab308; border-radius: 12px;
+                background: #090b10; border: 1px dashed #34d399; border-radius: 12px;
                 padding: 12px; font-family: monospace; font-size: 0.86rem; color: #fde047;
                 word-break: break-all; margin-top: 8px;
             }
@@ -1486,6 +1487,7 @@
         if (!sheet) return;
 
         trackViewTrail();
+        try { window.dispatchEvent(new CustomEvent('rdesk:view', { detail: { view: currentView } })); } catch (e) {}
         if (externalViews[currentView]) externalViews[currentView](sheet, viewContext);
         else if (currentView === 'unlock') renderUnlockView(sheet);
         else if (currentView === 'add') renderAddMethodView(sheet);
@@ -1603,14 +1605,14 @@
             const bal = state.balancesCache[acc.address.toLowerCase()];
             const badgeClass = acc.type === 'seed' ? 'seed' : (acc.type === 'pk' ? 'pk' : (acc.type === 'rabby' ? 'rabby' : ''));
             const badgeText = acc.type === 'seed'
-                ? `SEED #${(acc.hdIndex || 0) + 1}`
-                : (acc.type === 'pk' ? 'CHAVE PRIVADA' : (acc.type === 'rabby' ? 'RABBY' : 'OBSERVAÇÃO'));
+                ? `12 palavras${state.accounts.filter((a) => a.type === 'seed').length > 1 ? ` • nº ${(acc.hdIndex || 0) + 1}` : ''}`
+                : (acc.type === 'pk' ? 'Chave privada' : (acc.type === 'rabby' ? 'Rabby' : 'Só ver'));
 
             return `
                 <div class="rmw-acc-card ${isAct ? 'active' : ''}" data-select-acc="${acc.id}">
                     <div style="display:flex;align-items:center;gap:11px;min-width:0;">
                         <div class="rmw-avatar" style="background:${getAvatarGradient(acc.address)};">
-                            ${acc.address.slice(2, 4).toUpperCase()}
+                            ${esc(String(acc.name || 'C').trim().charAt(0).toUpperCase() || 'C')}
                         </div>
                         <div style="min-width:0;">
                             <div style="font-weight:700;font-size:0.95rem;display:flex;align-items:center;gap:6px;">
@@ -1621,7 +1623,7 @@
                                 ${acc.address.slice(0, 8)}...${acc.address.slice(-6)}
                             </div>
                             <div class="money" style="font-size:0.76rem;color:#00e676;margin-top:2px;">
-                                ${bal ? `~R$ ${bal.brl.toFixed(2)} (${bal.summary})` : 'Consultando saldo...'}
+                                ${bal ? formatBRL(bal.brl) : 'Consultando saldo...'}
                             </div>
                         </div>
                     </div>
@@ -1634,7 +1636,7 @@
             <div class="rmw-header">
                 <div class="rmw-title">👛 Minhas Carteiras (${state.accounts.length})</div>
                 <div style="display:flex;gap:6px;">
-                    ${hasVaultAccounts ? `<button class="rmw-icon-btn" id="rmw-lock-btn">${state.isLocked ? '🔓 Desbloquear' : '🔒 Bloquear'}</button>` : ''}
+                    ${hasVaultAccounts ? `<button class="rmw-icon-btn" id="rmw-lock-btn">${state.isLocked ? '🔓 Destrancar' : '🔒 Trancar'}</button>` : ''}
                     <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
                 </div>
             </div>
@@ -1642,7 +1644,7 @@
             ${state.isLocked && hasVaultAccounts ? `
                 <div class="rmw-alert-err" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                     <span>🔒 Cofre bloqueado (modo leitura).</span>
-                    <button class="rmw-icon-btn" id="rmw-quick-unlock" style="background:#eab308;color:#000;font-weight:700;">Desbloquear</button>
+                    <button class="rmw-icon-btn" id="rmw-quick-unlock" style="background:#34d399;color:#000;font-weight:700;">Desbloquear</button>
                 </div>
             ` : ''}
 
@@ -1791,7 +1793,7 @@
 
             ${hasUnlockedSeed ? `
                 <button class="rmw-opt-btn" id="rmw-derive-from-existing-seed">
-                    <div class="rmw-opt-ico" style="background:rgba(234,179,8,0.18);color:#eab308;">🌱</div>
+                    <div class="rmw-opt-ico" style="background:rgba(52,211,153,0.18);color:#34d399;">🌱</div>
                     <div>
                         <div>Adicionar conta da frase-semente atual</div>
                         <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Deriva o próximo endereço HD (BIP44) em 1 clique</div>
@@ -1936,7 +1938,7 @@
                         <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
                     </div>
 
-                    <div style="background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.35);border-radius:12px;padding:11px;font-size:0.82rem;color:#fde047;margin-bottom:12px;">
+                    <div style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.35);border-radius:12px;padding:11px;font-size:0.82rem;color:#fde047;margin-bottom:12px;">
                         🛡️ <strong>Prova de Segurança:</strong> Digite exatamente as 3 palavras solicitadas abaixo para comprovar que você anotou sua frase-semente.
                     </div>
 
@@ -2222,7 +2224,7 @@
                 <div style="font-size:0.78rem;color:#94a3b8;font-weight:700;margin:10px 0 6px;">CÓPIA DE SEGURANÇA & BIOMETRIA</div>
 
                 <button class="rmw-opt-btn" id="rmw-det-bio-btn">
-                    <div class="rmw-opt-ico" style="background:rgba(234,179,8,0.16);color:#eab308;">👆</div>
+                    <div class="rmw-opt-ico" style="background:rgba(52,211,153,0.16);color:#34d399;">👆</div>
                     <div>${isBiometryRegistered() ? 'Regravar Biometria / Digital neste aparelho' : 'Ativar Biometria / Digital neste aparelho'}</div>
                 </button>
 
@@ -2555,7 +2557,7 @@
             if (!meta) return null; // moeda removida da lista
             const unit = unitUsdFor(meta.priceKey, b.chainId, meta.address);
             const usdValue = b.amount * unit;
-            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl, address: meta.address || null, isCustom: Boolean(meta.isCustom), hasPrice: unit > 0 };
+            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl, address: meta.address || null, isCustom: Boolean(meta.isCustom), name: meta.name || b.symbol, hasPrice: unit > 0 };
         });
 
         // Mantém as propriedades antigas (pol, wpol, usdt0, totalUsd...) por compatibilidade
@@ -2626,6 +2628,17 @@
         renderHeroAndAssets();
     }
 
+    // Nome que qualquer pessoa entende (o símbolo técnico aparece embaixo, menor)
+    const FRIENDLY_NAMES = {
+        BTC: 'Bitcoin', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
+        USDT: 'Dólar digital (Tether)', USDC: 'Dólar digital (USD Coin)', BRZ: 'Real digital (BRZ)', BRLA: 'Real digital (BRLA)',
+        WETH: 'Ether embrulhado', WBTC: 'Bitcoin embrulhado', CBBTC: 'Bitcoin embrulhado (Coinbase)'
+    };
+    function friendlyTokenName(b) {
+        if (b.isCustom) return b.name || b.symbol;
+        return FRIENDLY_NAMES[String(b.symbol).toUpperCase()] || b.name || b.symbol;
+    }
+
     function renderHeroAndAssets() {
         const acc = getActiveAccount();
         const prices = getNormalizedPricesObject();
@@ -2636,9 +2649,15 @@
         const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
 
         set('hero-total-brl', formatBRL(totalUsd * prices.usdBrl));
-        set('hero-total-usd', `${formatUSD(totalUsd)} • Cotação Dólar: R$ ${prices.usdBrl.toFixed(3)}`);
-        set('hero-breakdown', `Livre na Carteira: ${formatBRL(freeUsd * prices.usdBrl)}  •  Rendendo em Pools: ${formatBRL(lpUsd * prices.usdBrl)}`);
-        set('top-oracle-pill', `Dólar: R$ ${prices.usdBrl.toFixed(2).replace('.', ',')}`);
+        set('hero-total-usd', `≈ US$ ${totalUsd.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        const earningEl = document.getElementById('hero-breakdown');
+        if (earningEl) {
+            earningEl.hidden = !(lpUsd > 0);
+            earningEl.textContent = lpUsd > 0 ? `${formatBRL(lpUsd * prices.usdBrl)} rendendo na Uniswap` : '';
+        }
+        document.body.classList.toggle('no-wallet', !acc);
+        const welcome = document.getElementById('welcome-card');
+        if (welcome) welcome.hidden = Boolean(acc);
 
         const badge = document.getElementById('wallet-mode-badge');
         const shortAddr = document.getElementById('wallet-short-addr');
@@ -2667,7 +2686,8 @@
         const listEl = document.getElementById('wallet-assets-list');
         if (listEl) {
             if (!acc) {
-                listEl.innerHTML = '<div class="empty-state">Conecte ou crie sua carteira para visualizar seus saldos em Reais.</div>';
+                listEl.innerHTML = '<div class="empty-state">Crie ou abra sua carteira para ver suas moedas aqui.</div>';
+                renderQuoteStatus();
                 return;
             }
             const filterEl = document.getElementById('wallet-chain-filter');
@@ -2680,15 +2700,18 @@
                 .filter((b) => (filter === 'ALL' || String(b.chainId) === filter) && (showZero || b.amount > 0 || b.isCustom))
                 .sort((a, b) => (b.usdValue - a.usdValue) || (b.amount - a.amount));
             if (!rows.length) {
-                listEl.innerHTML = '<div class="empty-state">Nenhum saldo encontrado nesta seleção. Toque em Receber para depositar.</div>';
+                listEl.innerHTML = filter === 'ALL'
+                    ? '<div class="empty-state big"><strong>Sua carteira ainda está vazia</strong><span>Para colocar sua primeira moeda, toque em Receber e mostre o código para quem vai te enviar.</span><button type="button" class="btn-soft" data-empty-receive>Receber minha primeira moeda</button></div>'
+                    : '<div class="empty-state">Nenhuma moeda nesta rede.</div>';
+                listEl.querySelector('[data-empty-receive]')?.addEventListener('click', () => openReceiveModal());
             } else {
                 listEl.innerHTML = rows.map((b) => `
                     <button type="button" class="asset-row asset-row-btn" data-asset-chain="${esc(b.chainId)}" data-asset-symbol="${esc(b.symbol)}">
                         <span class="asset-left">
                             ${REG.tokenOnChainBadge(b.symbol, b.chainId, 38)}
                             <span class="asset-names">
-                                <strong>${esc(b.symbol)}</strong>
-                                <span class="asset-meta">${REG.chainBadge(b.chainId, true)}<span class="asset-contract">${b.address ? esc(REG.shortAddress(b.address)) : 'moeda da rede'}</span></span>
+                                <strong>${esc(friendlyTokenName(b))}</strong>
+                                <span class="asset-meta">${esc(b.symbol)} • na rede ${esc(REG.getChain(b.chainId)?.name || '')}</span>
                             </span>
                         </span>
                         <span class="asset-right money">

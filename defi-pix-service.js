@@ -112,15 +112,26 @@
     function initEarnChart() {
         const container = document.getElementById('earn-chart-container');
         if (!container || !window.RdeskRangeChart) return;
-        rangeChart = window.RdeskRangeChart.create(container, { height: 290, decimals: 4 });
+        rangeChart = window.RdeskRangeChart.create(container, {
+            height: 280, decimals: 4,
+            // A pessoa arrastou uma alça da faixa no gráfico: essa passa a ser a faixa dela
+            onRangeChange: ({ min, max }) => setCustomRange(min, max, 'grafico')
+        });
     }
 
     // Faixa Sniper sugerida (tracejada) + cada posição real ou simulada (cheia; vermelha se fora da faixa)
     function redrawChartRangeLines() {
         if (!rangeChart) return;
         const bands = [];
+        // Faixa escolhida (sugerida ou da pessoa): editável, com alças para arrastar
         if (defiState.sniper.min > 0 && defiState.sniper.max > defiState.sniper.min) {
-            bands.push({ min: defiState.sniper.min, max: defiState.sniper.max, color: '#38bdf8', label: 'Faixa Sniper', dashed: true });
+            rangeChart.setEditableBand({ min: defiState.sniper.min, max: defiState.sniper.max, color: '#38bdf8' });
+        } else {
+            rangeChart.setEditableBand(null);
+        }
+        // Com faixa própria, a sugerida aparece tracejada só como referência
+        if (defiState.customRange && defiState.suggested && defiState.suggested.max > defiState.suggested.min) {
+            bands.push({ min: defiState.suggested.min, max: defiState.suggested.max, color: '#94a3b8', label: 'Sugerida', dashed: true });
         }
         [...defiState.livePositions, ...defiState.simPositions].forEach((p) => {
             const color = p.isSimulated ? '#eab308' : (p.inRange ? '#00e676' : '#f43f5e');
@@ -208,6 +219,14 @@
         return { polFree, wpolFree, usdtFree, totalUsd };
     }
 
+    // Faixa escolhida pela pessoa (arrastando no gráfico ou digitando). null volta para a sugerida.
+    function setCustomRange(min, max, origem) {
+        min = Number(min); max = Number(max);
+        if (!(min > 0 && max > min)) { defiState.customRange = null; }
+        else defiState.customRange = { min, max, origem: origem || 'manual' };
+        recalculateSniperRange();
+    }
+
     function recalculateSniperRange() {
         const prices = window.RdeskWallet.getPrices();
         const spot = currentSpotPrice() || 0.088;
@@ -246,8 +265,16 @@
             halfBand = (spot * targetWidthPct) / 2;
         }
 
-        const tickLower = priceToTickAligned(Math.max(0.001, spot - halfBand));
-        const tickUpper = Math.max(tickLower + TICK_SPACING, priceToTickAligned(spot + halfBand));
+        const sugLower = priceToTickAligned(Math.max(0.001, spot - halfBand));
+        const sugUpper = Math.max(sugLower + TICK_SPACING, priceToTickAligned(spot + halfBand));
+        defiState.suggested = { min: tickToHumanPrice(sugLower), max: tickToHumanPrice(sugUpper), tickLower: sugLower, tickUpper: sugUpper };
+
+        // Faixa da pessoa (arrastada no gráfico ou digitada) tem prioridade sobre a sugerida
+        let tickLower = sugLower, tickUpper = sugUpper;
+        if (defiState.customRange && defiState.customRange.max > defiState.customRange.min) {
+            tickLower = priceToTickAligned(defiState.customRange.min);
+            tickUpper = Math.max(tickLower + TICK_SPACING, priceToTickAligned(defiState.customRange.max));
+        }
         const minPrice = tickToHumanPrice(tickLower);
         const maxPrice = tickToHumanPrice(tickUpper);
 
@@ -265,6 +292,19 @@
         if (freeEl) freeEl.textContent = window.RdeskWallet.formatBRL(freeCap.totalUsd * prices.USD_BRL);
         if (rateEl) rateEl.textContent = `R$ ${estBrlPerMin.toFixed(4).replace('.', ',')}/min`;
         if (rangeEl) rangeEl.textContent = `$ ${minPrice.toFixed(4)} – $ ${maxPrice.toFixed(4)}`;
+        const minInp = document.getElementById('earn-range-min');
+        const maxInp = document.getElementById('earn-range-max');
+        if (minInp && document.activeElement !== minInp) minInp.value = minPrice.toFixed(4);
+        if (maxInp && document.activeElement !== maxInp) maxInp.value = maxPrice.toFixed(4);
+        const modeEl = document.getElementById('earn-range-mode');
+        if (modeEl) {
+            const inside = spot > minPrice && spot < maxPrice;
+            const width = ((maxPrice - minPrice) / spot) * 100;
+            modeEl.textContent = (defiState.customRange ? 'Sua faixa' : 'Faixa sugerida pelo app') +
+                ` • ${width.toFixed(1).replace('.', ',')}% de largura` + (inside ? '' : ' • ⚠️ o preço atual está fora dela: não rende até voltar');
+            modeEl.classList.toggle('warn', !inside);
+        }
+        document.getElementById('btn-earn-reset-sniper')?.toggleAttribute('hidden', !defiState.customRange);
 
         redrawChartRangeLines();
     }
@@ -619,7 +659,7 @@
 
         const totalBrl = cap.totalUsd * prices.USD_BRL;
         const confirmed = skipConfirm || await window.RdeskReceipt.confirm({
-            title: 'Ativar Piloto Automático Uniswap V3',
+            title: 'Começar a render (Uniswap)',
             sendVal: `${cap.polFree.toFixed(2)} POL + ${cap.wpolFree.toFixed(2)} WPOL + ${cap.usdtFree.toFixed(2)} USDT0`,
             sendBrl: window.RdeskWallet.formatBRL(totalBrl),
             recvVal: `Pool POL/USDT0 ($${defiState.sniper.min.toFixed(4)} – $${defiState.sniper.max.toFixed(4)})`,
@@ -757,6 +797,7 @@
 
             fb.style.color = 'var(--green-bright)';
             fb.textContent = '✓ Posição aberta e rendendo tarifas na Uniswap V3!';
+            window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Seu dinheiro já está rendendo!' } }));
             await window.RdeskWallet.refreshBalances();
             await refreshUniswapPositions();
         } catch (err) {
@@ -1192,7 +1233,7 @@
         const nativeSym = REG.getTokens(q.fromChain).find((t) => t.isNative)?.symbol || '';
 
         const confirmed = await window.RdeskReceipt.confirm({
-            title: q.fromChain === q.toChain ? 'Confirmar Troca DEX' : 'Confirmar Ponte entre Redes',
+            title: q.fromChain === q.toChain ? 'Confirmar troca' : 'Confirmar envio para outra rede',
             sendVal: `${q.amountIn.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} ${q.fromSym} (${REG.getChain(q.fromChain).name})`,
             sendBrl: brlIn > 0 ? window.RdeskWallet.formatBRL(brlIn) : 'sem cotação',
             recvVal: `~${q.amountOut.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${q.toSym} (${REG.getChain(q.toChain).name})`,
@@ -1262,6 +1303,7 @@
             }
 
             defiState.swapQuote = null;
+            window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: q.fromChain === q.toChain ? 'Troca concluída!' : 'Ponte enviada!' } }));
             say(q.fromChain === q.toChain
                 ? `✓ Troca de ${q.amountIn} ${q.fromSym} por ${q.toSym} concluída!`
                 : `✓ Ponte enviada: ${q.toSym} chega na ${REG.getChain(q.toChain).name} em alguns minutos.`, 'var(--green-bright)');
@@ -1962,8 +2004,27 @@
         document.getElementById('btn-earn-reset-sniper')?.addEventListener('click', () => {
             const inp = document.getElementById('earn-target-brl-min');
             if (inp) inp.value = '';
+            defiState.customRange = null;
             recalculateSniperRange();
         });
+        ['earn-range-min', 'earn-range-max'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('change', () => {
+                const mn = parseFloat(String(document.getElementById('earn-range-min').value).replace(',', '.'));
+                const mx = parseFloat(String(document.getElementById('earn-range-max').value).replace(',', '.'));
+                if (mn > 0 && mx > mn) { setCustomRange(mn, mx, 'digitada'); return; }
+                // Ainda incompleto (ex.: digitou o mínimo novo antes do máximo): não apaga o que a pessoa digitou
+                const modeEl = document.getElementById('earn-range-mode');
+                if (modeEl) { modeEl.textContent = 'O mínimo precisa ser menor que o máximo.'; modeEl.classList.add('warn'); }
+            });
+        });
+        document.querySelectorAll('[data-range-width]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const spot = currentSpotPrice();
+                const pct = Number(btn.getAttribute('data-range-width')) / 100;
+                if (spot > 0 && pct > 0) setCustomRange(spot * (1 - pct / 2), spot * (1 + pct / 2), 'atalho');
+            });
+        });
+        document.getElementById('btn-chart-reset-view')?.addEventListener('click', () => rangeChart?.resetView());
         document.getElementById('btn-start-autopilot')?.addEventListener('click', () => startAutopilotPosition(false));
 
         document.querySelectorAll('.tf-chip').forEach(btn => {
@@ -2084,6 +2145,8 @@
             await loadPoolCandlesAndComputeSniper();
             await refreshUniswapPositions();
         },
+        setCustomRange: (min, max) => setCustomRange(min, max, 'api'),
+        useSuggestedRange: () => { defiState.customRange = null; recalculateSniperRange(); },
         refreshPixAndSwap: () => {
             recalculatePixComparator();
             refreshSwapQuote();
@@ -2096,6 +2159,9 @@
         onPricesUpdated: () => { try { redrawChartRangeLines(); updateSwapFromBalanceDisplay(); } catch (e) {} },
         getState: () => ({
             sniper: { ...defiState.sniper },
+            customRange: defiState.customRange ? { ...defiState.customRange } : null,
+            suggested: defiState.suggested ? { ...defiState.suggested } : null,
+            chart: rangeChart ? rangeChart.getState() : null,
             poolPrice: defiState.poolPrice || 0,
             poolTick: defiState.poolTick ?? null,
             positions: defiState.livePositions.map((p) => ({ id: p.id, minPrice: p.minPrice, maxPrice: p.maxPrice, inRange: p.inRange, totalUsd: p.totalUsd, feesUsd: p.feesUsd }))

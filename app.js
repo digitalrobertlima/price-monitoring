@@ -39,7 +39,7 @@
     // =========================================================================
     // 2. SUB-MODOS DA TELA 3 (COMPRAR PIX, SACAR PIX & TROCAR / PONTE)
     // =========================================================================
-    function switchPixSwapSubmode(subName) {
+    function switchPixSwapSubmode(subName) { // mantida por compatibilidade: só existe a troca agora
         document.querySelectorAll('.submode-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.getAttribute('data-sub') === subName);
         });
@@ -180,23 +180,8 @@
             });
         });
 
-        // Atalhos rápidos na Hero Card da Tela 1 (Carteira)
-        document.getElementById('btn-action-pix')?.addEventListener('click', () => {
-            switchMainTab('pixswap');
-            switchPixSwapSubmode('pix-buy');
-        });
-
-        document.getElementById('btn-action-swap')?.addEventListener('click', () => {
-            switchMainTab('pixswap');
-            switchPixSwapSubmode('dex-swap');
-        });
-
-        // Sub-abas da Tela 3 (PIX & Trocas)
-        document.querySelectorAll('.submode-btn').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                switchPixSwapSubmode(btn.getAttribute('data-sub'));
-            });
-        });
+        // Atalho "Trocar" da tela inicial
+        document.getElementById('btn-action-swap')?.addEventListener('click', () => switchMainTab('pixswap'));
 
         bindMicroMentor();
         initPwaSupport();

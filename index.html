@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#090b10">
+    <meta name="theme-color" content="#0c0f16">
     <!-- Só roda script deste próprio site; nada embutido, nada de terceiros -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
-    <meta name="description" content="RDESK SENTINEL — Carteira de autocustódia com várias contas, piloto de liquidez Uniswap V3 e faixa Sniper.">
-    <title>RDESK SENTINEL — Autocustódia, Pools V3 & PIX Líquido</title>
+    <meta name="description" content="RDESK — carteira de cripto em que só você tem a chave. Receba, envie, troque e faça suas moedas renderem.">
+    <title>RDESK — sua carteira, suas moedas</title>
 
     <link rel="manifest" href="manifest.json">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,218 +29,178 @@
     <script src="wallet-service.js" defer></script>
     <script src="wallet-views.js" defer></script>
     <script src="defi-pix-service.js" defer></script>
+    <script src="onboarding.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
+    <a class="skip-link" href="#app-main">Pular para o conteúdo</a>
 
-    <!-- =====================================================================
-         CABEÇALHO LIMPO & STATUS EM TEMPO REAL
-         ===================================================================== -->
+    <!-- CABEÇALHO: quem está usando + trancar + menu. Nada técnico aqui. -->
     <header class="app-header">
-        <div class="header-left">
-            <div class="brand-mark">
-                <span class="brand-dot"></span>
-                <span class="brand-name">RDESK SENTINEL</span>
-            </div>
-            <span id="top-status-pill" class="pill-badge safe"
-                  data-tip-title="Status da Carteira e Pools"
-                  data-tip-body="Mostra se suas posições na Uniswap V3 estão dentro da faixa de lucro."
-                  data-tip-tip="Verde: rendendo tarifas normalmente. Amarelo: perto da borda.">PRONTO</span>
-        </div>
-
-        <div class="header-right">
-            <span id="top-oracle-pill" class="oracle-chip">Dólar: R$ 5,65</span>
-            <button type="button" id="btn-install-pwa" class="btn-ghost" style="display:none;">📲 Instalar</button>
-            <button type="button" id="btn-lock-vault" class="btn-ghost" style="display:none;" title="Bloquear cofre agora">🔒 Bloquear</button>
-            <button type="button" id="btn-wallet-trigger" class="btn-wallet-pill">Conectar / Criar Carteira</button>
+        <button type="button" id="btn-wallet-trigger" class="who-btn" aria-label="Minhas carteiras">
+            <span class="who-avatar" aria-hidden="true">R</span>
+            <span class="who-text"><small>Carteira</small><strong>Começar</strong></span>
+        </button>
+        <div class="header-actions">
+            <button type="button" id="btn-install-pwa" class="icon-btn text" style="display:none;">Instalar</button>
+            <button type="button" id="btn-lock-vault" class="icon-btn" style="display:none;" aria-label="Trancar carteira" title="Trancar carteira"><svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+            <button type="button" id="btn-open-menu" class="icon-btn" aria-label="Menu" title="Menu"><svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg></button>
         </div>
     </header>
 
-    <!-- FAIXA DE DESBLOQUEIO RÁPIDO (EXIBIDA QUANDO HÁ COFRE SALVO BLOQUEADO) -->
+    <!-- Carteira trancada: aparece só quando precisa -->
     <div id="locked-vault-bar" class="locked-banner" style="display:none;">
         <div class="locked-banner-text">
-            <strong>🔒 Cofre protegido neste dispositivo</strong>
-            <span>Use sua impressão digital, Windows Hello ou senha para liberar envios e pools.</span>
+            <strong>Sua carteira está trancada</strong>
+            <span>Para enviar, trocar ou render, destranque com a digital ou a senha.</span>
         </div>
         <div class="locked-banner-actions">
-            <button type="button" id="btn-quick-bio-unlock" class="btn-primary-sm">👆 Biometria</button>
-            <button type="button" id="btn-quick-pass-unlock" class="btn-ghost">🔑 Senha</button>
+            <button type="button" id="btn-quick-bio-unlock" class="btn-soft">Usar digital</button>
+            <button type="button" id="btn-quick-pass-unlock" class="btn-soft">Usar senha</button>
         </div>
     </div>
 
-    <!-- =====================================================================
-         CONTEÚDO PRINCIPAL (4 PILARES CLAROS)
-         ===================================================================== -->
-    <main class="app-container">
-
-        <!-- NAVEGAÇÃO PRINCIPAL (DESKTOP E MOBILE) -->
-        <nav class="main-nav" aria-label="Navegação Principal">
-            <button type="button" class="nav-tab-btn active" data-tab="wallet">
-                <span class="nav-ico">💳</span>
-                <span>Carteira</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab="earn">
-                <span class="nav-ico">⚡</span>
-                <span>Render V3</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab="pixswap">
-                <span class="nav-ico">🇧🇷</span>
-                <span>PIX & Trocas</span>
-            </button>
-            <button type="button" class="nav-tab-btn" data-tab="audit">
-                <span class="nav-ico">📊</span>
-                <span>Lucro Real</span>
-            </button>
-        </nav>
+    <main class="app-container" id="app-main">
 
         <!-- =================================================================
-             TELA 1: CARTEIRA (SALDO CONSOLIDADO, RECEBER, ENVIAR & ATIVOS)
+             INÍCIO
              ================================================================= -->
-        <section id="tab-panel-wallet" class="tab-panel active">
-            <div class="hero-card">
-                <div class="hero-top-row">
-                    <span id="wallet-mode-badge" class="soft-tag">Nenhuma carteira ativa</span>
-                    <button type="button" id="btn-copy-header-addr" class="addr-copy-chip" style="display:none;">
-                        <span id="wallet-short-addr">0x0000...0000</span>
-                        <span>📋</span>
+        <section id="tab-panel-wallet" class="tab-panel active" aria-label="Início">
+
+            <!-- Sem carteira: um convite, não um painel -->
+            <div id="welcome-card" class="welcome-card" hidden>
+                <div class="welcome-art" aria-hidden="true"><span class="coin c1">₿</span><span class="coin c2">Ξ</span><span class="coin c3">$</span></div>
+                <h1>Seu dinheiro digital, guardado por você</h1>
+                <p>Uma carteira em que só você tem a chave. Receba, envie, troque e faça suas moedas renderem.</p>
+                <button type="button" id="btn-welcome-create" class="btn-primary">Criar minha carteira</button>
+                <button type="button" id="btn-welcome-import" class="btn-text">Já tenho uma carteira</button>
+            </div>
+
+            <div id="balance-card" class="balance-card">
+                <div class="balance-top">
+                    <span class="balance-label">Seu saldo</span>
+                    <button type="button" id="btn-toggle-balances" class="eye-btn" aria-pressed="false" aria-label="Esconder saldos" title="Esconder saldos">
+                        <svg class="eye-open" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                        <svg class="eye-closed" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     </button>
                 </div>
+                <div id="hero-total-brl" class="balance-amount money">R$ 0,00</div>
+                <div id="hero-total-usd" class="balance-sub money">≈ US$ 0,00</div>
+                <div id="hero-breakdown" class="balance-earning money" hidden></div>
+                <div id="hero-quote-status" class="quote-status" role="status">Buscando cotações…</div>
 
-                <div class="hero-balance-block">
-                    <div class="hero-label-row">
-                        <span class="hero-label">Patrimônio Total Consolidado</span>
-                        <button type="button" id="btn-toggle-balances" class="eye-btn" aria-pressed="false" aria-label="Esconder saldos" title="Esconder saldos">
-                            <svg class="eye-open" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-                            <svg class="eye-closed" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                        </button>
-                    </div>
-                    <h1 id="hero-total-brl" class="hero-amount money">R$ 0,00</h1>
-                    <div id="hero-total-usd" class="hero-sub money">$ 0.00 • Cotação Dólar: R$ 5,650</div>
-                    <div id="hero-breakdown" class="hero-breakdown money">
-                        Livre na Carteira: R$ 0,00  •  Rendendo em Pools: R$ 0,00
-                    </div>
-                    <div id="hero-quote-status" class="quote-status" role="status">Buscando cotações…</div>
-                </div>
-
-                <!-- 4 AÇÕES ESSENCIAIS EM 1 TOQUE -->
-                <div class="primary-actions-grid">
-                    <button type="button" id="btn-action-receive" class="action-tile receive">
-                        <span class="action-tile-ico">↓</span>
-                        <span class="action-tile-lbl">Receber</span>
+                <div class="primary-actions" role="group" aria-label="Ações principais">
+                    <button type="button" id="btn-action-receive" class="action-btn">
+                        <span class="action-ico receive"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v15"/><path d="m6 13 6 6 6-6"/></svg></span>
+                        <span>Receber</span>
                     </button>
-                    <button type="button" id="btn-action-send" class="action-tile send">
-                        <span class="action-tile-ico">↑</span>
-                        <span class="action-tile-lbl">Enviar</span>
+                    <button type="button" id="btn-action-send" class="action-btn">
+                        <span class="action-ico send"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"/><path d="m6 11 6-6 6 6"/></svg></span>
+                        <span>Enviar</span>
                     </button>
-                    <button type="button" id="btn-action-pix" class="action-tile pix">
-                        <span class="action-tile-ico">🇧🇷</span>
-                        <span class="action-tile-lbl">PIX</span>
-                    </button>
-                    <button type="button" id="btn-action-swap" class="action-tile swap">
-                        <span class="action-tile-ico">⇄</span>
-                        <span class="action-tile-lbl">Trocar</span>
+                    <button type="button" id="btn-action-swap" class="action-btn">
+                        <span class="action-ico swap"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5h13"/><path d="M17 13l3.5 3.5L17 20"/><path d="M20.5 16.5h-13"/></svg></span>
+                        <span>Trocar</span>
                     </button>
                 </div>
             </div>
 
-            <!-- LISTA DE MOEDAS MULTI-REDE -->
-            <div class="surface-card">
-                <div class="card-header-row">
-                    <div>
-                        <h2 class="card-title">Suas Moedas</h2>
-                        <p class="card-subtitle">Polygon, Ethereum, Base, Arbitrum, Optimism, Celo e Bitcoin. Toque numa moeda para ver o contrato.</p>
-                    </div>
-                    <select id="wallet-chain-filter" class="compact-select" aria-label="Filtrar por rede">
-                        <option value="ALL">Todas as Redes</option>
-                    </select>
-                </div>
+            <!-- Primeiros passos (só no começo; some quando tudo estiver feito) -->
+            <div id="getting-started" class="steps-card" hidden></div>
 
-                <div class="assets-toolbar">
-                    <label class="toggle-inline"><input type="checkbox" id="wallet-show-zero"> Mostrar moedas sem saldo</label>
-                    <button type="button" id="btn-add-token" class="mini-link-btn">+ Adicionar moeda</button>
+            <div class="section-card">
+                <div class="section-head">
+                    <h2>Suas moedas</h2>
+                    <button type="button" id="btn-add-token" class="btn-text small">+ Adicionar</button>
                 </div>
-
                 <div id="wallet-assets-list" class="assets-list">
-                    <div class="empty-state">Conecte ou crie sua carteira para visualizar seus saldos em Reais.</div>
+                    <div class="empty-state">Crie ou abra sua carteira para ver suas moedas aqui.</div>
                 </div>
+                <details class="more-fold" id="assets-options">
+                    <summary>Filtrar por rede ou ver todas as moedas</summary>
+                    <div class="fold-content">
+                        <label class="field-label" for="wallet-chain-filter">Rede (o caminho por onde a moeda viaja)</label>
+                        <select id="wallet-chain-filter" class="field-input" aria-label="Filtrar por rede">
+                            <option value="ALL">Todas as redes</option>
+                        </select>
+                        <label class="toggle-inline"><input type="checkbox" id="wallet-show-zero"> Mostrar também as moedas que eu não tenho</label>
+                    </div>
+                </details>
             </div>
         </section>
 
         <!-- =================================================================
-             TELA 2: RENDER V3 (PILOTO AUTOMÁTICO UNISWAP V3 & POSIÇÕES)
+             RENDER (Uniswap V3)
              ================================================================= -->
-        <section id="tab-panel-earn" class="tab-panel">
-            <div class="surface-card highlight-border">
-                <div class="card-header-row">
-                    <div>
-                        <h2 class="card-title">⚡ Piloto Automático Uniswap V3</h2>
-                        <p class="card-subtitle">Pool POL / USDT0 (0.05%) na Polygon • Reserva automática de 3.0 POL para gás</p>
-                    </div>
-                    <span class="help-dot"
-                          data-tip-title="Como funciona o rendimento na Uniswap V3?"
-                          data-tip-body="Você empresta seus tokens dentro de uma faixa de preço. Toda vez que alguém compra ou vende POL nessa faixa, você ganha uma fatia das tarifas."
-                          data-tip-tip="O sistema sempre deixa 3.0 POL livres na carteira para você nunca ficar sem gás.">?</span>
+        <section id="tab-panel-earn" class="tab-panel" aria-label="Render">
+            <div class="intro-card">
+                <div class="intro-head">
+                    <h1>Faça suas moedas renderem</h1>
+                    <span id="top-status-pill" class="pill-badge safe">Pronto</span>
                 </div>
-
-                <div class="earn-metrics-row">
-                    <div class="mini-stat-box">
-                        <span>Saldo Livre p/ Investir</span>
-                        <strong id="earn-free-brl" class="money">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Ganho estimado (aprox.)</span>
-                        <strong id="earn-est-rate" style="color:var(--green);">R$ 0,0000/min</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Faixa Sniper (15m)</span>
-                        <strong id="earn-range-preview">--</strong>
-                    </div>
-                </div>
-
-                <div class="input-inline-group">
-                    <input type="number" id="earn-target-brl-min" class="field-input" placeholder="Meta opcional em R$/min (ex: 0.05)" step="0.001" min="0">
-                    <button type="button" id="btn-earn-reset-sniper" class="btn-ghost">Faixa Ideal</button>
-                </div>
-
-                <button type="button" id="btn-start-autopilot" class="btn-cta-full">
-                    ⚡ Colocar Saldo Livre para Render
-                </button>
-                <div id="autopilot-feedback" class="feedback-text"></div>
+                <p>Você coloca POL e dólar digital (USDT) num fundo de trocas da Uniswap. Cada vez que alguém troca nesse fundo, você recebe uma parte da taxa. <strong>Só rende enquanto o preço estiver dentro da sua faixa.</strong></p>
+                <button type="button" class="btn-text small" data-explain="render">Como funciona e quais os riscos?</button>
             </div>
 
-            <!-- GRÁFICO DE PREÇO E FAIXAS -->
-            <div class="surface-card">
-                <div class="card-header-row">
-                    <h2 class="card-title">Preço POL / USDT & Suas Faixas</h2>
-                    <div class="chip-group">
-                        <button type="button" class="tf-chip active" data-tf="15m">15m</button>
-                        <button type="button" class="tf-chip" data-tf="1h">1H</button>
-                        <button type="button" class="tf-chip" data-tf="4h">4H</button>
+            <div class="section-card">
+                <div class="section-head stack">
+                    <h2>Preço do POL e sua faixa</h2>
+                    <div class="chip-group" role="group" aria-label="Tempo de cada vela">
+                        <button type="button" class="tf-chip active" data-tf="15m">15 min</button>
+                        <button type="button" class="tf-chip" data-tf="1h">1 h</button>
+                        <button type="button" class="tf-chip" data-tf="4h">4 h</button>
                     </div>
                 </div>
-                <div id="earn-chart-container" class="chart-box-tv"></div>
+                <div id="earn-chart-container" class="chart-box"></div>
+                <p class="chart-hint"><strong>Arraste as alças azuis</strong> para escolher sua faixa. Arraste o gráfico para ver o passado, use dois dedos para aproximar e toque para ver o preço. <button type="button" id="btn-chart-reset-view" class="btn-text small">Ver tudo</button></p>
+
+                <div class="range-editor">
+                    <div class="range-fields">
+                        <label>Mínimo (US$)<input type="text" inputmode="decimal" id="earn-range-min" class="field-input" autocomplete="off"></label>
+                        <label>Máximo (US$)<input type="text" inputmode="decimal" id="earn-range-max" class="field-input" autocomplete="off"></label>
+                    </div>
+                    <div class="chip-group" role="group" aria-label="Atalhos de largura">
+                        <button type="button" class="chip range-chip" data-range-width="3">Estreita<small>±1,5%</small></button>
+                        <button type="button" class="chip range-chip" data-range-width="8">Média<small>±4%</small></button>
+                        <button type="button" class="chip range-chip" data-range-width="20">Larga<small>±10%</small></button>
+                    </div>
+                    <p id="earn-range-mode" class="range-mode">Faixa sugerida pelo app</p>
+                    <button type="button" id="btn-earn-reset-sniper" class="btn-text small" hidden>Voltar para a faixa sugerida</button>
+                    <p class="muted-sm">Faixa estreita rende mais, mas o preço sai dela mais vezes. Faixa larga rende menos e aguenta mais oscilação.</p>
+                </div>
+
+                <div class="stat-row">
+                    <div class="stat"><span>Disponível para render</span><strong id="earn-free-brl" class="money">R$ 0,00</strong></div>
+                    <div class="stat"><span>Ganho estimado</span><strong id="earn-est-rate">R$ 0,0000/min</strong></div>
+                </div>
+                <span id="earn-range-preview" class="sr-only">--</span>
+
+                <button type="button" id="btn-start-autopilot" class="btn-primary">Começar a render</button>
+                <div id="autopilot-feedback" class="feedback-text" role="status"></div>
+                <p class="muted-sm">O app sempre deixa 3 POL na carteira para pagar as taxas da rede.</p>
+
+                <details class="more-fold">
+                    <summary>Ajustes avançados</summary>
+                    <div class="fold-content">
+                        <label class="field-label" for="earn-target-brl-min">Quanto quero ganhar por minuto (R$) — o app ajusta a faixa</label>
+                        <input type="number" id="earn-target-brl-min" class="field-input" placeholder="ex.: 0,05" step="0.001" min="0">
+                    </div>
+                </details>
             </div>
 
-            <!-- POSIÇÕES ATIVAS -->
-            <div class="surface-card">
-                <div class="card-header-row">
-                    <div>
-                        <h2 class="card-title">Suas Posições Ativas</h2>
-                        <p class="card-subtitle">Acompanhe o lucro líquido real (já descontando gás) e rebalanceie em 1 toque</p>
-                    </div>
-                </div>
+            <div class="section-card">
+                <div class="section-head"><h2>Rendendo agora</h2></div>
                 <div id="active-positions-list" class="positions-stack">
-                    <div class="empty-state">Nenhuma posição ativa na Uniswap V3 encontrada.</div>
+                    <div class="empty-state">Você ainda não está rendendo. Escolha a faixa acima e toque em “Começar a render”.</div>
                 </div>
-
-                <details class="advanced-fold">
-                    <summary>Simular faixa de estudo (Modo Offline)</summary>
+                <details class="more-fold">
+                    <summary>Testar uma faixa sem usar dinheiro</summary>
                     <div class="fold-content">
                         <div class="sim-grid">
-                            <input type="number" id="sim-min" class="field-input" placeholder="Preço Mínimo" step="0.00001">
-                            <input type="number" id="sim-max" class="field-input" placeholder="Preço Máximo" step="0.00001">
-                            <input type="text" id="sim-label" class="field-input" placeholder="Nome (ex: Teste 1)">
-                            <button type="button" id="btn-add-sim" class="btn-primary-sm">Simular</button>
+                            <input type="number" id="sim-min" class="field-input" placeholder="Preço mínimo" step="0.00001">
+                            <input type="number" id="sim-max" class="field-input" placeholder="Preço máximo" step="0.00001">
+                            <input type="text" id="sim-label" class="field-input" placeholder="Nome (ex.: Teste 1)">
+                            <button type="button" id="btn-add-sim" class="btn-soft">Testar</button>
                         </div>
                     </div>
                 </details>
@@ -248,180 +208,100 @@
         </section>
 
         <!-- =================================================================
-             TELA 3: PIX LÍQUIDO & TROCAS / PONTES MULTI-REDE
+             TROCAR
              ================================================================= -->
-        <section id="tab-panel-pixswap" class="tab-panel">
-            <div class="segmented-bar">
-                <button type="button" class="submode-btn active" data-sub="pix-buy">Comprar com PIX</button>
-                <button type="button" class="submode-btn" data-sub="pix-sell">Sacar PIX (Banco)</button>
-                <button type="button" class="submode-btn" data-sub="dex-swap">Trocar / Ponte</button>
-            </div>
+        <section id="tab-panel-pixswap" class="tab-panel" aria-label="Trocar">
+            <div id="subpanel-dex-swap" class="section-card subpanel active">
+                <div class="section-head"><h1>Trocar moedas</h1></div>
+                <p class="muted-sm">Troque uma moeda por outra, ou leve para outra rede. Você vê quanto vai receber antes de confirmar.</p>
 
-            <!-- SUB-TELA A: COMPRAR CRIPTO COM PIX -->
-            <div id="subpanel-pix-buy" class="surface-card subpanel active">
-                <h2 class="card-title">🇧🇷 Comprar Cripto via PIX (Direto na Carteira)</h2>
-                <p class="card-subtitle">Informe quanto vai pagar em Reais e veja quanto cai líquido na sua autocustódia.</p>
-
-                <div class="two-col-inputs">
-                    <div class="field-group">
-                        <label for="pix-buy-brl">Valor em Reais (R$)</label>
-                        <input type="number" id="pix-buy-brl" class="field-input" value="200" min="10" step="10">
-                    </div>
-                    <div class="field-group">
-                        <label for="pix-buy-token">Moeda desejada</label>
-                        <select id="pix-buy-token" class="field-input">
-                            <option value="USDT">USDT (Dólar)</option>
-                            <option value="POL">POL (Polygon)</option>
-                            <option value="BRZ">BRZ (Real Digital)</option>
-                            <option value="BRLA">BRLA (Real Digital)</option>
-                            <option value="USDC">USDC (Dólar)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div id="pix-buy-routes" class="routes-stack"></div>
-                <p class="estimate-note">Valores estimados com as taxas de referência de cada provedor, não uma cotação ao vivo. O RDESK não tem vínculo com eles: confira a taxa final e a reputação do provedor antes de enviar dinheiro.</p>
-            </div>
-
-            <!-- SUB-TELA B: SACAR CRIPTO PARA PIX BANCÁRIO -->
-            <div id="subpanel-pix-sell" class="surface-card subpanel" style="display:none;">
-                <div class="card-header-row">
-                    <div>
-                        <h2 class="card-title">💸 Sacar para Conta Bancária via PIX</h2>
-                        <p class="card-subtitle">Ranking ordenado do maior valor líquido em R$ (descontando taxas e spread).</p>
-                    </div>
-                    <button type="button" id="btn-toggle-nokyc" class="btn-ghost">Filtro: Todas</button>
-                </div>
-
-                <div class="two-col-inputs">
-                    <div class="field-group">
-                        <label for="pix-sell-token">Moeda a sacar</label>
-                        <select id="pix-sell-token" class="field-input">
-                            <option value="USDT">USDT</option>
-                            <option value="POL">POL</option>
-                            <option value="WPOL">WPOL</option>
-                            <option value="BRZ">BRZ</option>
-                            <option value="BRLA">BRLA</option>
-                        </select>
-                    </div>
-                    <div class="field-group">
-                        <label for="pix-sell-amount">Quantidade</label>
-                        <input type="number" id="pix-sell-amount" class="field-input" value="50" min="0.01" step="0.01">
-                    </div>
-                </div>
-
-                <div id="pix-sell-routes" class="routes-stack"></div>
-                <p class="estimate-note">Valores estimados com as taxas de referência de cada provedor, não uma cotação ao vivo. O RDESK não tem vínculo com eles: confira a taxa final e a reputação do provedor antes de enviar dinheiro.</p>
-            </div>
-
-            <!-- SUB-TELA C: TROCAR (SWAP DEX) OU ENVIAR ENTRE REDES (BRIDGE) -->
-            <div id="subpanel-dex-swap" class="surface-card subpanel" style="display:none;">
-                <h2 class="card-title">⇄ Trocar Moedas ou Mudar de Rede</h2>
-                <p class="card-subtitle">Mesma rede usa Uniswap V3 direto; redes diferentes usam roteador cross-chain LI.FI.</p>
-
-                <div class="swap-box-clean">
+                <div class="swap-box">
                     <div class="swap-row-head">
-                        <span>Você envia</span>
-                        <span>Disponível: <strong id="swap-from-bal" class="money">0.00</strong> <button type="button" id="btn-swap-max" class="mini-link-btn">Máx</button></span>
+                        <span>Você dá</span>
+                        <span>Tem: <strong id="swap-from-bal" class="money">0.00</strong> <button type="button" id="btn-swap-max" class="btn-text small">Tudo</button></span>
                     </div>
-                    <div class="two-col-inputs">
-                        <select id="swap-from-chain" class="field-input"></select>
-                        <select id="swap-from-token" class="field-input"></select>
+                    <div class="swap-main">
+                        <input type="number" id="swap-amount-in" class="swap-amount" value="25" min="0" step="0.01" placeholder="0" inputmode="decimal" aria-label="Quantidade que você dá">
+                        <select id="swap-from-token" class="token-select" aria-label="Moeda que você dá"></select>
                     </div>
-                    <input type="number" id="swap-amount-in" class="field-input big-num" value="25" min="0" step="0.01" placeholder="0.00">
+                    <label class="swap-net">Rede <select id="swap-from-chain" class="net-select" aria-label="Rede da moeda que você dá"></select></label>
                 </div>
 
                 <div class="swap-divider">
-                    <button type="button" id="btn-swap-flip" class="circle-flip-btn" title="Inverter moedas">⇅</button>
+                    <button type="button" id="btn-swap-flip" class="circle-flip-btn" aria-label="Inverter: dar o que ia receber">⇅</button>
                 </div>
 
-                <div class="swap-box-clean">
+                <div class="swap-box">
                     <div class="swap-row-head">
-                        <span>Você recebe (estimado)</span>
+                        <span>Você recebe (aprox.)</span>
                         <span id="swap-quote-info">Cotação em tempo real</span>
                     </div>
-                    <div class="two-col-inputs">
-                        <select id="swap-to-chain" class="field-input"></select>
-                        <select id="swap-to-token" class="field-input"></select>
+                    <div class="swap-main">
+                        <input type="text" id="swap-amount-out" class="swap-amount" readonly value="0.00" aria-label="Quantidade que você recebe">
+                        <select id="swap-to-token" class="token-select" aria-label="Moeda que você recebe"></select>
                     </div>
-                    <input type="text" id="swap-amount-out" class="field-input big-num" readonly value="0.00">
+                    <label class="swap-net">Rede <select id="swap-to-chain" class="net-select" aria-label="Rede da moeda que você recebe"></select></label>
                 </div>
 
-                <div id="swap-contracts" class="swap-contracts"></div>
+                <details class="more-fold">
+                    <summary>Conferir os contratos das moedas</summary>
+                    <div id="swap-contracts" class="swap-contracts fold-content"></div>
+                </details>
 
-                <button type="button" id="btn-execute-swap" class="btn-cta-full">Revisar Troca em Reais (R$)</button>
-                <div id="swap-feedback" class="feedback-text"></div>
+                <button type="button" id="btn-execute-swap" class="btn-primary">Revisar troca</button>
+                <div id="swap-feedback" class="feedback-text" role="status"></div>
             </div>
         </section>
 
         <!-- =================================================================
-             TELA 4: AUDITORIA DE LUCRO REAL (DESDE A 1ª TRANSAÇÃO)
+             RESULTADOS
              ================================================================= -->
-        <section id="tab-panel-audit" class="tab-panel">
-            <div class="surface-card">
-                <div class="card-header-row">
-                    <div>
-                        <h2 class="card-title">📊 Auditoria Contábil desde a 1ª Transação</h2>
-                        <p id="audit-status-text" class="card-subtitle">Separa aportes e saques reais de movimentações internas em pools.</p>
-                    </div>
-                    <div class="chip-group">
-                        <span id="audit-trend-pill" class="pill-badge">Aguardando</span>
-                        <button type="button" id="btn-audit-currency" class="btn-ghost">BRL / USD</button>
-                        <button type="button" id="btn-audit-refresh" class="btn-ghost">Atualizar</button>
-                    </div>
+        <section id="tab-panel-audit" class="tab-panel" aria-label="Resultados">
+            <div class="section-card">
+                <div class="section-head">
+                    <h1>Quanto você ganhou</h1>
+                    <span id="audit-trend-pill" class="pill-badge">Aguardando</span>
                 </div>
+                <p id="audit-status-text" class="muted-sm">Separa o dinheiro que entrou e saiu da carteira das movimentações internas (trocas e render).</p>
 
                 <div id="audit-progress-wrap" class="progress-line-wrap" style="display:none;">
                     <div id="audit-progress-bar" class="progress-line-fill"></div>
                 </div>
 
-                <div class="audit-kpis-grid">
-                    <div class="mini-stat-box">
-                        <span>Total Aportado (Entradas)</span>
-                        <strong id="audit-kpi-in" class="money">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Total Sacado (Saídas)</span>
-                        <strong id="audit-kpi-out" class="money">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box">
-                        <span>Patrimônio Atual</span>
-                        <strong id="audit-kpi-equity" class="money">R$ 0,00</strong>
-                    </div>
-                    <div class="mini-stat-box highlight">
-                        <span>Lucro / Prejuízo Líquido</span>
-                        <strong id="audit-kpi-pnl" class="money">R$ 0,00</strong>
-                    </div>
+                <div class="result-hero">
+                    <span>Lucro ou prejuízo</span>
+                    <strong id="audit-kpi-pnl" class="money">R$ 0,00</strong>
+                </div>
+                <div class="stat-row three">
+                    <div class="stat"><span>Entrou</span><strong id="audit-kpi-in" class="money">R$ 0,00</strong></div>
+                    <div class="stat"><span>Saiu</span><strong id="audit-kpi-out" class="money">R$ 0,00</strong></div>
+                    <div class="stat"><span>Tem hoje</span><strong id="audit-kpi-equity" class="money">R$ 0,00</strong></div>
                 </div>
 
                 <div class="chart-box-audit">
                     <canvas id="audit-chart-canvas"></canvas>
                 </div>
 
-                <div class="card-header-row">
+                <div class="section-head wrap">
                     <div class="chip-group">
-                        <button type="button" class="audit-filter-btn active" data-afilter="ALL">Todas</button>
-                        <button type="button" class="audit-filter-btn" data-afilter="EXTERNAL">Aportes & Saques</button>
-                        <button type="button" class="audit-filter-btn" data-afilter="DEFI">Pools & Swaps</button>
+                        <button type="button" class="audit-filter-btn chip active" data-afilter="ALL">Tudo</button>
+                        <button type="button" class="audit-filter-btn chip" data-afilter="EXTERNAL">Entradas e saídas</button>
+                        <button type="button" class="audit-filter-btn chip" data-afilter="DEFI">Trocas e render</button>
                     </div>
-                    <button type="button" id="btn-export-audit-csv" class="btn-ghost">Exportar CSV</button>
+                    <div class="chip-group">
+                        <button type="button" id="btn-audit-currency" class="chip">R$ / US$</button>
+                        <button type="button" id="btn-audit-refresh" class="chip">Atualizar</button>
+                        <button type="button" id="btn-export-audit-csv" class="chip">Baixar planilha</button>
+                    </div>
                 </div>
 
                 <div class="table-scroll">
                     <table class="clean-table">
                         <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Classificação</th>
-                                <th>Movimento</th>
-                                <th>Valor na Data</th>
-                                <th>Ajustar</th>
-                            </tr>
+                            <tr><th>Data</th><th>Tipo</th><th>Movimento</th><th>Valor na data</th><th>Ajustar</th></tr>
                         </thead>
                         <tbody id="audit-events-tbody">
-                            <tr>
-                                <td colspan="5" class="empty-cell">Conecte ou cole uma carteira para auditar desde o primeiro dia.</td>
-                            </tr>
+                            <tr><td colspan="5" class="empty-cell">Abra uma carteira para ver o histórico desde o primeiro dia.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -429,224 +309,13 @@
         </section>
     </main>
 
-    <!-- =====================================================================
-         MODAL 1: CARTEIRA, BIOMETRIA (WEBAUTHN), COFRE BIP-39 & RABBY WALLET
-         ===================================================================== -->
-    <div id="modal-wallet" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>🔐 Carteira & Autocustódia</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-wallet">✕</button>
-            </div>
-
-            <div class="modal-tabs">
-                <button type="button" class="wtab-btn active" data-wtab="unlock">Cofre / Biometria</button>
-                <button type="button" class="wtab-btn" data-wtab="create">Criar Nova</button>
-                <button type="button" class="wtab-btn" data-wtab="import">Importar Seed</button>
-                <button type="button" class="wtab-btn" data-wtab="external">Rabby / Observar</button>
-            </div>
-
-            <!-- ABA MODAL 1: DESBLOQUEAR & CONFIGURAR BIOMETRIA -->
-            <div id="wpane-unlock" class="wpane active">
-                <div id="bio-setup-card" class="bio-card">
-                    <div>
-                        <strong>👆 Acesso Rápido por Biometria / Windows Hello</strong>
-                        <p class="muted-sm">Desbloqueie sua carteira com impressão digital, rosto ou PIN do aparelho sem digitar senha toda hora.</p>
-                    </div>
-                    <div class="two-col-inputs">
-                        <button type="button" id="btn-unlock-with-bio" class="btn-primary-sm">Desbloquear c/ Biometria</button>
-                        <button type="button" id="btn-enable-biometrics" class="btn-ghost">Ativar Biometria</button>
-                    </div>
-                </div>
-
-                <div class="field-group">
-                    <label for="unlock-password-input">Senha / PIN do Cofre Local</label>
-                    <div class="input-inline-group">
-                        <input type="password" id="unlock-password-input" class="field-input" placeholder="Digite sua senha">
-                        <button type="button" id="btn-unlock-with-pass" class="btn-primary-sm">Desbloquear</button>
-                    </div>
-                </div>
-                <div id="unlock-error-msg" class="error-text"></div>
-
-                <details class="advanced-fold">
-                    <summary>Ver palavras de recuperação (Backup)</summary>
-                    <div class="fold-content">
-                        <div class="input-inline-group">
-                            <input type="password" id="reveal-pass-input" class="field-input" placeholder="Confirme sua senha">
-                            <button type="button" id="btn-reveal-backup-words" class="btn-ghost">Mostrar</button>
-                        </div>
-                        <div id="revealed-words-output" class="seed-reveal-box" style="display:none;"></div>
-                    </div>
-                </details>
-            </div>
-
-            <!-- ABA MODAL 2: CRIAR CARTEIRA (12 OU 24 PALAVRAS) -->
-            <div id="wpane-create" class="wpane" style="display:none;">
-                <div class="input-inline-group">
-                    <select id="create-words-count" class="field-input">
-                        <option value="12">12 Palavras (Padrão)</option>
-                        <option value="24">24 Palavras (Segurança Máxima)</option>
-                    </select>
-                    <button type="button" id="btn-new-mnemonic" class="btn-ghost">Gerar Outra</button>
-                </div>
-
-                <p class="muted-sm">Anote estas palavras na ordem exata. Elas nunca saem do seu celular/PC e funcionam também na Rabby e MetaMask.</p>
-                <div id="create-words-grid" class="words-grid"></div>
-
-                <button type="button" id="btn-copy-mnemonic" class="btn-ghost" style="width:100%;">📋 Copiar Palavras (Auto-limpa em 45s)</button>
-
-                <div id="verify-challenges-box" class="challenge-stack"></div>
-
-                <div class="two-col-inputs">
-                    <input type="password" id="create-password-input" class="field-input" placeholder="Senha ou PIN (mín. 6 dígitos)">
-                    <input type="password" id="create-password-confirm" class="field-input" placeholder="Repita a Senha / PIN">
-                </div>
-
-                <label class="check-row">
-                    <input type="checkbox" id="create-enable-bio-check" checked>
-                    <span>Ativar desbloqueio rápido por Biometria / Windows Hello após criar</span>
-                </label>
-
-                <div id="create-error-msg" class="error-text"></div>
-                <button type="button" id="btn-confirm-create-vault" class="btn-cta-full">Criar e Ativar Minha Carteira</button>
-            </div>
-
-            <!-- ABA MODAL 3: IMPORTAR FRASE DE 12 OU 24 PALAVRAS -->
-            <div id="wpane-import" class="wpane" style="display:none;">
-                <div class="field-group">
-                    <label for="import-mnemonic-input">Frase de Recuperação (12 ou 24 palavras)</label>
-                    <textarea id="import-mnemonic-input" class="field-input" rows="3" placeholder="palavra1 palavra2 palavra3 ..."></textarea>
-                </div>
-                <div class="field-group">
-                    <label for="import-password-input">Crie uma Senha ou PIN local</label>
-                    <input type="password" id="import-password-input" class="field-input" placeholder="Mínimo 6 caracteres">
-                </div>
-                <label class="check-row">
-                    <input type="checkbox" id="import-enable-bio-check" checked>
-                    <span>Ativar Biometria / Windows Hello neste aparelho</span>
-                </label>
-                <div id="import-error-msg" class="error-text"></div>
-                <button type="button" id="btn-confirm-import-vault" class="btn-cta-full">Importar Carteira</button>
-            </div>
-
-            <!-- ABA MODAL 4: RABBY WALLET (DESKTOP & MOBILE) + MODO OBSERVAR -->
-            <div id="wpane-external" class="wpane" style="display:none;">
-                <div class="info-callout">
-                    <strong>🦊 Conectar com Rabby Wallet</strong>
-                    <p class="muted-sm">No computador, conecta direto pela extensão. No celular Android, copie o link abaixo e abra na aba <b>DApps / Navegador</b> dentro do próprio app Rabby (sem abrir a Play Store).</p>
-                    <div id="detected-wallets-list" class="routes-stack"></div>
-                    <div class="two-col-inputs" style="margin-top:8px;">
-                        <button type="button" id="btn-connect-rabby-desktop" class="btn-primary-sm">Conectar Extensão</button>
-                        <button type="button" id="btn-copy-rabby-mobile-url" class="btn-ghost">📋 Copiar Link p/ Rabby Mobile</button>
-                    </div>
-                </div>
-
-                <div class="field-group">
-                    <label for="watch-address-input">Apenas Observar Endereço Público (0x...)</label>
-                    <div class="input-inline-group">
-                        <input type="text" id="watch-address-input" class="field-input" placeholder="Cole qualquer endereço 0x...">
-                        <button type="button" id="btn-activate-watch-only" class="btn-ghost">Observar</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================================
-         MODAL 2: RECEBER MOEDAS (QR CODE & ENDEREÇO ÚNICO EVM)
-         ===================================================================== -->
-    <div id="modal-receive" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>↓ Receber Criptomoedas</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-receive">✕</button>
-            </div>
-
-            <div class="field-group">
-                <label for="receive-chain-select">Rede de Recebimento</label>
-                <select id="receive-chain-select" class="field-input">
-                    <option value="137">Polygon (POL, USDT0, BRZ, BRLA, USDC)</option>
-                    <option value="42161">Arbitrum One (ETH, USDT, USDC, WBTC)</option>
-                    <option value="8453">Base (ETH, USDC)</option>
-                    <option value="10">Optimism (ETH, USDT, USDC)</option>
-                    <option value="1">Ethereum Mainnet (ETH, USDT, USDC, WBTC)</option>
-                </select>
-            </div>
-
-            <div class="qr-wrapper">
-                <div id="receive-qrcode"></div>
-            </div>
-
-            <div id="receive-full-address" class="address-display-box">Conecte ou crie uma carteira primeiro</div>
-
-            <div class="two-col-inputs">
-                <button type="button" id="btn-copy-receive" class="btn-cta-full">📋 Copiar Endereço</button>
-                <button type="button" id="btn-share-receive" class="btn-ghost">Compartilhar</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================================
-         MODAL 3: ENVIAR MOEDAS (FLUXO SIMPLES EM 3 PASSOS)
-         ===================================================================== -->
-    <div id="modal-send" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
-        <div class="modal-sheet">
-            <div class="modal-top">
-                <h3>↑ Enviar Criptomoedas</h3>
-                <button type="button" class="btn-close-modal" data-close-modal="modal-send">✕</button>
-            </div>
-
-            <div class="two-col-inputs">
-                <div class="field-group">
-                    <label for="send-chain-select">Rede</label>
-                    <select id="send-chain-select" class="field-input">
-                        <option value="137">Polygon</option>
-                        <option value="42161">Arbitrum</option>
-                        <option value="8453">Base</option>
-                        <option value="10">Optimism</option>
-                        <option value="1">Ethereum</option>
-                    </select>
-                </div>
-                <div class="field-group">
-                    <label for="send-token-select">Moeda</label>
-                    <select id="send-token-select" class="field-input">
-                        <option value="USDT">USDT</option>
-                        <option value="POL">POL</option>
-                        <option value="BRZ">BRZ</option>
-                        <option value="BRLA">BRLA</option>
-                        <option value="USDC">USDC</option>
-                        <option value="WPOL">WPOL</option>
-                        <option value="ETH">ETH</option>
-                        <option value="WBTC">WBTC</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="field-group">
-                <div class="swap-row-head">
-                    <label for="send-recipient-input">Para quem (Endereço 0x...)</label>
-                    <button type="button" id="btn-paste-recipient" class="mini-link-btn">Colar</button>
-                </div>
-                <input type="text" id="send-recipient-input" class="field-input" placeholder="0x...">
-            </div>
-
-            <div class="field-group">
-                <div class="swap-row-head">
-                    <label for="send-amount-input">Quantidade (<span id="send-available-text">Saldo: 0.00</span>)</label>
-                    <div class="chip-group">
-                        <button type="button" class="mini-link-btn" data-pct="0.25">25%</button>
-                        <button type="button" class="mini-link-btn" data-pct="0.5">50%</button>
-                        <button type="button" class="mini-link-btn" data-pct="1">Máx</button>
-                    </div>
-                </div>
-                <input type="number" id="send-amount-input" class="field-input big-num" placeholder="0.00" step="0.0001" min="0">
-                <span id="send-brl-preview" class="muted-sm">Equivalente: R$ 0,00</span>
-            </div>
-
-            <button type="button" id="btn-review-send" class="btn-cta-full">Revisar Envio em Reais (R$)</button>
-            <div id="send-status-msg" class="feedback-text"></div>
-        </div>
-    </div>
+    <!-- Navegação na parte de baixo (onde o polegar alcança) -->
+    <nav class="main-nav" aria-label="Navegação principal">
+        <button type="button" class="nav-tab-btn active" data-tab="wallet" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg><span>Início</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="pixswap" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5h13"/><path d="M17 13l3.5 3.5L17 20"/><path d="M20.5 16.5h-13"/></svg><span>Trocar</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="earn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4.5-4.5 3.5 3.5L19.5 7"/><path d="M15 7h4.5v4.5"/></svg><span>Render</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="audit" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg><span>Resultados</span></button>
+    </nav>
 
     <!-- =====================================================================
          MODAL 4: RECIBO HUMANO PRÉ-ASSINATURA EM REAIS (R$)
@@ -673,36 +342,39 @@
                     </div>
                 </div>
                 <div class="rcp-line">
-                    <span>Rota / Contrato</span>
+                    <span>Caminho</span>
                     <strong id="rcp-route">--</strong>
                 </div>
                 <div class="rcp-line">
-                    <span>Taxa do Aplicativo</span>
+                    <span>Taxa do app</span>
                     <strong id="rcp-fee" style="color:var(--green);">R$ 0,00</strong>
                 </div>
                 <div class="rcp-line">
-                    <span>Gás da Rede</span>
+                    <span>Taxa da rede</span>
                     <strong id="rcp-gas">--</strong>
                 </div>
                 <div class="rcp-line">
-                    <span>Proteção de Reserva</span>
+                    <span>Proteção</span>
                     <strong id="rcp-shield" style="color:var(--accent);">3.0 POL protegidos</strong>
                 </div>
             </div>
 
             <div class="two-col-inputs">
                 <button type="button" id="btn-rcp-cancel" class="btn-ghost">Cancelar</button>
-                <button type="button" id="btn-rcp-confirm" class="btn-cta-full">Confirmar e Assinar</button>
+                <button type="button" id="btn-rcp-confirm" class="btn-cta-full">Confirmar</button>
             </div>
         </div>
     </div>
 
-    <!-- BALÃO EDUCATIVO MICRO-MENTOR -->
+
+    <!-- Balão de ajuda -->
     <div id="micro-mentor-popover" class="mentor-popover" role="tooltip">
         <strong id="mm-head"></strong>
         <p id="mm-body"></p>
         <small id="mm-tip"></small>
     </div>
 
+    <!-- Camada do tutorial, menu e explicações (montada pelo onboarding.js) -->
+    <div id="ob-root"></div>
 </body>
 </html>

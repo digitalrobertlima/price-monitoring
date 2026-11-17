@@ -94,7 +94,9 @@ try {
     await page.locator('[data-select-acc]').first().click();
     await page.waitForTimeout(500);
     check('tocar numa carteira troca a conta ativa', (await page.evaluate(() => window.RdeskWallet.getAddress())) === created.address);
-    check('cabeçalho mostra a carteira ativa', (await page.innerText('#btn-wallet-trigger')).includes(created.address.slice(0, 6)), await page.innerText('#btn-wallet-trigger'));
+    const activeName = await page.evaluate((a) => window.RdeskWallet.getAccounts().find((x) => x.address === a)?.name, created.address);
+    const headerText = await page.innerText('#btn-wallet-trigger');
+    check('cabeçalho mostra o nome da carteira ativa, sem o endereço técnico', headerText.includes(activeName) && !/0x[0-9a-f]{4}/i.test(headerText), headerText);
 
     // ================================================================ 3. Ver a frase exige a senha de novo
     if (!(await page.locator('[data-detail-acc]').count())) await page.click('#btn-wallet-trigger');
