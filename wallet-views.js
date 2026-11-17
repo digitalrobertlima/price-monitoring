@@ -96,6 +96,14 @@
                 <code class="receive-address" id="rmw-rec-address">${esc(address)}</code>
                 <button class="rmw-btn-primary" id="rmw-rec-copy">📋 Copiar endereço</button>
             </div>
+            <div class="rec-ask">
+                <label class="rmw-label" for="rmw-rec-brl">Quer pedir um valor? Digite em reais</label>
+                <div class="brl-field"><span>R$</span><input type="text" inputmode="decimal" class="rmw-input" id="rmw-rec-brl" placeholder="0,00" autocomplete="off"></div>
+                <select class="rmw-select" id="rmw-rec-coin" aria-label="Moeda que você quer receber">
+                    ${tokensFor(chainId).map((t) => `<option value="${esc(t.symbol)}">${esc(t.symbol)}</option>`).join('')}
+                </select>
+                <div class="rec-ask-out" id="rmw-rec-ask"></div>
+            </div>
             <div class="rmw-alert-warn" id="rmw-rec-warning">
                 ${isBtc
                     ? 'Envie <strong>somente Bitcoin pela rede Bitcoin (on-chain)</strong>. Este endereço não recebe por Lightning nem por outras redes.'
@@ -124,6 +132,23 @@
                 await ctx.copy(address);
                 sheet.querySelector('#rmw-rec-copy').textContent = '✓ Endereço copiado';
             };
+            // Pedir um valor em reais: mostra quanto da moeda pedir (no Bitcoin, o valor vai junto no QR)
+            const askOut = sheet.querySelector('#rmw-rec-ask');
+            let lastAsk = '';
+            const updateAsk = () => {
+                const brl = REG.parseBRL(sheet.querySelector('#rmw-rec-brl').value);
+                const t = tokensFor(chainId).find((x) => x.symbol === sheet.querySelector('#rmw-rec-coin').value) || tokensFor(chainId)[0];
+                const unit = W().unitUsdFor(t.priceKey, chainId, t.address);
+                const coin = REG.coinFromBrl(brl, unit, ctx.prices().usdBrl, t.decimals);
+                const qrText = isBtc && coin ? `bitcoin:${address}?amount=${coin}` : address;
+                if (qrText !== lastAsk) { lastAsk = qrText; ctx.drawQr(sheet.querySelector('#rmw-rec-qr'), qrText, 190); }
+                if (!brl) { askOut.textContent = ''; return; }
+                if (!coin) { askOut.textContent = 'Sem cotação agora para converter.'; return; }
+                askOut.innerHTML = `Peça para enviarem <strong>${esc(coin.replace('.', ','))} ${esc(t.symbol)}</strong> (≈ ${esc(ctx.formatBRL(brl))}) pela rede ${esc(chain.name)}.${isBtc ? ' O valor já vai junto no QR Code.' : ''} <button type="button" class="btn-text small" id="rmw-rec-copyask">Copiar pedido</button>`;
+                sheet.querySelector('#rmw-rec-copyask').onclick = () => ctx.copy(`Me envie ${coin.replace('.', ',')} ${t.symbol} (≈ ${ctx.formatBRL(brl)}) pela rede ${chain.name} para:\n${address}`);
+            };
+            sheet.querySelector('#rmw-rec-brl').addEventListener('input', updateAsk);
+            sheet.querySelector('#rmw-rec-coin').addEventListener('change', updateAsk);
         }
         bindCopyButtons(sheet, ctx);
     }
@@ -241,7 +266,9 @@
                 <button type="button" class="rmw-icon-btn" id="rmw-snd-scan" title="Ler QR Code" aria-label="Ler QR Code">📷</button>
             </div>
 
-            <label class="rmw-label" for="rmw-snd-amt">Quantidade</label>
+            <label class="rmw-label" for="rmw-snd-brl">Valor em reais</label>
+            <div class="brl-field"><span>R$</span><input type="text" inputmode="decimal" class="rmw-input" id="rmw-snd-brl" placeholder="0,00" autocomplete="off"></div>
+            <label class="rmw-label" for="rmw-snd-amt">ou quantidade em ${esc(token.symbol)}</label>
             <div class="input-with-actions">
                 <input type="text" inputmode="decimal" class="rmw-input" id="rmw-snd-amt" placeholder="0,00" autocomplete="off" value="${esc(prefill.amount)}">
                 <button type="button" class="rmw-btn-secondary send-max-btn" id="rmw-snd-max">Máx</button>
@@ -271,12 +298,21 @@
         $('#rmw-snd-token').onchange = () => ctx.navigate('send', { ...keep(), symbol: $('#rmw-snd-token').value });
         bindCopyButtons(sheet, ctx);
 
+        // Reais <-> moeda: digita em qualquer um dos dois e o outro acompanha
+        const unitNow = () => W().unitUsdFor(token.priceKey, chainId, token.address);
         const updateFiat = () => {
             const amt = parseAmount();
-            const unit = W().unitUsdFor(token.priceKey, chainId, token.address);
-            $('#rmw-snd-fiat').textContent = amt && unit > 0 ? `≈ ${ctx.formatBRL(Number(amt) * unit * ctx.prices().usdBrl)}` : '';
+            const unit = unitNow();
+            const brl = amt && unit > 0 ? Number(amt) * unit * ctx.prices().usdBrl : 0;
+            if (document.activeElement !== $('#rmw-snd-brl')) $('#rmw-snd-brl').value = brl > 0 ? brl.toFixed(2).replace('.', ',') : '';
+            $('#rmw-snd-fiat').textContent = unit > 0 ? `1 ${token.symbol} ≈ ${ctx.formatBRL(unit * ctx.prices().usdBrl)}` : 'Sem cotação agora: digite a quantidade da moeda.';
         };
         $('#rmw-snd-amt').addEventListener('input', updateFiat);
+        $('#rmw-snd-brl').addEventListener('input', () => {
+            const coin = REG.coinFromBrl(REG.parseBRL($('#rmw-snd-brl').value), unitNow(), ctx.prices().usdBrl, token.decimals);
+            $('#rmw-snd-amt').value = coin ? coin.replace('.', ',') : '';
+        });
+        $('#rmw-snd-brl').addEventListener('blur', updateFiat);
         updateFiat();
 
         $('#rmw-snd-paste').onclick = async () => {
