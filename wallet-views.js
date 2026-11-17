@@ -86,7 +86,8 @@
 
         sheet.innerHTML = `
             ${header('↓ Receber')}
-            <div class="view-hint">Escolha a rede por onde vão te enviar:</div>
+            <button type="button" class="pix-cta" id="rmw-rec-pix"><span>💸</span><span><strong>Receber em reais por Pix</strong><small>Cai direto no seu banco, só com a sua chave</small></span></button>
+            <div class="view-hint">Ou receba moedas digitais. Escolha a rede por onde vão te enviar:</div>
             ${chipsHtml(networks, chainId)}
             ${address ? `
             <div class="receive-box">
@@ -115,6 +116,7 @@
             </div>`;
 
         sheet.querySelector('#rmw-close-btn').onclick = ctx.close;
+        sheet.querySelector('#rmw-rec-pix').onclick = () => ctx.navigate('pix');
         sheet.querySelectorAll('[data-net]').forEach((b) => { b.onclick = () => ctx.navigate('receive', { chainId: b.getAttribute('data-net') }); });
         if (address) {
             ctx.drawQr(sheet.querySelector('#rmw-rec-qr'), address, 190);
@@ -124,6 +126,82 @@
             };
         }
         bindCopyButtons(sheet, ctx);
+    }
+
+    // =====================================================================
+    // RECEBER EM REAIS POR PIX (QR Code estático, sem cadastro nem API)
+    // =====================================================================
+    const PIX_KEY = 'rdesk_pix_v1';
+    const loadPix = () => { try { return JSON.parse(localStorage.getItem(PIX_KEY) || 'null'); } catch (e) { return null; } };
+    function renderPix(sheet, ctx) {
+        const P = global.RdeskPix;
+        const saved = loadPix() || {};
+        const sel = (v) => (saved.type || 'doc') === v ? ' selected' : '';
+        sheet.innerHTML = `
+            ${header('💸 Receber por Pix')}
+            <div class="view-hint">O dinheiro cai <strong>direto na sua conta do banco</strong>, como qualquer Pix. Não precisa de cadastro: é só a sua chave.</div>
+            <label class="rmw-label" for="rmw-pix-type">Tipo da chave</label>
+            <select class="rmw-select" id="rmw-pix-type">
+                <option value="doc"${sel('doc')}>CPF ou CNPJ</option>
+                <option value="phone"${sel('phone')}>Celular</option>
+                <option value="email"${sel('email')}>E-mail</option>
+                <option value="random"${sel('random')}>Chave aleatória</option>
+            </select>
+            <label class="rmw-label" for="rmw-pix-key">Sua chave Pix</label>
+            <input class="rmw-input" id="rmw-pix-key" autocomplete="off" value="${esc(saved.raw || '')}" placeholder="Ex.: 000.000.000-00">
+            <label class="rmw-label" for="rmw-pix-name">Seu nome (aparece para quem paga)</label>
+            <input class="rmw-input" id="rmw-pix-name" maxlength="25" value="${esc(saved.name || '')}" placeholder="Ex.: Maria Silva">
+            <label class="rmw-label" for="rmw-pix-city">Cidade</label>
+            <input class="rmw-input" id="rmw-pix-city" maxlength="15" value="${esc(saved.city || '')}" placeholder="Ex.: Belo Horizonte">
+            <label class="rmw-label" for="rmw-pix-amt">Valor (opcional)</label>
+            <input class="rmw-input" id="rmw-pix-amt" inputmode="decimal" placeholder="Deixe vazio para quem paga digitar">
+            <label class="rmw-label" for="rmw-pix-desc">Descrição (opcional)</label>
+            <input class="rmw-input" id="rmw-pix-desc" maxlength="40" placeholder="Ex.: pastel e caldo de cana">
+            <label class="toggle-inline"><input type="checkbox" id="rmw-pix-save" ${saved.raw ? 'checked' : ''}> Lembrar minha chave neste aparelho</label>
+            <div id="rmw-pix-msg"></div>
+            <button class="rmw-btn-primary" id="rmw-pix-go">Gerar QR Code do Pix</button>
+            <div id="rmw-pix-out" style="display:none">
+                <div class="receive-box">
+                    <div class="receive-qr"><div id="rmw-pix-qr"></div></div>
+                    <div class="receive-net" id="rmw-pix-summary"></div>
+                    <code class="receive-address" id="rmw-pix-code"></code>
+                    <button class="rmw-btn-primary" id="rmw-pix-copy">📋 Copiar Pix Copia e Cola</button>
+                </div>
+                <div class="rmw-alert-warn">O app <strong>não fica sabendo</strong> se o Pix foi pago. Confira sempre no app do seu banco antes de entregar o produto.</div>
+            </div>
+            ${saved.raw ? '<button class="btn-text small" id="rmw-pix-forget">Esquecer minha chave deste aparelho</button>' : ''}`;
+        sheet.querySelector('#rmw-close-btn').onclick = ctx.close;
+        const $ = (s) => sheet.querySelector(s);
+        const placeholders = { doc: 'Ex.: 000.000.000-00', phone: 'Ex.: (31) 99999-9999', email: 'Ex.: voce@email.com', random: 'Cole a chave do app do banco' };
+        $('#rmw-pix-type').onchange = () => { $('#rmw-pix-key').placeholder = placeholders[$('#rmw-pix-type').value]; };
+        $('#rmw-pix-type').onchange();
+        const msg = (text) => { $('#rmw-pix-msg').innerHTML = text ? `<div class="rmw-alert-err">${esc(text)}</div>` : ''; };
+        $('#rmw-pix-go').onclick = () => {
+            msg('');
+            try {
+                const type = $('#rmw-pix-type').value;
+                const raw = $('#rmw-pix-key').value.trim();
+                const key = P.normalizeKey(type, raw);
+                const name = $('#rmw-pix-name').value.trim();
+                if (!name) throw new Error('Digite seu nome.');
+                const city = $('#rmw-pix-city').value.trim();
+                const amtTxt = $('#rmw-pix-amt').value.trim().replace(/\./g, '').replace(',', '.');
+                const amount = amtTxt ? Number(amtTxt) : undefined;
+                const code = P.buildPayload({ key, name, city, amount, description: $('#rmw-pix-desc').value.trim() });
+                if ($('#rmw-pix-save').checked) localStorage.setItem(PIX_KEY, JSON.stringify({ type, raw, name, city }));
+                else localStorage.removeItem(PIX_KEY);
+                $('#rmw-pix-out').style.display = '';
+                $('#rmw-pix-qr').replaceChildren();
+                ctx.drawQr($('#rmw-pix-qr'), code, 190);
+                $('#rmw-pix-code').textContent = code;
+                $('#rmw-pix-summary').textContent = `${amount ? ctx.formatBRL(amount) : 'Valor livre'} • para ${name}`;
+                $('#rmw-pix-copy').textContent = '📋 Copiar Pix Copia e Cola';
+                $('#rmw-pix-copy').onclick = async () => { await ctx.copy(code); $('#rmw-pix-copy').textContent = '✓ Copiado'; };
+                $('#rmw-pix-out').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (err) { msg(err.message); }
+        };
+        const forget = $('#rmw-pix-forget');
+        if (forget) forget.onclick = () => { localStorage.removeItem(PIX_KEY); ctx.navigate('pix'); };
     }
 
     // =====================================================================
@@ -499,6 +577,7 @@
     function register() {
         const wallet = W();
         wallet.registerView('receive', renderReceive);
+        wallet.registerView('pix', renderPix);
         wallet.registerView('send', renderSend);
         wallet.registerView('asset', renderAsset);
         wallet.registerView('addtoken', renderAddToken);
