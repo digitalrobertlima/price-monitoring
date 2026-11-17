@@ -28,7 +28,9 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Proteções em toda transação:** recibo em R$ antes de assinar, aprovações de valor exato, slippage de 1,5% calculado por simulação, 3 POL reservados para gás, e recusa de operar se o preço da pool divergir mais de 3% do mercado.
 - **Várias redes:** Polygon, Ethereum, Base, Arbitrum, Optimism e Celo, além de **Bitcoin nativo** (endereço `bc1q…` derivado da mesma frase, BIP84). Moedas já cadastradas: POL, ETH, CELO, BTC, USDT, USDC, WETH, WBTC, BRZ e BRLA, cada uma com o contrato oficial visível para conferência e link para o explorador da rede.
 - **Adicionar qualquer moeda:** cole o contrato e escolha a rede; a app lê nome, símbolo e casas decimais direto da blockchain. Moeda com símbolo igual a uma oficial ganha um sufixo para não confundir.
-- **Receber e enviar:** escolha a rede, veja o QR e o endereço; ao enviar, a confirmação mostra rede, contrato da moeda e endereço inteiro. Enviar para o próprio contrato de uma moeda é bloqueado. Bitcoin com escolha de velocidade da taxa.
+- **Bitcoin no centro:** o Bitcoin vem primeiro em tudo (lista de moedas, receber, troca) e é a cor da marca (laranja). Cada rede mostra um selo de maturidade: Bitcoin "a mais consolidada, desde 2009", Ethereum "consolidada, desde 2015" e as demais "rede jovem", com aviso para usar essas redes para movimentar e não para guardar tudo. O Render avisa que roda na Polygon.
+- **Trocar Bitcoin dentro do app:** BTC nativo ⇄ moedas das outras redes, nos dois sentidos, pela LI.FI (que escolhe o serviço: LayerSwap, Relay…). Antes de assinar, o app confere o PSBT recebido: as moedas gastas são suas, o depósito vai para o endereço e valor cotados, existe a anotação da troca, o troco volta para você e a taxa não é absurda. O recibo mostra a taxa da rede (sat e R$), a taxa do serviço em R$ e o aviso de que, durante ~25 min, o valor fica com o serviço de ponte.
+- **Receber e enviar:** escolha a rede, veja o QR e o endereço; ao enviar, a confirmação mostra rede, contrato da moeda e endereço inteiro. Enviar para o próprio contrato de uma moeda é bloqueado. Bitcoin com escolha de velocidade da taxa, cada uma já com o valor estimado em reais.
 - **Leitor de QR Code** em todos os campos de endereço (câmera ou foto), entendendo `ethereum:` (com rede), `bitcoin:` (com valor) e endereço puro.
 - **Botões de voltar** em todas as telas internas, e o voltar do celular fecha a janela sem sair do app.
 - **Olho para esconder saldos:** esconde patrimônio, valores e quantidades; a escolha fica salva no aparelho.
@@ -40,6 +42,7 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 
 - **Nenhuma transação foi testada na Polygon real nem em fork.** Os fluxos foram validados contra uma Polygon simulada (`tests/mock-chain.mjs`), que confere a lógica da app e as transações assinadas, não os contratos reais. Comece com valores pequenos.
 - **Lightning não é suportado.** Receber e pagar por Lightning exige um nó ou um serviço custodiante, o que não cabe numa carteira estática de autocustódia. Pedidos `lnbc…` são recusados com explicação.
+- A troca de Bitcoin foi validada com rede e serviço simulados e com PSBT real da LI.FI (só conferência, sem assinar); ainda não com dinheiro real.
 - Envio de Bitcoin e envios nas outras redes foram validados com vetores oficiais (BIP84/143/173/350) e redes simuladas, não com dinheiro real.
 - Pontes entre redes (LI.FI) não têm teste automático completo.
 - O extrato e o gráfico usam o histórico da rede Polygon; as outras redes e o Bitcoin aparecem no saldo e entram no gráfico a partir do dia de hoje.

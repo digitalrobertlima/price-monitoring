@@ -974,8 +974,13 @@
     const feeLabel = (fee) => `${(fee / 10000).toLocaleString('pt-BR')}%`;
     let swapQuoteSeq = 0;
 
+    // Bitcoin nativo entra na troca como uma "rede" a mais (valor 'btc')
+    const BTC_META = { symbol: 'BTC', name: 'Bitcoin', address: null, decimals: 8, isNative: true, priceKey: 'BTC' };
+    const LIFI_BTC_CHAIN = '20000000000001';
+    const chainOfValue = (v) => (v === 'btc' ? 'btc' : Number(v || 137));
+    const tokensOf = (chainId) => (chainId === 'btc' ? [BTC_META] : REG.getTokens(chainId));
     function getTokenMeta(chainId, symbol) {
-        return REG.getTokens(chainId).find((t) => t.symbol === symbol) || null;
+        return tokensOf(chainId).find((t) => t.symbol === symbol) || null;
     }
     // Endereço usado dentro da Uniswap (moeda nativa entra como a versão embrulhada)
     function uniswapAddress(meta) {
@@ -991,13 +996,13 @@
     function readSwapForm() {
         const e = swapEls();
         const amountText = String(e.amt?.value || '').trim().replace(',', '.');
-        return { fromChain: Number(e.fc?.value || 137), toChain: Number(e.tc?.value || 137), fromSym: e.ft?.value || '', toSym: e.tt?.value || '', amountText, amountIn: parseFloat(amountText) || 0 };
+        return { fromChain: chainOfValue(e.fc?.value), toChain: chainOfValue(e.tc?.value), fromSym: e.ft?.value || '', toSym: e.tt?.value || '', amountText, amountIn: parseFloat(amountText) || 0 };
     }
     const swapKey = (f) => `${f.fromChain}:${f.fromSym}>${f.toChain}:${f.toSym}@${f.amountText}`;
 
     function fillTokenSelect(select, chainId, wanted) {
         if (!select) return;
-        const tokens = REG.getTokens(chainId);
+        const tokens = tokensOf(chainId);
         select.replaceChildren(...tokens.map((t) => new Option(t.symbol, t.symbol)));
         if (tokens.some((t) => t.symbol === wanted)) select.value = wanted;
     }
@@ -1006,13 +1011,14 @@
         const e = swapEls();
         if (!e.fc || !e.tc) return;
         if (!e.fc.options.length) {
-            [e.fc, e.tc].forEach((sel) => sel.replaceChildren(...REG.CHAINS.map((c) => new Option(c.name, String(c.id)))));
+            // Bitcoin primeiro: é a reserva de valor do app
+            [e.fc, e.tc].forEach((sel) => sel.replaceChildren(new Option('Bitcoin', 'btc'), ...REG.CHAINS.map((c) => new Option(c.name, String(c.id)))));
             e.fc.value = '137'; e.tc.value = '137';
             fillTokenSelect(e.ft, 137, 'POL');
             fillTokenSelect(e.tt, 137, 'USDT');
         } else {
-            fillTokenSelect(e.ft, Number(e.fc.value), e.ft.value);
-            fillTokenSelect(e.tt, Number(e.tc.value), e.tt.value);
+            fillTokenSelect(e.ft, chainOfValue(e.fc.value), e.ft.value);
+            fillTokenSelect(e.tt, chainOfValue(e.tc.value), e.tt.value);
         }
         renderSwapContracts();
     }
@@ -1180,6 +1186,13 @@
             return quote;
         };
 
+        // Caso 0: Bitcoin nativo entrando ou saindo (LI.FI escolhe o serviço: LayerSwap, Relay, THORChain…)
+        if (f.fromChain === 'btc' || f.toChain === 'btc') {
+            if (f.fromChain === 'btc' && f.toChain === 'btc') return fail('Escolha outra rede para receber');
+            setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Consultando rota para o Bitcoin…');
+            return quoteBitcoinRoute(f, base, fail, publish, seq);
+        }
+
         // Caso 1: embrulhar / desembrulhar POL (1:1)
         if (f.fromChain === 137 && f.toChain === 137 && ((f.fromSym === 'POL' && f.toSym === 'WPOL') || (f.fromSym === 'WPOL' && f.toSym === 'POL'))) {
             return publish({ ...base, type: 'WRAP_UNWRAP', amountOut: f.amountIn, rawOut: rawIn, impact: 0, routeLabel: 'Contrato oficial WPOL (1:1)' }, 'Conversão 1:1, sem tarifa');
@@ -1218,6 +1231,71 @@
         }
     }
 
+    async function quoteBitcoinRoute(f, base, fail, publish, seq) {
+        const W = window.RdeskWallet;
+        const btcAddress = W.getBitcoinAddress();
+        const evmAddress = W.getAddress();
+        if (!btcAddress) return fail('Esta carteira não tem endereço Bitcoin (só carteiras criadas ou importadas no app têm).');
+        if (!evmAddress) return fail('Abra uma carteira para trocar.');
+        const fromBtc = f.fromChain === 'btc';
+        const lifiChain = (c) => (c === 'btc' ? LIFI_BTC_CHAIN : String(c));
+        const lifiToken = (c, meta) => (c === 'btc' ? 'bitcoin' : meta.isNative ? '0x0000000000000000000000000000000000000000' : meta.address);
+        const params = new URLSearchParams({
+            fromChain: lifiChain(f.fromChain), toChain: lifiChain(f.toChain),
+            fromToken: lifiToken(f.fromChain, base.fromMeta), toToken: lifiToken(f.toChain, base.toMeta),
+            fromAmount: base.rawIn.toString(), fromAddress: fromBtc ? btcAddress : evmAddress, toAddress: f.toChain === 'btc' ? btcAddress : evmAddress,
+            slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: 'rdesk-sentinel'
+        });
+        let data;
+        try {
+            const res = await withTimeout(fetch(`https://li.quest/v1/quote?${params}`), 30000);
+            data = await res.json();
+            if (!res.ok || !data?.estimate?.toAmount) {
+                if (/UTXO/i.test(data?.message || '')) return fail('Sem bitcoin confirmado nesta carteira para trocar.');
+                return fail('Nenhum serviço aceita essa troca agora (valor baixo demais ou rota indisponível).');
+            }
+        } catch (err) { return fail('Serviço de rotas indisponível agora. Tente de novo.'); }
+        if (seq !== swapQuoteSeq) return null;
+        const prices = window.RdeskWallet.getPrices();
+        const usdBrl = prices.USD_BRL;
+        const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, base.toMeta.decimals));
+        const tool = data.toolDetails?.name || data.tool || 'serviço de ponte';
+        const minutes = Math.max(1, Math.round((data.estimate.executionDuration || 900) / 60));
+        const serviceUsd = (data.estimate.feeCosts || []).reduce((s, c) => s + Number(c.amountUSD || 0), 0);
+        let networkUsd = (data.estimate.gasCosts || []).reduce((s, c) => s + Number(c.amountUSD || 0), 0);
+        let btcPlan = null;
+        if (fromBtc) {
+            // Confere a transação Bitcoin AGORA, para mostrar a taxa exata em reais antes de pedir confirmação
+            const tr = data.transactionRequest || {};
+            try {
+                const utxos = await window.RdeskBitcoin.fetchUtxos(btcAddress);
+                const mine = new Set(utxos.filter((u) => u.confirmed !== false).map((u) => `${u.txid}:${u.vout}`));
+                if (/^70736274ff/i.test(String(tr.data || ''))) {
+                    btcPlan = window.RdeskBitcoin.checkSwapPsbt(tr.data, { ownAddress: btcAddress, depositAddress: tr.to, depositValue: tr.value });
+                    if (btcPlan.inputs.some((i) => !mine.has(`${i.txid}:${i.vout}`))) throw new Error('A troca usa moedas que já foram gastas ou ainda não confirmaram. Peça a cotação de novo.');
+                } else if (tr.to && tr.data) {
+                    const rates = await window.RdeskBitcoin.fetchFeeRates();
+                    btcPlan = window.RdeskBitcoin.planTransaction({ utxos, toAddress: tr.to, amountSats: Number(tr.value), feeRate: rates.normal, changeAddress: btcAddress, memo: String(tr.data) });
+                } else throw new Error('O serviço não devolveu a transação Bitcoin.');
+                if (Number(tr.value) !== Number(base.rawIn.toString())) throw new Error('O valor do depósito não confere com o que você digitou. Cancelada.');
+            } catch (err) { return fail(err.message); }
+            networkUsd = (btcPlan.fee / 1e8) * (prices.BTC || 0);
+        }
+        const feesBrl = (serviceUsd + networkUsd) * usdBrl;
+        const usdInQ = base.amountIn * tokenUnitUsd(f.fromChain, base.fromMeta);
+        const usdOutQ = amountOut * tokenUnitUsd(f.toChain, base.toMeta);
+        if (usdInQ > 0 && usdOutQ > 0 && 1 - usdOutQ / usdInQ > IMPACT_BLOCK) {
+            return fail(`As taxas levariam ${((1 - usdOutQ / usdInQ) * 100).toFixed(0)}% do valor (≈ ${window.RdeskWallet.formatBRL(feesBrl)}). Troque um valor maior.`);
+        }
+        const amountsText = `taxas ≈ ${window.RdeskWallet.formatBRL(feesBrl)}`;
+        return publish({
+            ...base, type: fromBtc ? 'BTC_OUT' : 'LIFI', amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount),
+            impact: (() => { const usdIn = base.amountIn * tokenUnitUsd(f.fromChain, base.fromMeta); const usdOut = amountOut * tokenUnitUsd(f.toChain, base.toMeta); return usdIn > 0 && usdOut > 0 ? 1 - usdOut / usdIn : null; })(),
+            lifiData: data, btcPlan, btcAddress, tool, minutes, serviceBrl: serviceUsd * usdBrl, networkBrl: networkUsd * usdBrl,
+            routeLabel: `${tool} • ~${minutes} min`
+        }, `${tool} • ~${minutes} min • ${amountsText}`);
+    }
+
     async function executeActiveSwap() {
         const fb = document.getElementById('swap-feedback');
         const btn = document.getElementById('btn-execute-swap');
@@ -1235,7 +1313,7 @@
         const minOut = q.rawOut.mul(10000 - SWAP_SLIPPAGE_BPS).div(10000);
         const minOutText = parseFloat(ethers.utils.formatUnits(minOut, q.toMeta.decimals)).toLocaleString('pt-BR', { maximumFractionDigits: 6 });
         const impactNote = q.impact !== null && q.impact > IMPACT_WARN ? ` • ATENÇÃO: ${(q.impact * 100).toFixed(1)}% abaixo do mercado` : '';
-        const nativeSym = REG.getTokens(q.fromChain).find((t) => t.isNative)?.symbol || '';
+        const nativeSym = tokensOf(q.fromChain).find((t) => t.isNative)?.symbol || '';
 
         const confirmed = await window.RdeskReceipt.confirm({
             title: q.fromChain === q.toChain ? 'Confirmar troca' : 'Confirmar envio para outra rede',
@@ -1244,15 +1322,33 @@
             recvVal: `~${q.amountOut.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${q.toSym} (${REG.getChain(q.toChain).name})`,
             recvBrl: brlOut > 0 ? window.RdeskWallet.formatBRL(brlOut) : 'sem cotação',
             route: q.routeLabel,
-            fee: 'R$ 0,00 (sem taxa do app)',
-            gas: `Paga em ${nativeSym} na rede ${REG.getChain(q.fromChain).name}`,
-            shield: `Mínimo garantido: ${minOutText} ${q.toSym} (1,5%)${impactNote}`
+            fee: q.serviceBrl !== undefined ? `Serviço de troca (${q.tool}): ${window.RdeskWallet.formatBRL(q.serviceBrl)} • app: R$ 0,00` : 'R$ 0,00 (sem taxa do app)',
+            gas: q.btcPlan
+                ? `${q.btcPlan.fee.toLocaleString('pt-BR')} sat ≈ ${window.RdeskWallet.formatBRL(q.networkBrl)} (rede Bitcoin)`
+                : q.networkBrl !== undefined ? `≈ ${window.RdeskWallet.formatBRL(q.networkBrl)} em ${nativeSym} (rede ${REG.getChain(q.fromChain).name})` : `Paga em ${nativeSym} na rede ${REG.getChain(q.fromChain).name}`,
+            shield: (q.fromChain === 'btc' || q.toChain === 'btc')
+                ? `Mínimo: ${minOutText} ${q.toSym}. Durante ~${q.minutes} min o valor fica com o ${q.tool}; se a troca falhar, ele devolve para você.${impactNote}`
+                : `Mínimo garantido: ${minOutText} ${q.toSym} (1,5%)${impactNote}`
         });
         if (!confirmed) return;
 
         try {
             btn.disabled = true;
             defiState.busy = true;
+            if (q.type === 'BTC_OUT') {
+                // Sai do Bitcoin: assina a transação conferida e transmite
+                say('Assinando a transação Bitcoin…');
+                const key = window.RdeskWallet.getBitcoinKey();
+                if (key.address !== q.btcAddress) throw new Error('Erro interno: a chave não confere com o endereço Bitcoin.');
+                const signed = window.RdeskBitcoin.signTransaction(q.btcPlan, key.privateKey);
+                const txid = await window.RdeskBitcoin.broadcast(signed.hex);
+                defiState.swapQuote = null;
+                window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Bitcoin enviado para a troca!' } }));
+                fb.style.color = 'var(--green-bright)';
+                fb.innerHTML = `✓ Bitcoin enviado ao ${REG.esc(q.tool)}. ${REG.esc(q.toSym)} chega na ${REG.esc(REG.getChain(q.toChain).name)} em cerca de ${q.minutes} min. <a href="https://mempool.space/tx/${REG.esc(txid)}" target="_blank" rel="noopener noreferrer">Acompanhar ↗</a>`;
+                window.RdeskWallet.refreshBalances().then(updateSwapFromBalanceDisplay).catch(() => {});
+                return;
+            }
             const signer = await window.RdeskWallet.getSigner(q.fromChain);
             const owner = await signer.getAddress();
 
@@ -1316,7 +1412,7 @@
             window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: q.fromChain === q.toChain ? 'Troca concluída!' : 'Ponte enviada!' } }));
             say(q.fromChain === q.toChain
                 ? `✓ Troca de ${q.amountIn} ${q.fromSym} por ${q.toSym} concluída!`
-                : `✓ Ponte enviada: ${q.toSym} chega na ${REG.getChain(q.toChain).name} em alguns minutos.`, 'var(--green-bright)');
+                : `✓ Enviado: ${q.toSym} chega na ${REG.getChain(q.toChain).name} em ${q.minutes ? `cerca de ${q.minutes} min` : 'alguns minutos'}.`, 'var(--green-bright)');
             await window.RdeskWallet.refreshBalances();
             updateSwapFromBalanceDisplay();
         } catch (err) {
@@ -1572,8 +1668,10 @@
             const found = window.RdeskWallet.getBalances().find((b) => b.chainId === f.fromChain && b.symbol === f.fromSym);
             let avail = found ? found.amount : 0;
             const meta = getTokenMeta(f.fromChain, f.fromSym);
-            if (meta?.isNative) avail = Math.max(0, avail - (NATIVE_RESERVE[f.fromSym] || 0)); // deixa moeda nativa para as taxas
-            document.getElementById('swap-amount-in').value = avail > 0 ? String(Math.floor(avail * 1e6) / 1e6) : '0';
+            if (meta?.isNative && f.fromChain !== 'btc') avail = Math.max(0, avail - (NATIVE_RESERVE[f.fromSym] || 0)); // deixa moeda nativa para as taxas
+            if (f.fromChain === 'btc') avail = Math.max(0, avail - 0.00003); // folga para a taxa da rede Bitcoin
+            const step = f.fromChain === 'btc' ? 1e8 : 1e6;
+            document.getElementById('swap-amount-in').value = avail > 0 ? String(Math.floor(avail * step) / step) : '0';
             refreshSwapQuote();
         });
 
@@ -1582,8 +1680,8 @@
             const e = swapEls();
             const prev = { fc: e.fc.value, ft: e.ft.value, tc: e.tc.value, tt: e.tt.value, out: parseFloat(String(e.out.value).replace(',', '.')) };
             e.fc.value = prev.tc; e.tc.value = prev.fc;
-            fillTokenSelect(e.ft, Number(prev.tc), prev.tt);
-            fillTokenSelect(e.tt, Number(prev.fc), prev.ft);
+            fillTokenSelect(e.ft, chainOfValue(prev.tc), prev.tt);
+            fillTokenSelect(e.tt, chainOfValue(prev.fc), prev.ft);
             if (prev.out > 0) e.amt.value = String(prev.out);
             renderSwapContracts();
             refreshSwapQuote();

@@ -3,7 +3,7 @@
    Arquivo 2 de 7: sw.js
    ========================================================================= */
 
-const CACHE_NAME = 'rdesk-sentinel-v29';
+const CACHE_NAME = 'rdesk-sentinel-v30';
 
 const CORE_ASSETS = [
   './',

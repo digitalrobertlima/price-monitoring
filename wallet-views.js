@@ -20,7 +20,7 @@
 
     function networksFor(acc) {
         const list = REG.CHAINS.map((c) => c.id);
-        if (acc && (acc.type === 'seed' || acc.type === 'pk')) list.push('btc');
+        if (acc && (acc.type === 'seed' || acc.type === 'pk')) list.unshift('btc'); // Bitcoin primeiro
         return list;
     }
     function tokensFor(chainId) {
@@ -59,6 +59,11 @@
                 <button class="rmw-icon-btn" id="rmw-close-btn" aria-label="Fechar">✕</button>
             </div>`;
     }
+    // Explica, em uma frase, quão consolidada é a rede (Bitcoin e Ethereum x redes jovens)
+    function riskNote(chainId) {
+        const m = REG.maturity(chainId);
+        return `<div class="net-risk ${m.level}" data-net-risk="${esc(m.level)}">${REG.maturityBadge(chainId)}<span>${esc(m.note)}</span></div>`;
+    }
     function chipsHtml(networks, selected) {
         return `<div class="net-chips" role="tablist">${networks.map((id) => `
             <button type="button" role="tab" class="net-chip${String(id) === String(selected) ? ' active' : ''}" data-net="${esc(id)}" aria-selected="${String(id) === String(selected)}">
@@ -86,7 +91,7 @@
             ${address ? `
             <div class="receive-box">
                 <div class="receive-qr"><div id="rmw-rec-qr"></div></div>
-                <div class="receive-net">${REG.chainBadge(chainId, true)} <span>${esc(acc.name)}</span></div>
+                <div class="receive-net">${REG.chainBadge(chainId, true)} ${REG.maturityBadge(chainId)}</div>
                 <code class="receive-address" id="rmw-rec-address">${esc(address)}</code>
                 <button class="rmw-btn-primary" id="rmw-rec-copy">📋 Copiar endereço</button>
             </div>
@@ -94,7 +99,8 @@
                 ${isBtc
                     ? 'Envie <strong>somente Bitcoin pela rede Bitcoin (on-chain)</strong>. Este endereço não recebe por Lightning nem por outras redes.'
                     : `Envie <strong>somente pela rede ${esc(chain.name)}</strong>. Se a corretora mandar por outra rede, o dinheiro pode se perder.`}
-            </div>` : `
+            </div>
+            ${riskNote(chainId)}` : `
             <div class="rmw-alert-warn">Desbloqueie o cofre uma vez para gerar o seu endereço Bitcoin.</div>`}
             <div class="view-subtitle">Moedas que este app mostra nesta rede</div>
             <div class="token-list" id="rmw-rec-tokens">
@@ -227,10 +233,16 @@
                 feeRates = r;
                 const sel = $('#rmw-snd-fee');
                 if (!sel) return;
+                // Taxa típica de um envio (1 entrada, destino + troco) já em reais, para escolher sabendo quanto custa
+                const vs = BTC().estimateVsize(1, ['p2wpkh', 'p2wpkh']);
+                const reais = (rate) => {
+                    const p = ctx.prices();
+                    return p.BTC && p.usdBrl ? ` ≈ ${ctx.formatBRL((rate * vs / 1e8) * p.BTC * p.usdBrl)}` : '';
+                };
                 sel.innerHTML = `
-                    <option value="${r.normal}">Normal — ~30 min (${r.normal} sat/vB)</option>
-                    <option value="${r.fast}">Rápida — próximo bloco (${r.fast} sat/vB)</option>
-                    <option value="${r.slow}">Econômica — horas (${r.slow} sat/vB)</option>`;
+                    <option value="${r.normal}">Normal — ~30 min${reais(r.normal)} (${r.normal} sat/vB)</option>
+                    <option value="${r.fast}">Rápida — próximo bloco${reais(r.fast)} (${r.fast} sat/vB)</option>
+                    <option value="${r.slow}">Econômica — horas${reais(r.slow)} (${r.slow} sat/vB)</option>`;
             }).catch(() => {
                 const sel = $('#rmw-snd-fee');
                 if (sel) sel.innerHTML = '<option value="">Taxas indisponíveis agora</option>';
@@ -366,6 +378,7 @@
                 <span>${row && row.hasPrice ? ctx.formatBRL(row.brlValue) : 'sem cotação disponível'}</span>
                 ${row && row.pending ? `<small>inclui ${fmtAmount(row.pending)} ainda não confirmado</small>` : ''}
             </div>
+            ${riskNote(chainId)}
             <div class="contract-box">${contractLine(chainId, token)}</div>
             ${address ? `<a class="rmw-btn-secondary link-btn" href="${esc(REG.explorerAddressUrl(chainId, address))}" target="_blank" rel="noopener noreferrer">Ver minha carteira no explorador ↗</a>` : ''}
             <div class="two-btn-row">

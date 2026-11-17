@@ -32,11 +32,13 @@ try {
     await page.waitForSelector('.ob-intro', { timeout: 10000 });
     const intro1 = (await page.innerText('.ob-intro')).replace(/\s+/g, ' ');
     check('primeira abertura mostra boas-vindas explicando o que é a carteira', /Bem-vindo/.test(intro1) && /só você tem a chave/.test(intro1), intro1.slice(0, 120));
-    check('boas-vindas tem só 3 cartões, com progresso visível', (await page.locator('.ob-dots span').count()) === 3);
+    check('boas-vindas tem só 4 cartões, com progresso visível', (await page.locator('.ob-dots span').count()) === 4);
     await page.click('#ob-next');
     check('2º cartão explica as 12 palavras e a responsabilidade', /12 palavras/.test(await page.innerText('.ob-intro')));
     await page.click('#ob-next');
-    check('3º cartão mostra o que dá para fazer', /Receber/.test(await page.innerText('.ob-intro')) && /render/i.test(await page.innerText('.ob-intro')));
+    check('3º cartão explica por que guardar em Bitcoin e os riscos das redes jovens', /Bitcoin: a sua reserva/.test(await page.innerText('.ob-intro')) && /desde 2009/.test(await page.innerText('.ob-intro')) && /ainda estão nascendo/.test(await page.innerText('.ob-intro')));
+    await page.click('#ob-next');
+    check('4º cartão mostra o que dá para fazer', /Receber/.test(await page.innerText('.ob-intro')) && /render/i.test(await page.innerText('.ob-intro')));
     await page.screenshot({ path: 'tests/artifacts-xp-boasvindas.png' });
     await page.click('#ob-next'); // "Vamos começar"
     await page.waitForSelector('#rdesk-mw-sheet .rmw-opt-btn', { timeout: 10000 });

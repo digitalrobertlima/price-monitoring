@@ -267,6 +267,13 @@ export class MockChain {
 
         if (to === ADDR.NFPM) return this.execNfpm(s, from, data, value);
 
+        // Contrato da LI.FI (ponte para o Bitcoin): fica com o valor nativo e puxa a moeda aprovada (this.lifiPull)
+        if (to === '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae') {
+            (this.lifiCalls ??= []).push({ from, value, data });
+            if (this.lifiPull) { s.erc20[lower(this.lifiPull.token)] ??= {}; this._pull(s, lower(this.lifiPull.token), from, to, this.lifiPull.amount); }
+            return '0x';
+        }
+
         this.unknownCalls.push({ to, sel });
         throw new Revert(`chamada desconhecida ${to} ${sel}`);
     }
