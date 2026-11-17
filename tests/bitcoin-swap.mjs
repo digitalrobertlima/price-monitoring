@@ -40,7 +40,7 @@ function lifi(q) {
         const depositTo = lifiMode === 'tamper' ? FEE_ADDR : DEP; // adulterado: PSBT manda o depósito para outro lugar
         const psbt = buildPsbt({
             inputs: [{ txid: 'ab'.repeat(32), vout: 1, value: 800000, script: MY_SCRIPT }],
-            outputs: [{ value: amount, script: BTC.addressToScript(depositTo).script }, { value: 0, script: BTC.opReturnScript('17f8f75;=|lifi') }, { value: 800000 - amount - 1250 - 1400, script: MY_SCRIPT }, { value: 1250, script: BTC.addressToScript(FEE_ADDR).script }]
+            outputs: [{ value: amount - Math.round(amount * 0.0025), script: BTC.addressToScript(depositTo).script }, { value: 0, script: BTC.opReturnScript('17f8f75;=|lifi') }, { value: 800000 - amount - 1400, script: MY_SCRIPT }, { value: Math.round(amount * 0.0025), script: BTC.addressToScript(FEE_ADDR).script }]
         });
         const usd = (amount / 1e8) * 90000 * 0.996 - 1.35; // taxas do serviço saem do valor
         return {
@@ -106,7 +106,7 @@ try {
     const fb1 = await page.innerText('#swap-feedback');
     const sent = btc.broadcasts[0] ? decodeTx(btc.broadcasts[0]) : null;
     check('transação assinada mantém exatamente o depósito, a anotação, o troco e a taxa do serviço',
-        sent && sent.outs.length === 4 && sent.outs[0].value === 500000 && sent.outs[0].script === Buffer.from(BTC.addressToScript(DEP).script).toString('hex') &&
+        sent && sent.outs.length === 4 && sent.outs[0].value === 498750 && sent.outs[3].value === 1250 && sent.outs[0].script === Buffer.from(BTC.addressToScript(DEP).script).toString('hex') &&
         Buffer.from(sent.outs[1].script, 'hex').toString('latin1').includes('lifi') && sent.outs[2].script === Buffer.from(MY_SCRIPT).toString('hex'), JSON.stringify(sent?.outs?.map((o) => o.value)));
     check('depois de enviar: aviso de quando chega e link para acompanhar', /chega na Polygon em cerca de 27 min/.test(fb1) && (await page.getAttribute('#swap-feedback a', 'href')) === `https://mempool.space/tx/${btc.txid}`, fb1);
 

@@ -353,7 +353,10 @@
             if (toHex(i.script) !== own) throw new Error('A troca tenta gastar moedas que não são suas. Cancelada.');
         });
         const outs = psbt.outputs.map((o) => ({ ...o, info: describeScript(o.script) }));
-        if (outs[0].info.address !== depositAddress || outs[0].value !== Number(depositValue)) throw new Error('O depósito da troca não confere com a cotação. Cancelada.');
+        // O depósito vai para o endereço cotado. A LI.FI pode separar a taxa dela (≈0,25%) do valor: o depósito
+        // fica um pouco menor e a diferença sai numa saída à parte — somadas, nunca passam do que você pediu (+ folga).
+        const want = Number(depositValue);
+        if (outs[0].info.address !== depositAddress || outs[0].value > want || outs[0].value < want * 0.97) throw new Error('O depósito da troca não confere com a cotação. Cancelada.');
         const memos = outs.filter((o) => o.info.type === 'op_return');
         if (memos.length !== 1) throw new Error('A troca não tem a anotação esperada. Cancelada.');
         let change = 0, extras = 0;
@@ -361,7 +364,8 @@
             if (o.info.type === 'op_return') { if (o.value !== 0) throw new Error('Anotação com valor. Cancelada.'); return; }
             if (toHex(o.script) === own) change += o.value; else extras += o.value;
         });
-        if (extras > Math.max(3000, Math.round(Number(depositValue) * 0.015))) throw new Error('A taxa do serviço embutida na troca está alta demais. Cancelada.');
+        if (extras > Math.max(3000, Math.round(want * 0.015))) throw new Error('A taxa do serviço embutida na troca está alta demais. Cancelada.');
+        if (outs[0].value + extras > want + Math.max(3000, Math.round(want * 0.015))) throw new Error('A troca gastaria mais do que você pediu. Cancelada.');
         const inSum = psbt.inputs.reduce((n, i) => n + i.value, 0);
         const outSum = outs.reduce((n, o) => n + o.value, 0);
         const fee = inSum - outSum;
@@ -372,7 +376,7 @@
             version: psbt.version, locktime: psbt.locktime,
             inputs: psbt.inputs.map((i) => ({ txid: i.txid, vout: i.vout, value: i.value, sequence: i.sequence })),
             outputs: outs.map((o) => ({ script: o.script, value: o.value })),
-            fee, vsize, feeRate: fee / vsize, change, extras, memo: memos[0].info.memo, amount: Number(depositValue), total: inSum
+            fee, vsize, feeRate: fee / vsize, change, extras, memo: memos[0].info.memo, amount: Number(depositValue), deposit: outs[0].value, total: inSum
         };
     }
 

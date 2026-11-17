@@ -136,6 +136,10 @@ check('plano adulterado (conta que não fecha) não é assinado', throwsWith(() 
     const signed = BTC.signTransaction(ok, a0.privateKey);
     const dec = decodeTx(signed.hex);
     check('assinatura mantém exatamente as saídas e entradas do PSBT', dec.outs.length === 4 && dec.outs[0].value === 500000 && dec.outs[0].script === toHex(depScript) && dec.outs[3].value === 1250 && dec.ins[0].txid === 'aa'.repeat(32) && dec.ins[0].sequence === 0xfffffffd);
+    // Formato visto na rede real: a LI.FI separa os 0,25% dela do depósito (299.250 + 750 = 300.000)
+    const real = BTC.checkSwapPsbt(mk({ outputs: [{ value: 498750, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 97450 + 1250, script: myScript }, { value: 1250, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' });
+    check('PSBT real da LI.FI (taxa dela separada do depósito) é aceito', real.deposit === 498750 && real.extras === 1250, JSON.stringify({ d: real.deposit, e: real.extras }));
+    check('PSBT que tira demais do depósito é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 470000, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 128700, script: myScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /não confere/));
     check('PSBT com depósito diferente da cotação é recusado', throwsWith(() => BTC.checkSwapPsbt(mk(), { ownAddress: me, depositAddress: DEP, depositValue: '400000' }), /não confere/));
     check('PSBT que gasta moedas de outra pessoa é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ inputs: [{ txid: 'cc'.repeat(32), vout: 1, value: 600000, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /não são suas/));
     check('PSBT que desvia o troco para outra pessoa é recusado', throwsWith(() => BTC.checkSwapPsbt(mk({ outputs: [{ value: 500000, script: depScript }, { value: 0, script: BTC.opReturnScript('m') }, { value: 98700, script: feeScript }] }), { ownAddress: me, depositAddress: DEP, depositValue: '500000' }), /taxa do serviço/));
