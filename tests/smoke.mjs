@@ -156,7 +156,7 @@ try {
         } catch (e) { return { ms: Date.now() - t0, url: provider.connection?.url, error: String(e.message).slice(0, 300) }; }
     });
     console.log('   diagnóstico multicall:', JSON.stringify(diag));
-    page.on('console', (m) => { if (/swap|cota|quote/i.test(m.text())) console.log('   [console]', m.text().slice(0, 200)); });
+    page.on('console', (m) => { if (/swap|cota|quote|DIAG/i.test(m.text())) console.log('   [console]', m.text().slice(0, 200)); });
     const t1 = Date.now();
     const direct = await page.evaluate(async () => { try { const q = await window.RdeskDefi.refreshSwapQuote(); return q ? { out: q.amountOut, route: q.routeLabel || q.label } : 'null'; } catch (e) { return 'erro ' + e.message; } });
     console.log('   refreshSwapQuote direto:', Date.now() - t1, 'ms', JSON.stringify(direct));
@@ -182,6 +182,8 @@ try {
             const d = await r.json();
             if (!r.ok) return { skip: `${r.status} ${d.message || ''}`.slice(0, 160) };
             const tr = d.transactionRequest;
+            const P = window.RdeskBitcoin.parsePsbt(tr.data);
+            console.log('DIAG ' + JSON.stringify({ to: tr.to, value: tr.value, outs: P.outputs.map((o) => ({ v: o.value, d: window.RdeskBitcoin.describeScript(o.script) })), ins: P.inputs.map((i) => ({ v: i.value, s: i.script && Array.from(i.script).map((b) => b.toString(16).padStart(2, '0')).join('') })) }));
             const plan = window.RdeskBitcoin.checkSwapPsbt(tr.data, { ownAddress: addr, depositAddress: tr.to, depositValue: tr.value });
             return { ok: true, tool: d.tool, fee: plan.fee, rate: plan.feeRate, extras: plan.extras, memo: plan.memo, out: d.estimate.toAmount, min: Math.round(d.estimate.executionDuration / 60) };
         } catch (e) { return { error: String(e.message).slice(0, 200) }; }
