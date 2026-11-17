@@ -31,6 +31,13 @@ try {
     await waitFn(page, () => window.ethers && window.RdeskWallet && window.RdeskDefi && window.RdeskRangeChart, null, { timeout: 60000 });
     check('página e bibliotecas carregadas', true);
 
+    // Primeira abertura no site publicado: passa pelas boas-vindas como uma pessoa faria
+    await page.waitForSelector('.ob-intro', { timeout: 15000 });
+    await page.click('#ob-next');
+    await page.click('#ob-next');
+    await page.click('#ob-skip'); // "Só quero olhar"
+    check('boas-vindas aparecem na primeira abertura e saem do caminho', (await page.locator('.ob-intro').count()) === 0);
+
     await page.click('#btn-wallet-trigger');
     await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'observação' }).click();
     await page.fill('#rmw-f-watch-input', WATCH_ADDRESS);
