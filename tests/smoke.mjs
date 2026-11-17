@@ -121,7 +121,7 @@ try {
     await page.click('.nav-tab-btn[data-tab="wallet"]');
 
     console.log('LIFIBTC:', await page.evaluate(async () => {
-        const BTC = 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu';
+        const BTC = 'bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h';
         const EVM = '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3';
         const cases = [
             ['BTC>ETH@1', `fromChain=BTC&toChain=1&fromToken=bitcoin&toToken=0x0000000000000000000000000000000000000000&fromAddress=${BTC}&toAddress=${EVM}&fromAmount=500000`],
@@ -138,7 +138,7 @@ try {
                 const j = await r.json();
                 if (!r.ok) { out.push(`${n}: HTTP ${r.status} ${String(j.message || '').slice(0, 160)}`); continue; }
                 const tr = j.transactionRequest || {};
-                out.push(`${n}: tool=${j.tool} out=${j.estimate?.toAmount} min=${j.estimate?.toAmountMin} dur=${j.estimate?.executionDuration}s fees=${(j.estimate?.feeCosts || []).map((f) => f.name + ':' + f.amountUSD).join(',')} gas=${(j.estimate?.gasCosts || []).map((g) => g.amountUSD).join(',')} to=${tr.to} value=${tr.value} data=${String(tr.data).slice(0, 140)} keys=${Object.keys(tr).join(',')}`);
+                out.push(`${n}: tool=${j.tool} out=${j.estimate?.toAmount} min=${j.estimate?.toAmountMin} dur=${j.estimate?.executionDuration}s fees=${(j.estimate?.feeCosts || []).map((f) => f.name + ':' + f.amountUSD).join(',')} gas=${(j.estimate?.gasCosts || []).map((g) => g.amountUSD).join(',')} to=${tr.to} value=${tr.value} data=${String(tr.data).slice(0, 400)} keys=${Object.keys(tr).join(',')}`);
             } catch (e) { out.push(`${n}: erro ${e.message}`); }
             await new Promise((r) => setTimeout(r, 1500));
         }
