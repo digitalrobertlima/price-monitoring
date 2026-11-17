@@ -1043,6 +1043,9 @@
 
         let rawIn;
         try { rawIn = ethers.utils.parseUnits(f.amountText, fromMeta.decimals); } catch (err) { return fail('Quantidade com casas decimais demais para esta moeda'); }
+        // Atualização da mesma troca (cotação a cada 10 s): mantém o número na tela até chegar o novo.
+        // Troca diferente: nunca mostra o número da anterior enquanto busca.
+        const sameForm = Boolean(defiState.swapQuote && defiState.swapQuote.key === swapKey(f) && e.out && e.info);
         const base = { key: swapKey(f), fromChain: f.fromChain, toChain: f.toChain, fromSym: f.fromSym, toSym: f.toSym, fromMeta, toMeta, amountIn: f.amountIn, rawIn };
         const usdIn = f.amountIn * tokenUnitUsd(f.fromChain, fromMeta);
         const impactOf = (amountOut) => {
@@ -1067,7 +1070,7 @@
 
         // Caso 2: Polygon -> Uniswap V3 (melhor rota)
         if (f.fromChain === 137 && f.toChain === 137) {
-            setOut(e.out?.value || '…', 'Buscando a melhor rota…');
+            setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Buscando a melhor rota…');
             let route;
             try { route = await quotePolygonUniswap(fromMeta, toMeta, rawIn); } catch (err) { return fail('Rede indisponível para cotar agora. Tente de novo.'); }
             if (!route) return fail('Não há pool na Uniswap V3 para este par.');
@@ -1076,7 +1079,7 @@
         }
 
         // Caso 3: outras redes ou ponte entre redes -> LI.FI
-        setOut(e.out?.value || '…', 'Consultando rota entre redes…');
+        setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Consultando rota entre redes…');
         try {
             const ZERO = '0x0000000000000000000000000000000000000000';
             const userAddr = window.RdeskWallet.getAddress() || '0x000000000000000000000000000000000000dEaD';

@@ -113,9 +113,10 @@ try {
         await waitFn(page, () => {
             const info = document.getElementById('swap-quote-info').textContent;
             const out = document.getElementById('swap-amount-out').value;
+            if (/Buscando|Consultando/.test(info) || out === '…') return false;
             return parseFloat(out) > 0 || /Não há|Sem liquidez|indispon|rro|não encontr/i.test(info);
-        }, null, { timeout: 45000 }).catch(() => {});
-        await page.waitForTimeout(1200);
+        }, null, { timeout: 60000 }).catch(() => {});
+        await page.waitForTimeout(500);
         return { out: parseFloat(await page.inputValue('#swap-amount-out')), info: (await page.textContent('#swap-quote-info')).replace(/\s+/g, ' ').trim() };
     };
     const q1 = await quote(137, 'POL', 137, 'USDT', 100);
@@ -129,7 +130,7 @@ try {
     }
     const q3 = await quote(8453, 'ETH', 8453, 'USDC', 0.01);
     console.log(`   LI.FI (Base ETH → USDC, informativo): ${Number.isFinite(q3.out) ? q3.out : '--'} | ${q3.info}`);
-    check('troca em outra rede (Base) responde com cotação ou aviso, sem travar', q3.out > 0 || q3.info.length > 0, q3.info);
+    check('troca em outra rede (Base) termina com cotação ou aviso (não fica girando)', !/Consultando/.test(q3.info) && (q3.out > 0 || q3.info.length > 0), q3.info);
 
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));
