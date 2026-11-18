@@ -155,6 +155,12 @@
         const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined).derivePath(`m/84'/0'/0'/0/${index}`);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey) };
     }
+    // Qualquer caminho BIP84 (endereços novos a cada recebimento e troco em endereço separado)
+    function deriveAtPath(mnemonic, path, passphrase = '') {
+        if (!/^m\/84'\/0'\/\d+'\/[01]\/\d+$/.test(path)) throw new Error('Caminho Bitcoin inválido.');
+        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined).derivePath(path);
+        return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey), path };
+    }
     function deriveFromPrivateKey(privateKey) {
         const publicKey = E().utils.computePublicKey(privateKey, true).slice(2);
         return { privateKey, publicKey, address: publicKeyToAddress(publicKey) };
@@ -260,11 +266,12 @@
     }
 
     // Assina um plano (todas as entradas P2WPKH da mesma chave) e devolve { hex, txid }.
+    // Cada entrada pode trazer a própria chave (u.privateKey), quando as moedas estão em vários endereços.
     function signTransaction(plan, privateKey) {
-        const pubKey = bytes(E().utils.computePublicKey(privateKey, true));
-        const pubKeyHash = hash160(pubKey);
         const version = plan.version || 2, locktime = plan.locktime || 0;
         const inputs = plan.inputs.map((u) => ({ ...u, sequence: u.sequence ?? SEQUENCE }));
+        const keyOf = (u) => u.privateKey || privateKey;
+        if (inputs.some((u) => !keyOf(u))) throw new Error('Falta a chave de uma das moedas. Transação cancelada.');
 
         // Conferência final: o que entra = o que sai + taxa. Nunca assina se a conta não fechar.
         const inSum = inputs.reduce((n, u) => n + u.value, 0);
@@ -273,8 +280,11 @@
 
         const outputsSerialized = concat(...plan.outputs.map((o) => serializeOutput(o.value, o.script)));
         const witnesses = inputs.map((input, index) => {
+            const pk = keyOf(input);
+            const pubKey = bytes(E().utils.computePublicKey(pk, true));
+            const pubKeyHash = hash160(pubKey);
             const digest = bip143Sighash({ version, inputs, outputsSerialized, inputIndex: index, pubKeyHash, valueSats: input.value, locktime });
-            const sig = derSignature(privateKey, digest);
+            const sig = derSignature(pk, digest);
             return concat(Uint8Array.of(0x02, sig.length), sig, Uint8Array.of(pubKey.length), pubKey);
         });
         const inputsSerialized = concat(...inputs.map((i) => concat(outpoint(i), Uint8Array.of(0x00), u32le(i.sequence))));
@@ -446,7 +456,8 @@
         const c = info.chain_stats, m = info.mempool_stats;
         const confirmed = c.funded_txo_sum - c.spent_txo_sum;
         const pending = m.funded_txo_sum - m.spent_txo_sum;
-        return { confirmedSats: confirmed, pendingSats: pending, totalSats: confirmed + pending, btc: (confirmed + pending) / 1e8 };
+        const txCount = (c.tx_count || 0) + (m.tx_count || 0) + (c.funded_txo_count || 0) + (m.funded_txo_count || 0) > 0 || c.funded_txo_sum > 0 || m.funded_txo_sum > 0 ? Math.max(1, (c.tx_count || 0) + (m.tx_count || 0)) : 0;
+        return { confirmedSats: confirmed, pendingSats: pending, totalSats: confirmed + pending, btc: (confirmed + pending) / 1e8, txCount };
     }
     async function fetchUtxos(address) {
         const list = JSON.parse(await api(`/address/${address}/utxo`));
@@ -470,7 +481,7 @@
 
     global.RdeskBitcoin = {
         DUST_SATS,
-        deriveFromMnemonic, deriveFromPrivateKey, publicKeyToAddress,
+        deriveFromMnemonic, deriveAtPath, deriveFromPrivateKey, publicKeyToAddress,
         isValidAddress, addressToScript,
         planTransaction, signTransaction, decodeTx, hexToB64, b64ToHex, estimateVsize, parsePsbt, describeScript, opReturnScript, checkSwapPsbt,
         fetchBalance, fetchUtxos, fetchFeeRates, broadcast,

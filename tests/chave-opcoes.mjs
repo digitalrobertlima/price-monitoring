@@ -46,8 +46,15 @@ try {
     await tapPin(page, '#ks-pinpad', PIN);
     await tapPin(page, '#ks-pinpad', PIN);
     check('PIN confirmado', /PIN criado/.test(await page.innerText('#ks-pinpad')));
+    // ---------------------------------------------------------------- apagar texto com o PIN na tela
+    await page.click('#rmw-f-name'); await page.keyboard.type('Cofre 99');
+    await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace');
+    check('com o PIN na tela, apagar e digitar números funcionam no nome', (await page.inputValue('#rmw-f-name')) === 'Cofre ', JSON.stringify(await page.inputValue('#rmw-f-name')));
+    await page.fill('#rmw-f-name', '');
     // ---------------------------------------------------------------- senha extra
     await page.click('.ks-extra > summary');
+    await page.click('#ks-pp1'); await page.keyboard.type('abc12'); await page.keyboard.press('Backspace');
+    check('apagar funciona na senha extra', (await page.inputValue('#ks-pp1')) === 'abc1');
     check('senha extra explica que sem ela abre outro cofre e que ninguém recupera', /outro cofre/.test(await page.innerText('.ks-extra')) && /ninguém recupera/.test(await page.innerText('.ks-extra')));
     await page.fill('#ks-pp1', EXTRA);
     await page.fill('#ks-pp2', EXTRA + 'x');
@@ -82,6 +89,13 @@ try {
     check('PIN certo abre o cofre', true);
     const signer = await page.evaluate(() => window.RdeskWallet.getSigner(137).then((s) => s.getAddress()));
     check('depois de abrir, assina com a chave certa (frase + senha extra)', signer === withExtra);
+    // Depois de abrir pela porta com PIN, o teclado da porta não pode engolir teclas no resto do app
+    await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });
+    await page.click('#btn-action-send');
+    await page.waitForSelector('#rmw-snd-to');
+    await page.click('#rmw-snd-to'); await page.keyboard.type('0xabc123'); await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace');
+    check('depois de abrir com PIN, apagar e números funcionam no resto do app (enviar)', (await page.inputValue('#rmw-snd-to')) === '0xabc1', JSON.stringify(await page.inputValue('#rmw-snd-to')));
+    await page.evaluate(() => window.RdeskWallet.closeModal());
 
     // ---------------------------------------------------------------- importar com senha extra
     await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });

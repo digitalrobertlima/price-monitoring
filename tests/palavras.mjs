@@ -35,6 +35,19 @@ try {
     check('palavra que não existe fica vermelha e avisa', (await page.locator('.sg-cell.bad').count()) === 1 && /não existe/.test(await page.innerText('.sg-status')));
     await page.fill('.sg-cell:nth-child(5) input', m[4]);
     await page.screenshot({ path: 'tests/artifacts-palavras.png' });
+    // Bug relatado: com o teclado de PIN na tela, a tecla de apagar não funcionava em nenhum campo
+    check('teclado de PIN está na tela (cenário do bug)', (await page.locator('#rmw-f-pinpad .pp-key').count()) === 12);
+    await page.click('.sg-cell:nth-child(3) input');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace');
+    check('apagar funciona no quadradinho da palavra', (await page.inputValue('.sg-cell:nth-child(3) input')) === m[2].slice(0, -2), await page.inputValue('.sg-cell:nth-child(3) input'));
+    await page.keyboard.type(m[2].slice(-2));
+    await page.click('#rmw-f-name');
+    await page.keyboard.type('Meu cofre');
+    await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace'); await page.keyboard.press('Backspace');
+    check('apagar funciona no nome do cofre', (await page.inputValue('#rmw-f-name')) === 'Meu co', JSON.stringify(await page.inputValue('#rmw-f-name')));
+    await page.keyboard.type('fre 12');
+    check('números digitados no nome ficam no nome (não vão para o PIN)', (await page.inputValue('#rmw-f-name')) === 'Meu cofre 12' && (await page.locator('#rmw-f-pinpad .pp-dots i.on').count()) === 0, JSON.stringify(await page.inputValue('#rmw-f-name')));
     // colar a frase de 24 palavras na primeira caixa
     const m24 = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(32));
     await page.click('[data-n="24"]');

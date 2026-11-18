@@ -98,6 +98,12 @@ npm run test:smoke  # rede real: saldo, cotações, contratos de todas as moedas
 
 Regra do projeto: nenhuma mudança entra na `main` sem `npm test` passando.
 
+## Ideias para o futuro (ainda não implementadas)
+
+- **Tornado Cash em todas as redes**: só ideia, sem data. Antes de qualquer integração: rever o status jurídico. As sanções dos EUA foram retiradas em março de 2025, mas o processo criminal contra um dos desenvolvedores segue aberto (novo julgamento marcado para abril de 2027). Também é preciso entender o risco para quem opera e cobra taxa no app.
+- **Assinatura sem internet compatível com outras carteiras** (QR animado no padrão BC-UR / PSBT).
+- **Juntar moedas Bitcoin** de vários endereços com cuidado de privacidade.
+
 ## Origem do design
 
 A interface vem da branch `v23-superapp` (commit `ede58c2`, com o `styles.css` do commit `803fa7b`), que tinha o gerenciador de carteiras e a aba Render V3. As demais branches ficam como arquivo.

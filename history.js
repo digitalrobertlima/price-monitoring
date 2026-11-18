@@ -598,6 +598,8 @@
             if (loadCache(w)) renderAll();
         }
         if (!force && st.savedAt && Date.now() - st.savedAt < 2 * 60 * 1000 && st.seriesReady) { renderAll(); return; }
+        // Modo anônimo: o serviço de histórico veria o seu endereço; só busca quando a pessoa pede (Atualizar)
+        if (!force && global.RdeskAnon?.isOn()) { st.error = st.events.length ? '' : '🕵️ Modo anônimo: o histórico só é buscado quando você toca em Atualizar no Extrato.'; renderAll(); return; }
         if (loadingPromise) return loadingPromise;
         loadingPromise = (async () => {
             st.loading = true; st.error = '';

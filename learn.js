@@ -130,10 +130,12 @@
     let voice = null;
     function pickVoice() {
         const vs = global.speechSynthesis?.getVoices?.() || [];
-        const pt = vs.filter((v) => /^pt(-|_)BR/i.test(v.lang));
+        // Só vozes do próprio aparelho: as vozes "online" mandam o texto para servidores (Google, Microsoft)
+        const local = vs.filter((v) => v.localService !== false && !/online|google/i.test(v.name));
+        const pt = local.filter((v) => /^pt(-|_)BR/i.test(v.lang));
         // vozes "naturais"/neurais primeiro; as antigas de desktop por último
         const score = (v) => (/natural|neural|online/i.test(v.name) ? 3 : 0) + (/google/i.test(v.name) ? 2 : 0) + (/francisca|thalita|luciana|vit[oó]ria/i.test(v.name) ? 1 : 0) - (/desktop|maria|daniel/i.test(v.name) ? 2 : 0);
-        voice = pt.sort((a, b) => score(b) - score(a))[0] || vs.find((v) => /^pt/i.test(v.lang)) || null;
+        voice = pt.sort((a, b) => score(b) - score(a))[0] || local.find((v) => /^pt/i.test(v.lang)) || null;
     }
     if (global.speechSynthesis) { pickVoice(); global.speechSynthesis.onvoiceschanged = pickVoice; }
 
@@ -204,7 +206,8 @@
     }
     function speakSynth(plain, who, finish, fallbackMs) {
         const synth = global.speechSynthesis;
-        if (!synth || typeof global.SpeechSynthesisUtterance !== 'function') { setTimeout(finish, fallbackMs); return; }
+        // Sem voz do próprio aparelho: fica em silêncio (o texto está na tela) em vez de mandar o texto à nuvem
+        if (!synth || typeof global.SpeechSynthesisUtterance !== 'function' || !voice) { setTimeout(finish, fallbackMs); return; }
         try {
             synth.cancel();
             const u = new global.SpeechSynthesisUtterance(plain);

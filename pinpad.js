@@ -46,6 +46,11 @@
         // Teclado físico também funciona (computador)
         const onKey = (e) => {
             if (!el.isConnected) { document.removeEventListener('keydown', onKey); return; }
+            // Digitando em outro campo (palavras, nome, senha…): o teclado do PIN não mexe em nada.
+            // (Antes ele engolia a tecla de apagar e os números da página inteira.)
+            const tg = e.target;
+            if (tg && tg !== document.body && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))) return;
+            if (!el.offsetParent && el !== document.activeElement) return; // teclado escondido
             if (/^[0-9]$/.test(e.key)) { press(e.key); e.preventDefault(); }
             else if (e.key === 'Backspace') { pin = pin.slice(0, -1); paint(); e.preventDefault(); }
         };
