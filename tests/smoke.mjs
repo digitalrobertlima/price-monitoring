@@ -39,6 +39,7 @@ try {
     check('boas-vindas aparecem na primeira abertura e saem do caminho', (await page.locator('.ob-intro').count()) === 0);
 
     await page.click('#btn-wallet-trigger');
+    if (await page.locator('.more-opts:not([open]) > summary').count()) await page.click('.more-opts > summary');
     await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'observação' }).click();
     await page.fill('#rmw-f-watch-input', WATCH_ADDRESS);
     if (await page.locator('#rmw-f-name').count()) await page.fill('#rmw-f-name', 'Observação');

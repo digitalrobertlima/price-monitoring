@@ -89,6 +89,15 @@ try {
     ch = await ui(() => window.RdeskHistory.getState().chart);
     check('tocar no gráfico mostra data, valor na régua e em reais, e o que entrou no dia', ch.hover === 0 && /BTC/.test(ch.tip) && /R\$/.test(ch.tip) && /entrou/.test(ch.tip), ch.tip);
     await page.screenshot({ path: 'tests/artifacts-hist-inicio.png', fullPage: true });
+    const head = await page.locator('#home-chart-card h2, #home-chart-card .card-title, #home-chart-card').first().boundingBox();
+    await page.touchscreen.tap(head.x + 20, head.y + 12);
+    await page.waitForTimeout(250);
+    check('tocar fora do gráfico esconde o balão', (await ui(() => window.RdeskHistory.getState().chart.hover)) === null && (await ui(() => document.querySelector('#home-chart .eq-tip').hidden)));
+    await page.touchscreen.tap(box.x + box.width * 0.02, box.y + box.height / 2);
+    await page.waitForTimeout(200);
+    await page.touchscreen.tap(10, 400);
+    await page.waitForTimeout(250);
+    check('tocar em qualquer lugar da tela também esconde', (await ui(() => window.RdeskHistory.getState().chart.hover)) === null);
     await page.click('#home-chart-range [data-range="7"]');
     check('"7 dias" mostra só a última semana', (await ui(() => window.RdeskHistory.getState().chart.points)) === 8);
     await page.click('#home-chart-range [data-range="all"]');
