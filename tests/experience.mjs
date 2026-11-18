@@ -42,7 +42,7 @@ try {
     await page.screenshot({ path: 'tests/artifacts-xp-boasvindas.png' });
     await page.click('#ob-next'); // "Vamos começar"
     await page.waitForSelector('#rdesk-mw-sheet .rmw-opt-btn', { timeout: 10000 });
-    check('"Vamos começar" leva direto para criar ou abrir a carteira', /Criar carteira/.test(await page.innerText('#rdesk-mw-sheet')));
+    check('"Vamos começar" leva direto para criar ou abrir a carteira', /Criar meu cofre/.test(await page.innerText('#rdesk-mw-sheet')));
     await ui(() => window.RdeskWallet.closeModal());
 
     // Sem carteira: convite, não painel
