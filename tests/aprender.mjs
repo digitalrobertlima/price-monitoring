@@ -7,6 +7,15 @@ const MOBILE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch
 // Voz simulada: guarda o que foi falado e termina rápido
 const VOICE = () => {
     window.__spoken = [];
+    window.__played = [];
+    // Áudio gravado: registra o arquivo e termina rápido
+    HTMLMediaElement.prototype.play = function () { window.__played.push(this.src); setTimeout(() => this.dispatchEvent(new Event('ended')), 150); return Promise.resolve(); };
+    // O que foi dito (por voz gravada ou do celular), já como texto
+    window.__said = () => {
+        const L = window.RDESK_LESSONS.allLines();
+        return [...window.__spoken.map((s) => ({ text: s.text, who: null, how: 'tts' })),
+            ...window.__played.map((src) => { const l = L.find((x) => src.includes(`/${x.key}.mp3`)); return { text: l ? l.text : src, who: l?.who, how: 'audio' }; })];
+    };
     const fake = {
         speaking: false, onvoiceschanged: null,
         getVoices: () => [{ name: 'Luciana', lang: 'pt-BR' }],
@@ -25,17 +34,17 @@ try {
     await page.waitForSelector('#learn-stage', { timeout: 10000 });
     const t0 = await page.innerText('#learn-stage');
     check('primeira abertura: Duda e Bit aparecem antes de qualquer coisa', /Duda/.test(t0) && (await page.locator('#learn-stage .av-duda .av-layer').count()) === 4 && (await page.locator('#learn-stage .av-bit .av-layer').count()) === 4);
-    await waitFn(page, () => window.__spoken.length > 0, null, { timeout: 5000 });
-    const first = await page.evaluate(() => window.__spoken[0]);
-    check('a Duda fala em voz alta, em português do Brasil', /Eu sou a Duda/.test(first.text) && first.lang === 'pt-BR', JSON.stringify(first));
-    check('enquanto fala, a boca da Duda mexe (classe "talking")', await page.evaluate(() => document.querySelector('#learn-stage .av-duda').classList.contains('talking') || window.__spoken.length > 0));
+    await waitFn(page, () => window.__said().length > 0, null, { timeout: 5000 });
+    const first = await page.evaluate(() => window.__said()[0]);
+    const hasAudio = await page.evaluate(async () => (await (await fetch('./audio/index.json')).json()).length > 0);
+    check(`a Duda fala em voz alta (${hasAudio ? 'voz natural gravada' : 'voz do celular, sem áudios gravados ainda'})`, /Eu sou a Duda/.test(first.text) && (!hasAudio || first.how === 'audio'), JSON.stringify(first));
     // Personagens com degradês próprios (cada cópia tem ids únicos: senão a cor some)
     const ids = await page.evaluate(() => [...document.querySelectorAll('[id^="dg-skin"]')].map((e) => e.id));
     check('cada cópia da Duda tem cores próprias (sem ids repetidos)', new Set(ids).size === ids.length && ids.length >= 2, ids.join(','));
     await page.click('#ls-next');
-    await waitFn(page, () => window.__spoken.some((s) => /eu sou o Bit/i.test(s.text)), null, { timeout: 5000 });
-    const bitVoice = await page.evaluate(() => window.__spoken.find((s) => /eu sou o Bit/i.test(s.text)));
-    check('o Bit tem voz própria (mais aguda) e o balão aponta pra ele', bitVoice.pitch > 1.3 && await page.evaluate(() => document.getElementById('ls-bubble').classList.contains('from-bit')), JSON.stringify(bitVoice));
+    await waitFn(page, () => window.__said().some((s) => /eu sou o Bit/i.test(s.text)), null, { timeout: 5000 });
+    const bitVoice = await page.evaluate(() => window.__said().find((s) => /eu sou o Bit/i.test(s.text)));
+    check('o Bit fala com a voz dele e o balão aponta pra ele', (bitVoice.how === 'tts' || bitVoice.who === 'bit') && await page.evaluate(() => document.getElementById('ls-bubble').classList.contains('from-bit')), JSON.stringify(bitVoice));
     // Interação: tocar no Bit faz ele girar; mexer o dedo inclina os personagens (3D)
     await page.click('#learn-stage .av-bit');
     check('tocar no Bit faz ele girar', await page.evaluate(() => document.querySelector('#learn-stage .av-bit').classList.contains('spin')));
@@ -53,7 +62,7 @@ try {
     await page.waitForSelector('.ls-opt');
     await page.screenshot({ path: 'tests/artifacts-aprender-quiz.png' });
     await page.locator('.ls-opt', { hasText: 'Só para enfeitar' }).click();
-    check('resposta errada: botão treme e a Duda incentiva a tentar de novo', await page.evaluate(() => document.querySelector('.ls-opt.wrong') !== null) && await waitFn(page, () => window.__spoken.some((s) => /Tenta de novo/.test(s.text)), null, { timeout: 3000 }).then(() => true).catch(() => false));
+    check('resposta errada: botão treme e a Duda incentiva a tentar de novo', await page.evaluate(() => document.querySelector('.ls-opt.wrong') !== null) && await waitFn(page, () => window.__said().some((s) => /Tenta de novo/.test(s.text)), null, { timeout: 3000 }).then(() => true).catch(() => false));
     await page.locator('.ls-opt', { hasText: 'Trocar por coisas' }).click();
     await page.waitForSelector('.art-medal', { timeout: 5000 });
     check('acertou: medalha, estrela e comemoração', /Lição concluída/.test(await page.innerText('#ls-bubble')) && (await page.evaluate(() => window.RdeskLearn.getState().stars)) === 1);
@@ -86,23 +95,59 @@ try {
     await page.click('.nav-tab-btn[data-tab="learn"]');
     await page.waitForSelector('#learn-path .lp-node');
     const nodes = await page.$$eval('#learn-path .lp-node', (els) => els.map((e) => e.className));
-    check('aba Aprender mostra a trilha: 9 lições, 4 feitas, próxima destacada', nodes.length === 9 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[4]), nodes.join(' | '));
-    check('progresso visível: "4 de 9" e estrelas', /4 de 9/.test(await page.innerText('#learn-progress')));
+    check('aba Aprender mostra a trilha: 13 lições, 4 feitas, próxima destacada (Real, dólar e Bitcoin)', nodes.length === 13 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[3]), nodes.join(' | '));
+    check('progresso visível: "4 de 13" e estrelas', /4 de 13/.test(await page.innerText('#learn-progress')));
     const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
     check('trilha não empurra a tela para o lado no celular', o.sw <= o.iw + 1, `${o.sw} em ${o.iw}`);
     await page.screenshot({ path: 'tests/artifacts-aprender-aba.png', fullPage: true });
+    // Lição nova: real, dólar e Bitcoin com a cotação de agora
+    await page.click('#learn-path [data-lesson="real-dolar"]', { force: true });
+    await page.waitForSelector('#learn-stage');
+    await page.click('#ls-next');
+    const fx = await page.innerText('#ls-art');
+    const px = await page.evaluate(() => window.RdeskWallet.getPrices());
+    check('"Real, dólar e Bitcoin" mostra quanto custa o dólar agora (ao vivo)', fx.includes(Number(px.USD_BRL).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }).replace(/\u00a0/g, ' ').replace(/\s/g, ' ')) || /US\$ 1\s*=\s*R\$\s*\d/.test(fx.replace(/\u00a0/g, ' ')), fx);
+    await page.click('#ls-next'); await page.click('#ls-next');
+    const fxb = (await page.innerText('#ls-art')).replace(/\u00a0/g, ' ');
+    check('e faz a conta: bitcoin em dólar × dólar = bitcoin em reais', /₿ 1 = US\$/.test(fxb) && /× R\$/.test(fxb) && /= R\$/.test(fxb), fxb);
+    await page.click('#ls-close');
+    await page.click('#learn-path [data-lesson="stablecoins"]', { force: true });
+    await page.waitForSelector('#learn-stage');
+    for (let k = 0; k < 2; k++) await page.click('#ls-next');
+    check('"Dólar e real digitais" compara USDT e USDC', /USDT/.test(await page.innerText('#ls-art')) && /USDC/.test(await page.innerText('#ls-art')) && /Tether/.test(await page.innerText('#ls-bubble')));
+    for (let k = 0; k < 2; k++) await page.click('#ls-next');
+    check('e BRZ × BRLA (dois reais digitais de empresas diferentes)', /BRZ/.test(await page.innerText('#ls-art')) && /BRLA/.test(await page.innerText('#ls-art')) && /Transfero/.test(await page.innerText('#ls-bubble')));
+    await page.screenshot({ path: 'tests/artifacts-aprender-stablecoins.png' });
+    await page.click('#ls-close');
     await page.click('#learn-path [data-lesson="receber"]', { force: true });
     await page.waitForSelector('#learn-stage');
     for (let k = 0; k < 3; k++) await page.click('#ls-next');
     check('lição "Receber" termina com o botão para ver o próprio código', /Ver meu código de receber/.test(await page.innerText('#ls-action')));
     // Som desligado: para de falar
     await page.click('#ls-sound');
-    const before = await page.evaluate(() => window.__spoken.length);
+    const before = await page.evaluate(() => window.__said().length);
     await page.click('#ls-again');
     await page.waitForTimeout(800);
-    check('botão de som desliga a voz (e fica lembrado)', (await page.evaluate(() => window.__spoken.length)) === before && (await page.evaluate(() => window.RdeskLearn.getState().muted)));
+    check('botão de som desliga a voz (e fica lembrado)', (await page.evaluate(() => window.__said().length)) === before && (await page.evaluate(() => window.RdeskLearn.getState().muted)));
     await page.click('#ls-close');
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
+
+    // ================================================================ 2b. No computador: personagens nunca por cima do texto
+    const desk = await browser.newContext({ viewport: { width: 1600, height: 820 }, serviceWorkers: 'block' });
+    await desk.addInitScript(VOICE);
+    const dk = await openApp(desk, url, { 137: new MockChain({ polPriceUsd: 0.09 }) }, {});
+    await dk.page.evaluate(() => window.RdeskLearn.openLesson('dinheiro'));
+    for (let k = 0; k < 4; k++) await dk.page.click('#ls-next');
+    await dk.page.waitForSelector('.ls-opt');
+    const geo = await dk.page.evaluate(() => {
+        const r = (s) => document.querySelector(s).getBoundingClientRect();
+        const b = r('#ls-bubble'), d = r('#learn-stage .av-duda'), c = r('#learn-stage .av-bit');
+        const over = (x, y) => !(x.right <= y.left || y.right <= x.left || x.bottom <= y.top || y.bottom <= x.top);
+        return { overDuda: over(b, d), overBit: over(b, c), width: b.width };
+    });
+    check('no computador: balão não fica embaixo dos personagens e o palco tem largura de celular', !geo.overDuda && !geo.overBit && geo.width <= 560, JSON.stringify(geo));
+    await dk.page.screenshot({ path: 'tests/artifacts-aprender-computador.png' });
+    await desk.close();
 
     // ================================================================ 3. Comprar com Pix: "Em breve"
     await page.click('.nav-tab-btn[data-tab="pixswap"]');

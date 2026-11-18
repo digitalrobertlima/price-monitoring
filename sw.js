@@ -20,6 +20,7 @@ const CORE_ASSETS = [
   './wallet-views.js',
   './onboarding.js',
   './vault-door.js',
+  './lessons.js',
   './learn.js',
   './history.js',
   './wallet-service.js',
