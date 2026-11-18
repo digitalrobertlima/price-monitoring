@@ -3,11 +3,14 @@
    Arquivo 2 de 7: sw.js
    ========================================================================= */
 
-const CACHE_NAME = 'rdesk-sentinel-v34';
+importScripts('./version.js');
+const CACHE_NAME = `rdesk-sentinel-${self.RDESK_VERSION}`;
 
 const CORE_ASSETS = [
   './',
   './index.html',
+  './version.js',
+  './updater.js',
   './styles.css',
   './range-chart.js',
   './registry.js',
@@ -17,6 +20,7 @@ const CORE_ASSETS = [
   './wallet-views.js',
   './onboarding.js',
   './vault-door.js',
+  './learn.js',
   './history.js',
   './wallet-service.js',
   './defi-pix-service.js',
@@ -34,6 +38,10 @@ self.addEventListener('install', (event) => {
       .then((cache) => cache.addAll(CORE_ASSETS))
       .then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -65,9 +73,18 @@ self.addEventListener('fetch', (event) => {
   if (!isLocalAsset && !isStaticCdn) return;
 
   // Network-First: baixa sempre a versão mais recente do GitHub Pages com fallback offline
+  // version.js nunca vem de cache (é por ele que o app descobre a versão nova)
+  if (isLocalAsset && url.pathname.endsWith('/version.js')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }).catch(() => caches.match(req)));
+    return;
+  }
+  // Arquivos do app: sempre pergunta ao servidor se mudou (sem usar cache do navegador)
+  const fresh = isLocalAsset ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : req;
   event.respondWith(
-    fetch(req)
+    fetch(fresh)
       .then((networkRes) => {
+        // Navegação não pode receber resposta redirecionada: devolve um redirecionamento de verdade
+        if (req.mode === 'navigate' && networkRes.redirected) return Response.redirect(networkRes.url, 302);
         if (networkRes && networkRes.status === 200) {
           const clone = networkRes.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));

@@ -121,6 +121,11 @@
         };
         el.querySelector('#ob-skip').onclick = () => finishIntro(false);
     }
+    // Primeira abertura: a Duda ensina o básico ANTES de a pessoa mexer em qualquer coisa
+    function firstRun() {
+        if (global.RdeskLearn) global.RdeskLearn.startWelcome((learned) => finishIntro(learned));
+        else showIntro(0);
+    }
     function finishIntro(start) {
         st.introDone = true; save();
         close();
@@ -252,7 +257,8 @@
                 <button type="button" data-m="addtoken"><span>＋</span>Adicionar uma moeda</button>
                 <button type="button" data-m="ref"><span>⚖️</span>Comparar com outra moeda</button>
                 <button type="button" data-m="privacy"><span>👁</span>${hidden ? 'Mostrar saldos' : 'Esconder saldos'}</button>
-                <button type="button" data-m="tutorial"><span>🎓</span>Rever o tutorial</button>
+                <button type="button" data-m="learn"><span>🎓</span>Aprender com a Duda</button>
+                <button type="button" data-m="tutorial"><span>👋</span>Rever as boas-vindas</button>
                 <button type="button" data-m="security"><span>🛡️</span>Como sua carteira é protegida</button>
                 <button type="button" data-m="render"><span>📈</span>Como o Render funciona</button>
                 ${canInstall ? '<button type="button" data-m="install"><span>📲</span>Instalar no celular</button>' : ''}
@@ -269,6 +275,7 @@
                 else if (m === 'ref') global.RdeskHistory?.openRefPicker();
                 else if (m === 'privacy') global.RdeskPrivacy?.set(!global.RdeskPrivacy.isHidden());
                 else if (m === 'tutorial') restart();
+                else if (m === 'learn') document.querySelector('.nav-tab-btn[data-tab="learn"]')?.click();
                 else if (m === 'security' || m === 'render') explain(m);
                 else if (m === 'install') install?.click();
             };
@@ -278,7 +285,8 @@
     function restart() {
         st = { introDone: false, finished: false, hidden: false, did: {}, tips: {} };
         save();
-        showIntro(0);
+        global.RdeskLearn?.reset?.();
+        firstRun();
     }
 
     // ------------------------------------------------------------------ ligações
@@ -308,7 +316,7 @@
         global.addEventListener('rdesk:walletChanged', () => renderSteps());
         global.addEventListener('rdesk:success', (e) => celebrate(e.detail?.text || 'Pronto!'));
 
-        if (!st.introDone) setTimeout(() => showIntro(0), 250);
+        if (!st.introDone) setTimeout(firstRun, 250);
         else renderSteps();
         setInterval(() => { if (!document.hidden && !st.finished && !st.hidden) renderSteps(); }, 15000);
     });

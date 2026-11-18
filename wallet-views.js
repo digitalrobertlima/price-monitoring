@@ -230,6 +230,99 @@
     }
 
     // =====================================================================
+    // COMPRAR COM PIX: manda um Pix, recebe BRZ (real digital) na carteira
+    // =====================================================================
+    let pixBuyPoll = null;
+    function renderBuyPix(sheet, ctx) {
+        clearInterval(pixBuyPoll);
+        const endpoint = REG.pixBuyEndpoint();
+        const acc = W().getActiveAccount();
+        if (!endpoint) {
+            sheet.innerHTML = `${header('💸 Comprar com Pix')}
+                <div class="pb-soon">
+                    <div class="pixbuy-art big" aria-hidden="true"><span class="pb-pix">PIX</span><span class="pb-arrow">➜</span><span class="pb-coin">₿</span></div>
+                    <h2>Em breve!</h2>
+                    <p>Você vai poder comprar cripto <b>só mandando um Pix</b>, do jeito que já está acostumado.</p>
+                    <div class="ks-rules"><span>1️⃣ Escolhe o valor</span><span>2️⃣ Paga o Pix</span><span>3️⃣ Cai na carteira</span></div>
+                    <p class="muted-sm">Enquanto isso: peça para alguém te enviar cripto em <b>Receber</b>.</p>
+                </div>`;
+            sheet.querySelector('#rmw-close-btn').onclick = ctx.close;
+            return;
+        }
+        if (!acc) { ctx.navigate('add'); return; }
+        sheet.innerHTML = `${header('💸 Comprar com Pix')}
+            <div class="pb-flow" id="pb-step-amount">
+                <div class="pixbuy-art big" aria-hidden="true"><span class="pb-pix">PIX</span><span class="pb-arrow">➜</span><span class="pb-coin">R$</span></div>
+                <p class="ks-sub" style="margin:0;">Você manda um Pix e recebe <b>BRZ</b>, o real digital (1 BRZ = R$ 1), na sua carteira.</p>
+                <div class="pb-chips">${[20, 50, 100, 200].map((v) => `<button type="button" class="chip" data-pb-amt="${v}">R$ ${v}</button>`).join('')}</div>
+                <div class="brl-field"><span>R$</span><input type="text" inputmode="decimal" class="rmw-input" id="pb-amount" placeholder="0,00"></div>
+                <div class="pb-receive" id="pb-receive"></div>
+                <div id="pb-msg"></div>
+                <button class="rmw-btn-primary ks-cta" id="pb-go">Gerar o Pix</button>
+                <p class="view-footnote">Cai em: ${esc(REG.shortAddress(acc.address, 8, 6))} (${esc(acc.name || 'sua carteira')}) • rede Polygon</p>
+            </div>
+            <div class="pb-flow" id="pb-step-pay" hidden>
+                <div class="receive-box">
+                    <div class="receive-qr"><div id="pb-qr"></div></div>
+                    <div class="receive-net" id="pb-summary"></div>
+                    <code class="receive-address" id="pb-code"></code>
+                    <button class="rmw-btn-primary" id="pb-copy">📋 Copiar Pix Copia e Cola</button>
+                </div>
+                <div class="pb-status" id="pb-status"><span class="pb-dot"></span><span id="pb-status-text">Esperando o pagamento…</span></div>
+            </div>`;
+        sheet.querySelector('#rmw-close-btn').onclick = () => { clearInterval(pixBuyPoll); ctx.close(); };
+        const $ = (s) => sheet.querySelector(s);
+        let cfg = { minBrl: 10, maxBrl: 500, feeBps: 0 };
+        fetch(`${endpoint}/pix/config`).then((r) => r.json()).then((c) => { cfg = { ...cfg, ...c }; showReceive(); }).catch(() => {});
+        const amount = () => REG.parseBRL($('#pb-amount').value);
+        const showReceive = () => {
+            const a = amount();
+            $('#pb-receive').textContent = a ? `Você recebe ≈ ${(a * (1 - (cfg.feeBps || 0) / 10000)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BRZ${cfg.feeBps ? ` (taxa de ${(cfg.feeBps / 100).toLocaleString('pt-BR')}%)` : ''}` : `De R$ ${cfg.minBrl} a R$ ${cfg.maxBrl} por compra`;
+        };
+        sheet.querySelectorAll('[data-pb-amt]').forEach((b) => { b.onclick = () => { $('#pb-amount').value = b.getAttribute('data-pb-amt'); showReceive(); }; });
+        $('#pb-amount').addEventListener('input', showReceive);
+        showReceive();
+        $('#pb-go').onclick = async () => {
+            const a = amount();
+            const msg = (text) => { $('#pb-msg').innerHTML = text ? `<div class="rmw-alert-err">${esc(text)}</div>` : ''; };
+            if (!a || a < cfg.minBrl || a > cfg.maxBrl) return msg(`Escolha um valor entre R$ ${cfg.minBrl} e R$ ${cfg.maxBrl}.`);
+            msg('');
+            $('#pb-go').disabled = true; $('#pb-go').textContent = 'Gerando o Pix…';
+            try {
+                const res = await fetch(`${endpoint}/pix/order`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ amountBrl: a, address: acc.address }) });
+                const order = await res.json();
+                if (!res.ok || !order.pixCode) throw new Error(order.error || 'Não deu para gerar o Pix agora.');
+                // Confere o Pix antes de mostrar (código válido e valor certo)
+                const parsed = global.RdeskPix.parsePayload(order.pixCode);
+                if (parsed.amount !== null && Math.abs(parsed.amount - a) > 0.001) throw new Error('O valor do Pix não confere. Tente de novo.');
+                $('#pb-step-amount').hidden = true;
+                $('#pb-step-pay').hidden = false;
+                ctx.drawQr($('#pb-qr'), order.pixCode, 190);
+                $('#pb-code').textContent = order.pixCode;
+                $('#pb-summary').textContent = `${ctx.formatBRL(a)} • você recebe ${Number(order.receive).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} BRZ`;
+                $('#pb-copy').onclick = async () => { await ctx.copy(order.pixCode); $('#pb-copy').textContent = '✓ Copiado! Agora pague no app do banco'; };
+                const setStatus = (cls, text) => { $('#pb-status').className = `pb-status ${cls}`; $('#pb-status-text').textContent = text; };
+                pixBuyPoll = setInterval(async () => {
+                    try {
+                        const s = await (await fetch(`${endpoint}/pix/order/${encodeURIComponent(order.orderId)}`)).json();
+                        if (s.status === 'approved') setStatus('paid', 'Pix recebido! As moedas estão a caminho da sua carteira.');
+                        if (s.status === 'delivered') {
+                            clearInterval(pixBuyPoll);
+                            setStatus('done', `Pronto! ${Number(s.receive).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} BRZ chegaram na sua carteira.`);
+                            global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Sua primeira compra com Pix chegou!' } }));
+                            W().refreshBalances?.();
+                        }
+                        if (s.status === 'expired') { clearInterval(pixBuyPoll); setStatus('expired', 'Este Pix expirou. Gere outro quando quiser.'); }
+                    } catch (e) { /* tenta de novo no próximo ciclo */ }
+                }, 4000);
+            } catch (err) {
+                msg(err.message);
+                $('#pb-go').disabled = false; $('#pb-go').textContent = 'Gerar o Pix';
+            }
+        };
+    }
+
+    // =====================================================================
     // ENVIAR
     // =====================================================================
     function renderSend(sheet, ctx) {
@@ -614,6 +707,7 @@
         const wallet = W();
         wallet.registerView('receive', renderReceive);
         wallet.registerView('pix', renderPix);
+        wallet.registerView('buy-pix', renderBuyPix);
         wallet.registerView('send', renderSend);
         wallet.registerView('asset', renderAsset);
         wallet.registerView('addtoken', renderAddToken);

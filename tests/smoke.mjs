@@ -32,11 +32,13 @@ try {
     check('página e bibliotecas carregadas', true);
 
     // Primeira abertura no site publicado: passa pelas boas-vindas como uma pessoa faria
-    await page.waitForSelector('.ob-intro', { timeout: 15000 });
-    await page.click('#ob-next');
-    await page.click('#ob-next');
-    await page.click('#ob-skip'); // "Só quero olhar"
-    check('boas-vindas aparecem na primeira abertura e saem do caminho', (await page.locator('.ob-intro').count()) === 0);
+    await page.waitForSelector('#learn-stage', { timeout: 15000 });
+    check('primeira abertura: a Duda e o Bit aparecem (personagens desenhados)', (await page.locator('#learn-stage .av-duda .av-layer').count()) === 4 && (await page.locator('#learn-stage .av-bit .av-layer').count()) === 4);
+    await page.click('#ls-next');
+    await page.click('#ls-close'); // "pular por enquanto"
+    check('boas-vindas da Duda saem do caminho quando a pessoa pula', (await page.locator('#learn-stage').count()) === 0);
+    const ver = await page.evaluate(async () => [window.RdeskUpdater?.current, await window.RdeskUpdater?.check()]);
+    check('atualização forçada: o app sabe a própria versão e confere a do servidor', Boolean(ver[0]) && ver[0] === ver[1], JSON.stringify(ver));
 
     await page.click('#btn-wallet-trigger');
     if (await page.locator('.more-opts:not([open]) > summary').count()) await page.click('.more-opts > summary');

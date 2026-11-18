@@ -141,12 +141,17 @@
             if (installBtn) installBtn.style.display = 'none';
         });
 
-        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-            navigator.serviceWorker.register('./sw.js').catch((err) => {
-                console.warn('Service Worker não registrado:', err.message);
-            });
-        }
+        // O service worker é registrado pelo updater.js (atualização forçada)
     }
+
+    // Comprar com Pix: abre a tela (mostra "Em breve" enquanto o servidor não estiver ligado)
+    document.addEventListener('DOMContentLoaded', () => {
+        const on = Boolean(window.RdeskRegistry?.pixBuyEndpoint?.());
+        const badge = document.getElementById('pixbuy-badge');
+        const sub = document.getElementById('pixbuy-sub');
+        if (on) { if (badge) badge.textContent = 'Novo'; if (sub) sub.textContent = 'Mande um Pix e receba cripto na carteira'; }
+        document.getElementById('btn-buy-pix')?.addEventListener('click', () => window.RdeskWallet?.openView('buy-pix'));
+    });
 
     // =========================================================================
     // 5. VINCULAÇÃO GERAL DA JORNADA DO USUÁRIO

@@ -1,0 +1,29 @@
+# Cloudflare Worker do "Comprar com Pix". Plano grátis: 100 mil pedidos/dia.
+name = "rdesk-pix"
+main = "pix-worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+# Endereço do app (só ele pode chamar este servidor)
+APP_ORIGIN = "https://digitalrobertlima.github.io"
+# Limites por compra, em reais
+MIN_BRL = "10"
+MAX_BRL = "500"
+# Taxa cobrada na compra (100 = 1%). O app mostra antes de gerar o Pix.
+FEE_BPS = "150"
+# Entrega automática das moedas: comece com "false" (você entrega à mão) até testar tudo
+DELIVERY_ENABLED = "false"
+# Rede e moeda entregue: BRZ na Polygon (1 BRZ = 1 real, sem risco de preço no meio do caminho)
+DELIVERY_RPC = "https://polygon-rpc.com"
+DELIVERY_TOKEN = "0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc"
+DELIVERY_DECIMALS = "18"
+
+# Guarda os pedidos (crie com: npx wrangler kv namespace create ORDERS)
+[[kv_namespaces]]
+binding = "ORDERS"
+id = "COLE_AQUI_O_ID_DO_KV"
+
+# Segredos (NUNCA no código). Configure com:
+#   npx wrangler secret put MP_ACCESS_TOKEN      -> Access Token de PRODUÇÃO do Mercado Pago
+#   npx wrangler secret put MP_WEBHOOK_SECRET    -> "Assinatura secreta" das notificações (Webhooks)
+#   npx wrangler secret put HOT_WALLET_KEY       -> chave da carteira que entrega as moedas (só com pouco saldo!)
