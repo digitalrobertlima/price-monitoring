@@ -21,6 +21,10 @@
     <script src="vendor/jsqr-1.4.0.js" integrity="sha384-cZTKky7cz5Oq0xyzxf7MB8E+03uCPGEe6K+lSuL2ozIvIaDDEhBkA8CmFyncqXwm" defer></script>
     <script src="vendor/chart-4.4.1.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" defer></script>
 
+    <!-- Versão + atualização forçada (antes de tudo) -->
+    <script src="version.js"></script>
+    <script src="updater.js" defer></script>
+
     <!-- Núcleo RDESK -->
     <script src="range-chart.js" defer></script>
     <script src="registry.js" defer></script>
@@ -242,6 +246,11 @@
              TROCAR
              ================================================================= -->
         <section id="tab-panel-pixswap" class="tab-panel" aria-label="Trocar">
+            <button type="button" class="pixbuy-card" id="btn-buy-pix" aria-label="Comprar cripto com Pix">
+                <span class="pixbuy-art" aria-hidden="true"><span class="pb-pix">PIX</span><span class="pb-arrow">➜</span><span class="pb-coin">₿</span></span>
+                <span class="pixbuy-text"><strong>Comprar com Pix</strong><small id="pixbuy-sub">Em breve: compre cripto só mandando um Pix</small></span>
+                <span class="pixbuy-badge" id="pixbuy-badge">Em breve</span>
+            </button>
             <div id="subpanel-dex-swap" class="section-card subpanel active">
                 <div class="section-head"><h1>Trocar moedas</h1></div>
                 <p class="muted-sm">Troque uma moeda por outra, ou leve para outra rede. Você vê quanto vai receber antes de confirmar.</p>

@@ -2388,3 +2388,9 @@ body.vault-locked > *:not(#vault-screen):not(#rdesk-mw-overlay):not(.ob-toast):n
 .more-opts > summary { cursor: pointer; padding: 12px 4px; color: #cbd5e1; font-weight: 600; list-style: none; }
 .more-opts > summary::before { content: '＋ '; color: #ffb35c; }
 .more-opts[open] > summary::before { content: '－ '; }
+
+/* v32 — cortina de atualização */
+.update-curtain { position: fixed; inset: 0; z-index: 200000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: #07090d; color: #f1f5f9; }
+.update-curtain span { color: #94a3b8; }
+.uc-coin { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-size: 2.2rem; font-weight: 900; color: #2a1600; background: radial-gradient(circle at 35% 30%, #ffe2a8, #f7931a 55%, #b86400); animation: uc-spin 1.2s linear infinite; }
+@keyframes uc-spin { to { transform: rotateY(360deg); } }

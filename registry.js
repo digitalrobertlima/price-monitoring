@@ -251,6 +251,13 @@
         return { active, rateBps: active ? rateBps : 0, rate: active ? rateBps / 10000 : 0, evmAddress: okAddr ? global.ethers.utils.getAddress(c.evmAddress) : '', lifiIntegrator: c.lifiIntegrator };
     }
 
+    // =====================================================================
+    // COMPRAR COM PIX (Mercado Pago) — pronto e DESLIGADO.
+    // Para ligar: publique o servidor em server/ (Cloudflare Worker) e coloque o endereço dele aqui.
+    // =====================================================================
+    const PIX_BUY = Object.freeze({ endpoint: '' }); // ex.: 'https://rdesk-pix.SEU-USUARIO.workers.dev'
+    const pixBuyEndpoint = () => String(global.__RDESK_PIX_BUY_TEST__ || PIX_BUY.endpoint || '').replace(/\/$/, '');
+
     // Valores em reais do jeito brasileiro: "1.234,56", "R$ 10", "0,5"
     function parseBRL(text) {
         let s = String(text || '').replace(/R\$|\s/g, '');
@@ -269,6 +276,6 @@
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
         explorerTokenUrl, explorerAddressUrl, explorerTxUrl,
-        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge, creatorFee, MAX_CREATOR_BPS, parseBRL, coinFromBrl
+        tokenBadge, chainBadge, tokenOnChainBadge, shortAddress, esc, maturity, maturityBadge, creatorFee, MAX_CREATOR_BPS, parseBRL, coinFromBrl, pixBuyEndpoint
     };
 })(window);
