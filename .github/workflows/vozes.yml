@@ -42,4 +42,4 @@ jobs:
           git add audio tools/vozes/linhas.json
           if git diff --cached --quiet; then echo "Nenhuma voz nova."; exit 0; fi
           git commit -m "Vozes da Duda e do Bit (Kokoro-82M)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01MQvxbaWD3asFxYF8JGxcgi"
-          git push
+          for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done

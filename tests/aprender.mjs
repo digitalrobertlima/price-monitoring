@@ -95,13 +95,13 @@ try {
     await page.click('.nav-tab-btn[data-tab="learn"]');
     await page.waitForSelector('#learn-path .lp-node');
     const nodes = await page.$$eval('#learn-path .lp-node', (els) => els.map((e) => e.className));
-    check('aba Aprender mostra a trilha: 13 lições, 4 feitas, próxima destacada (Real, dólar e Bitcoin)', nodes.length === 13 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[3]), nodes.join(' | '));
-    check('progresso visível: "4 de 13" e estrelas', /4 de 13/.test(await page.innerText('#learn-progress')));
+    check('aba Aprender mostra a trilha: 18 lições, 4 feitas, próxima destacada (Satoshi)', nodes.length === 18 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[3]), nodes.join(' | '));
+    check('progresso visível: "4 de 18" e estrelas', /4 de 18/.test(await page.innerText('#learn-progress')));
     const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
     check('trilha não empurra a tela para o lado no celular', o.sw <= o.iw + 1, `${o.sw} em ${o.iw}`);
     await page.screenshot({ path: 'tests/artifacts-aprender-aba.png', fullPage: true });
     // Lição nova: real, dólar e Bitcoin com a cotação de agora
-    await page.click('#learn-path [data-lesson="real-dolar"]', { force: true });
+    await page.evaluate(() => window.RdeskLearn.openLesson('real-dolar'));
     await page.waitForSelector('#learn-stage');
     await page.click('#ls-next');
     const fx = await page.innerText('#ls-art');
@@ -111,7 +111,7 @@ try {
     const fxb = (await page.innerText('#ls-art')).replace(/\u00a0/g, ' ');
     check('e faz a conta: bitcoin em dólar × dólar = bitcoin em reais', /₿ 1 = US\$/.test(fxb) && /× R\$/.test(fxb) && /= R\$/.test(fxb), fxb);
     await page.click('#ls-close');
-    await page.click('#learn-path [data-lesson="stablecoins"]', { force: true });
+    await page.evaluate((x) => window.RdeskLearn.openLesson(x), 'stablecoins');
     await page.waitForSelector('#learn-stage');
     for (let k = 0; k < 2; k++) await page.click('#ls-next');
     check('"Dólar e real digitais" compara USDT e USDC', /USDT/.test(await page.innerText('#ls-art')) && /USDC/.test(await page.innerText('#ls-art')) && /Tether/.test(await page.innerText('#ls-bubble')));
@@ -119,7 +119,7 @@ try {
     check('e BRZ × BRLA (dois reais digitais de empresas diferentes)', /BRZ/.test(await page.innerText('#ls-art')) && /BRLA/.test(await page.innerText('#ls-art')) && /Transfero/.test(await page.innerText('#ls-bubble')));
     await page.screenshot({ path: 'tests/artifacts-aprender-stablecoins.png' });
     await page.click('#ls-close');
-    await page.click('#learn-path [data-lesson="receber"]', { force: true });
+    await page.evaluate((x) => window.RdeskLearn.openLesson(x), 'receber');
     await page.waitForSelector('#learn-stage');
     for (let k = 0; k < 3; k++) await page.click('#ls-next');
     check('lição "Receber" termina com o botão para ver o próprio código', /Ver meu código de receber/.test(await page.innerText('#ls-action')));

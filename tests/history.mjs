@@ -95,7 +95,7 @@ try {
     check('tocar fora do gráfico esconde o balão', (await ui(() => window.RdeskHistory.getState().chart.hover)) === null && (await ui(() => document.querySelector('#home-chart .eq-tip').hidden)));
     await page.touchscreen.tap(box.x + box.width * 0.02, box.y + box.height / 2);
     await page.waitForTimeout(200);
-    await page.touchscreen.tap(10, 400);
+    { const lb = await page.locator('.balance-label').boundingBox(); await page.touchscreen.tap(lb.x + 4, lb.y + lb.height / 2); }
     await page.waitForTimeout(250);
     check('tocar em qualquer lugar da tela também esconde', (await ui(() => window.RdeskHistory.getState().chart.hover)) === null);
     await page.click('#home-chart-range [data-range="7"]');

@@ -960,7 +960,7 @@
     const SWAP_SLIPPAGE_BPS = 150;                       // 1,5%
     const IMPACT_WARN = 0.03;                            // avisa acima de 3% de perda frente ao mercado
     const IMPACT_BLOCK = 0.10;                           // bloqueia acima de 10%
-    const NATIVE_RESERVE = { POL: 3.0, ETH: 0.0015, CELO: 0.05 };
+    const NATIVE_RESERVE = { POL: 3.0, ETH: 0.0015, CELO: 0.05, BNB: 0.002 };
     const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
     const MULTICALL3_ABI = ['function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)'];
     // Primeira promessa que der certo (Promise.any com reserva para navegadores antigos)

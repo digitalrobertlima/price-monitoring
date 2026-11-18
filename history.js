@@ -111,6 +111,19 @@
         return nowUsd(ref);
     }
 
+    // A fonte de preços às vezes devolve um dia absurdo (pico de um dia só). Um dia que foge mais de 40%
+    // dos DOIS vizinhos, para o mesmo lado, é erro da fonte: vale a média dos vizinhos. Sem isso o gráfico
+    // mostrava um patrimônio que nunca existiu.
+    function despike(byDay) {
+        const keys = Object.keys(byDay).sort();
+        for (let i = 1; i < keys.length - 1; i++) {
+            const a = byDay[keys[i - 1]], b = byDay[keys[i]], c = byDay[keys[i + 1]];
+            if (!(a > 0 && b > 0 && c > 0)) continue;
+            const up = b > a * 1.4 && b > c * 1.4, down = b < a / 1.4 && b < c / 1.4;
+            if (up || down) byDay[keys[i]] = (a + c) / 2;
+        }
+        return byDay;
+    }
     async function loadPriceSeries(fromUnix) {
         const days = Math.min(1500, Math.max(10, Math.ceil((Date.now() / 1000 - fromUnix) / 86400) + 3));
         const end = new Date();
@@ -129,6 +142,7 @@
                     const addr = key.split(':')[1].toLowerCase();
                     st.llama[addr] = st.llama[addr] || {};
                     (val.prices || []).forEach((pt) => { st.llama[addr][dayKey(pt.timestamp)] = Number(pt.price); });
+                    despike(st.llama[addr]);
                 });
             }
         } catch (e) {}
@@ -136,7 +150,7 @@
     }
 
     // ------------------------------------------------------------------ variação em 24 h
-    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo' };
+    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo', 56: 'bsc' };
     function llamaKeyFor(b) {
         const s = String(b.symbol || '').toUpperCase();
         if (s === 'POL' || s === 'WPOL') return `polygon:${WPOL}`;
@@ -147,6 +161,7 @@
         if (s === 'BRZ') return `polygon:${BRZ}`;
         if (s === 'BRLA') return `polygon:${BRLA}`;
         if (s === 'CELO') return 'coingecko:celo';
+        if (s === 'BNB') return 'coingecko:binancecoin';
         if (b.address && CHAIN_LLAMA[b.chainId]) return `${CHAIN_LLAMA[b.chainId]}:${String(b.address).toLowerCase()}`;
         return null;
     }
@@ -435,7 +450,12 @@
         const fx = fxOn(key);
         const ex = st.exact[e.hash];
         // Preço no momento exato da transação quando disponível; senão, o preço do dia
-        const price = (kind) => (ex && ex[kind] > 0 ? ex[kind] : usdOn(kind, key));
+        // (um preço exato que foge mais de 40% do preço do dia é descartado: erro da fonte)
+        const price = (kind) => {
+            const day = usdOn(kind, key);
+            const x = ex && ex[kind] > 0 ? ex[kind] : 0;
+            return x && (!(day > 0) || (x < day * 1.4 && x > day / 1.4)) ? x : day;
+        };
         let inUsd = 0, outUsd = 0;
         e.items.forEach((i) => { const u = i.amt * price(i.kind); if (i.dir > 0) inUsd += u; else outUsd += u; });
         const gasUsd = e.gasPol * price('POL');
@@ -967,6 +987,7 @@
     });
 
     global.RdeskHistory = {
+        _despike: despike,
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries,

@@ -1,0 +1,31 @@
+# Versão portátil (Tails / pendrive / sem internet para abrir): um zip do app com o código conferível por SHA-256.
+# Publica na página de versões a cada versão nova do app. Plano grátis do GitHub.
+name: Versão portátil
+on:
+  push:
+    branches: [main]
+    paths: ['version.js']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar o zip
+        run: |
+          VER=$(sed -n "s/.*RDESK_VERSION = '\(v[0-9]*\)'.*/\1/p" version.js)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          mkdir -p dist/cofre
+          cp index.html tails.html manifest.json sw.js version.js LICENSE *.js *.css dist/cofre/ 2>/dev/null || true
+          cp -r vendor audio fonts dist/cofre/ 2>/dev/null || true
+          rm -f dist/cofre/package*.json
+          cd dist && zip -qr cofre-portatil.zip cofre && sha256sum cofre-portatil.zip > cofre-portatil.zip.sha256 && cat cofre-portatil.zip.sha256
+      - name: Publicar na página de versões
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "$VER" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$VER" dist/cofre-portatil.zip dist/cofre-portatil.zip.sha256 --title "Cofre $VER — versão portátil" --notes "Para usar no Tails, no Tor Browser ou num pendrive: baixe o zip, confira com sha256sum -c cofre-portatil.zip.sha256, descompacte e abra index.html. Guia: tails.html (também dentro do zip)." --latest

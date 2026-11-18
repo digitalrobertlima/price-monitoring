@@ -90,6 +90,31 @@
   "text": "Valendo! Quantos bitcoins vão existir no máximo?"
  },
  {
+  "key": "duda-97833852",
+  "who": "duda",
+  "text": "Ninguém precisa comprar um Bitcoin inteiro. Ele se divide em cem milhões de pedacinhos: os satôshis."
+ },
+ {
+  "key": "bit-d79a8312",
+  "who": "bit",
+  "text": "Olha quanto vale um punhado de satôshis hoje, e quantas horas de trabalho no salário mínimo isso dá."
+ },
+ {
+  "key": "duda-d0954ce7",
+  "who": "duda",
+  "text": "O jeito mais tranquilo de juntar é comprar um pouquinho todo mês, sem tentar adivinhar o preço."
+ },
+ {
+  "key": "bit-cae0d398",
+  "who": "bit",
+  "text": "Fiz uma trilha pra você: mil satôshis, dez mil, cem mil, até o seu primeiro Bitcoin inteiro!"
+ },
+ {
+  "key": "duda-084bbc62",
+  "who": "duda",
+  "text": "Valendo! Quantos satôshis tem um Bitcoin?"
+ },
+ {
   "key": "duda-345240e8",
   "who": "duda",
   "text": "O real nasceu em mil novecentos e noventa e quatro. Naquela época, um real valia mais ou menos um dólar."
@@ -245,6 +270,31 @@
   "text": "Valendo! Onde é mais seguro guardar por muitos anos?"
  },
  {
+  "key": "duda-7ca6edf2",
+  "who": "duda",
+  "text": "O mesmo real digital pode andar por estradas diferentes: as redes. Cada uma tem a sua taxa e o seu movimento."
+ },
+ {
+  "key": "bit-5fb11172",
+  "who": "bit",
+  "text": "Polygon: taxa de centavos, e é onde o app mais troca reais. Celo: onde mais circula B R L A. Base tem B R Z. Ethereum é segura, mas cara."
+ },
+ {
+  "key": "duda-b955ec4f",
+  "who": "duda",
+  "text": "Regra de ouro: mande pela mesma rede de quem vai receber. B R Z na Polygon só chega em carteira que usa Polygon."
+ },
+ {
+  "key": "bit-de530b66",
+  "who": "bit",
+  "text": "E pra pagar a taxa, guarde um pouquinho da moeda da rede: POL na Polygon, CELO na Celo, E T H na Base."
+ },
+ {
+  "key": "duda-43393e72",
+  "who": "duda",
+  "text": "Valendo! Vai mandar B R Z pra alguém. O que conferir primeiro?"
+ },
+ {
   "key": "duda-080fb75f",
   "who": "duda",
   "text": "Estêibou côin é uma moeda digital que vale sempre o mesmo que uma moeda comum. Um pra um."
@@ -288,6 +338,121 @@
   "key": "bit-0ff461e6",
   "who": "bit",
   "text": "Valendo! Qual a diferença entre B R Z e B R L A?"
+ },
+ {
+  "key": "duda-73b965ef",
+  "who": "duda",
+  "text": "Toda moeda tem duas perguntas: o que segura o valor dela, o lastro. E quão rápido ela vira dinheiro no Pix, a liquidez."
+ },
+ {
+  "key": "bit-0d9672b7",
+  "who": "bit",
+  "text": "O real e o dólar não são presos a ouro faz tempo. O que segura o valor é a confiança no governo, que pode imprimir mais."
+ },
+ {
+  "key": "duda-19746668",
+  "who": "duda",
+  "text": "O Bitcoin não tem ninguém por trás. O valor vem de ser raro: só vão existir vinte e um milhões. E ele fica preso só na sua chave."
+ },
+ {
+  "key": "bit-9d93c796",
+  "who": "bit",
+  "text": "O dólar digital é um recibo. O U S D C é coberto por dinheiro e títulos do governo americano. O U S D T tem a maior parte em títulos americanos, e o resto em ouro, bitcoin e empréstimos."
+ },
+ {
+  "key": "duda-7a6c1e80",
+  "who": "duda",
+  "text": "O real digital também é recibo: a empresa diz guardar um real de verdade, em conta e títulos do governo, para cada moeda."
+ },
+ {
+  "key": "bit-94f551a1",
+  "who": "bit",
+  "text": "E o W B T C? É um recibo de Bitcoin guardado por uma empresa. Não é o Bitcoin na sua mão. Já POL e E T H valem porque pagam as taxas das redes."
+ },
+ {
+  "key": "duda-c0ef0ce9",
+  "who": "duda",
+  "text": "Agora a liquidez: quanto mais cheia a barrinha, mais fácil vira Pix."
+ },
+ {
+  "key": "bit-e2f38e8e",
+  "who": "bit",
+  "text": "Valendo! O que segura o valor do Bitcoin?"
+ },
+ {
+  "key": "duda-aa3c25cc",
+  "who": "duda",
+  "text": "No banco, um juiz pode bloquear sua conta. E em mil novecentos e noventa o governo congelou a poupança de todo mundo, no Plano Collor."
+ },
+ {
+  "key": "bit-1605732c",
+  "who": "bit",
+  "text": "Com o dólar digital é parecido. A Tether, dona do U S D T, pode bloquear qualquer carteira. Já são mais de onze mil carteiras bloqueadas."
+ },
+ {
+  "key": "duda-4fa2dd29",
+  "who": "duda",
+  "text": "O real digital, B R Z e B R L A, também tem esse botão. É uma empresa, e segue ordens da justiça."
+ },
+ {
+  "key": "bit-4cc144fd",
+  "who": "bit",
+  "text": "E o Bitcoin? Não existe botão. Ninguém consegue mover seu Bitcoin sem a sua chave: nem banco, nem governo, nem a gente."
+ },
+ {
+  "key": "duda-5954c1a3",
+  "who": "duda",
+  "text": "Mas atenção: Bitcoin numa corretora é da corretora. Ela tem a chave, então pode bloquear. Livre mesmo é na sua chave."
+ },
+ {
+  "key": "bit-748c218e",
+  "who": "bit",
+  "text": "Existe real digital sem dono? O mais perto é o B R L eme, da rede Celo, garantido por cripto. Mas ainda depende de regras e cotações de fora. Não é livre como o Bitcoin."
+ },
+ {
+  "key": "duda-259e111d",
+  "who": "duda",
+  "text": "Resumo: real e dólar digital são bons pra pagar e mandar. Pra guardar o esforço de anos, o Bitcoin na sua chave."
+ },
+ {
+  "key": "bit-b0c8b508",
+  "who": "bit",
+  "text": "Valendo! Quem pode congelar o U S D T da sua carteira?"
+ },
+ {
+  "key": "duda-44df4b1b",
+  "who": "duda",
+  "text": "A blockchain é um caderno aberto. Quem souber o seu endereço vê o saldo e tudo que entrou e saiu."
+ },
+ {
+  "key": "bit-0a86f788",
+  "who": "bit",
+  "text": "Aqui no app não tem cadastro: nada de nome, CPF ou e-mail. Mas, pra ler seu saldo, o app pergunta pra servidores públicos das redes. Eles veem o endereço e a sua internet."
+ },
+ {
+  "key": "duda-2b0f3159",
+  "who": "duda",
+  "text": "Quando você troca, o serviço de rotas vê os endereços da troca. E quando você compra com Pix numa empresa, ela liga o seu CPF ao seu endereço."
+ },
+ {
+  "key": "bit-65cb31a5",
+  "who": "bit",
+  "text": "Um ponto fraco de hoje: no app, seu Bitcoin usa sempre o mesmo endereço. Quem tiver esse endereço vê seu saldo de Bitcoin."
+ },
+ {
+  "key": "duda-b4ee02e6",
+  "who": "duda",
+  "text": "Passos seguros: não poste seu endereço. Use um cofre pra receber e outro pra guardar. E, se quiser mais, use VPN."
+ },
+ {
+  "key": "bit-a5f3b23c",
+  "who": "bit",
+  "text": "E o mais importante: as palavras da sua chave nunca vão pra internet. Nem foto, nem nuvem, nem WhatsApp."
+ },
+ {
+  "key": "duda-da4bbb35",
+  "who": "duda",
+  "text": "Valendo! Quem consegue ver o saldo do seu endereço?"
  },
  {
   "key": "duda-99ab8c6c",

@@ -32,7 +32,7 @@ base.registerToken(BASE_USDC, { symbol: 'USDC', name: 'USD Coin', decimals: 6 })
 base.fundToken(BASE_USDC, OWNER, 75);
 const arbitrum = new MockChain({ chainId: 42161 });
 arbitrum.fundNative(OWNER, 0.4);
-const chains = { 137: polygon, 8453: base, 42161: arbitrum, 10: new MockChain({ chainId: 10 }), 1: new MockChain({ chainId: 1 }), 42220: new MockChain({ chainId: 42220 }) };
+const chains = { 137: polygon, 8453: base, 42161: arbitrum, 10: new MockChain({ chainId: 10 }), 1: new MockChain({ chainId: 1 }), 42220: new MockChain({ chainId: 42220 }), 56: new MockChain({ chainId: 56 }) };
 const btc = {
     fees: { fastestFee: 12, halfHourFee: 8, hourFee: 6, economyFee: 3, minimumFee: 1 },
     utxos: [{ txid: 'ab'.repeat(32), vout: 1, value: 250000 }, { txid: 'cd'.repeat(32), vout: 0, value: 80000 }, { txid: 'ef'.repeat(32), vout: 3, value: 40000, confirmed: false }],
@@ -65,7 +65,7 @@ try {
     const btcBrl = (0.0037 * 90000 * USD_BRL).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     check('saldo de Bitcoin (inclui o que ainda não confirmou) aparece em R$', (row('btc', 'BTC')?.text || '').includes(btcBrl) && /0,0037/.test(row('btc', 'BTC')?.text || ''), row('btc', 'BTC')?.text);
     const filterOpts = await page.$$eval('#wallet-chain-filter option', (o) => o.map((x) => x.textContent));
-    check('filtro de rede lista as 6 redes e Bitcoin', ['Polygon', 'Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Celo', 'Bitcoin'].every((n) => filterOpts.includes(n)), filterOpts.join(','));
+    check('filtro de rede lista as 7 redes e Bitcoin', ['Polygon', 'Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Celo', 'BNB Chain', 'Bitcoin'].every((n) => filterOpts.includes(n)), filterOpts.join(','));
     await page.click('#assets-options summary');
     await page.selectOption('#wallet-chain-filter', '8453');
     const onlyBase = await page.$$eval('#wallet-assets-list .asset-row-btn', (els) => els.map((e) => e.getAttribute('data-asset-chain')));
@@ -176,7 +176,7 @@ try {
     await page.click('#btn-action-receive');
     await page.waitForSelector('#rmw-rec-qr img[src]', { state: 'attached' });
     const chips = await page.$$eval('#rdesk-mw-sheet .net-chip', (els) => els.map((e) => e.textContent.trim()));
-    check('receber oferece Bitcoin primeiro + 6 redes', chips.join(',') === 'Bitcoin,Polygon,Ethereum,Base,Arbitrum,Optimism,Celo', chips.join(','));
+    check('receber oferece Bitcoin primeiro + 7 redes', chips.join(',') === 'Bitcoin,Polygon,Ethereum,Base,Arbitrum,Optimism,Celo,BNB Chain', chips.join(','));
     check('rede Polygon: endereço 0x da carteira e aviso de rede', (await page.innerText('#rmw-rec-address')) === OWNER && /somente pela rede Polygon/.test(await page.innerText('#rmw-rec-warning')));
     await page.click('#rdesk-mw-sheet .net-chip[data-net="42220"]');
     await page.waitForSelector('#rmw-rec-qr img[src]', { state: 'attached' });

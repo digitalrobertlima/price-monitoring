@@ -38,6 +38,15 @@
             ]
         },
         {
+            id: 'satoshi', icon: '🪙', title: 'Satoshi: os centavos do Bitcoin', scenes: [
+                { who: 'duda', art: 'rows', rows: [['₿', '1 Bitcoin', '= 100.000.000 satoshis', 'ok'], ['🪙', '1 satoshi', 'o menor pedacinho', 'ok']], say: 'Ninguém precisa comprar um Bitcoin inteiro. Ele se divide em cem milhões de pedacinhos: os satoshis.', voice: 'Ninguém precisa comprar um Bitcoin inteiro. Ele se divide em cem milhões de pedacinhos: os satôshis.' },
+                { who: 'bit', art: 'satslive', say: 'Olha quanto vale um punhado de satoshis hoje, e quantas horas de trabalho no salário mínimo isso dá.', voice: 'Olha quanto vale um punhado de satôshis hoje, e quantas horas de trabalho no salário mínimo isso dá.' },
+                { who: 'duda', art: 'rows', rows: [['📅', 'Todo mês', 'um pouquinho', 'ok'], ['🧘', 'Sem pressa', 'sem tentar adivinhar o preço', 'ok']], say: 'O jeito mais tranquilo de juntar é comprar um pouquinho todo mês, sem tentar adivinhar o preço.' },
+                { who: 'bit', art: 'trail', say: 'Fiz uma trilha pra você: mil satoshis, dez mil, cem mil… até o seu primeiro Bitcoin inteiro!', voice: 'Fiz uma trilha pra você: mil satôshis, dez mil, cem mil, até o seu primeiro Bitcoin inteiro!', action: { kind: 'sats-trail', label: '🏁 Ver minha trilha' } },
+                { who: 'duda', art: 'rows', rows: [['₿', '1 Bitcoin', '= ? satoshis', 'ok']], say: 'Valendo!', quiz: { q: 'Quantos satoshis tem 1 Bitcoin?', options: [['💯 Cem milhões', true], ['🔟 Mil', false], ['🤷 Um só', false]] }, voice: 'Valendo! Quantos satôshis tem um Bitcoin?' }
+            ]
+        },
+        {
             id: 'real-dolar', icon: '💱', title: 'Real, dólar e Bitcoin', scenes: [
                 { who: 'duda', art: 'fx1994', say: 'O real nasceu em 1994. Naquela época, um real valia mais ou menos um dólar.', voice: 'O real nasceu em mil novecentos e noventa e quatro. Naquela época, um real valia mais ou menos um dólar.' },
                 { who: 'bit', art: 'fxnow', say: 'Olha aí quanto custa um dólar hoje, em reais. Bem mais, né?' },
@@ -93,6 +102,15 @@
             ]
         },
         {
+            id: 'redes-real', icon: '🛣️', title: 'Qual rede usar pro real', scenes: [
+                { who: 'duda', art: 'brlnets', say: 'O mesmo real digital pode andar por estradas diferentes: as redes. Cada uma tem a sua taxa e o seu movimento.' },
+                { who: 'bit', art: 'rows', rows: [['⬡', 'Polygon', 'taxa de centavos • mais BRZ e BRLA pra trocar', 'ok'], ['🟢', 'Celo', 'onde mais circula BRLA • feita pro celular', 'ok'], ['🔵', 'Base', 'tem BRZ • rede da Coinbase', 'mid'], ['Ξ', 'Ethereum', 'segura, mas a taxa é cara', 'bad']], say: 'Polygon: taxa de centavos, e é onde o app mais troca reais. Celo: onde mais circula BRLA. Base tem BRZ. Ethereum é segura, mas cara.', voice: 'Polygon: taxa de centavos, e é onde o app mais troca reais. Celo: onde mais circula B R L A. Base tem B R Z. Ethereum é segura, mas cara.' },
+                { who: 'duda', art: 'rows', rows: [['✅', 'Mesma rede', 'chega certinho', 'ok'], ['❌', 'Rede diferente', 'pode não chegar', 'bad']], say: 'Regra de ouro: mande pela mesma rede de quem vai receber. BRZ na Polygon só chega em carteira que usa Polygon.', voice: 'Regra de ouro: mande pela mesma rede de quem vai receber. B R Z na Polygon só chega em carteira que usa Polygon.' },
+                { who: 'bit', art: 'rows', rows: [['⛽', 'Polygon', 'um pouquinho de POL', 'ok'], ['⛽', 'Celo', 'um pouquinho de CELO', 'ok'], ['⛽', 'Base', 'um pouquinho de ETH', 'ok']], say: 'E pra pagar a taxa, guarde um pouquinho da moeda da rede: POL na Polygon, CELO na Celo, ETH na Base.', voice: 'E pra pagar a taxa, guarde um pouquinho da moeda da rede: POL na Polygon, CELO na Celo, E T H na Base.' },
+                { who: 'duda', art: 'brlnets', say: 'Valendo!', quiz: { q: 'Vai mandar BRZ pra alguém. O que conferir primeiro?', options: [['🛣️ Se a rede é a mesma dela', true], ['🎨 A cor da moeda', false], ['⏰ O horário', false]] }, voice: 'Valendo! Vai mandar B R Z pra alguém. O que conferir primeiro?' }
+            ]
+        },
+        {
             id: 'stablecoins', icon: '🪙', title: 'Dólar e real digitais', scenes: [
                 { who: 'duda', art: 'stable', say: 'Stablecoin é uma moeda digital que vale sempre o mesmo que uma moeda comum. Um pra um.', voice: 'Estêibou côin é uma moeda digital que vale sempre o mesmo que uma moeda comum. Um pra um.' },
                 { who: 'bit', art: 'reserve', say: 'Funciona assim: uma empresa guarda o dinheiro de verdade e cria a mesma quantidade em moeda digital.' },
@@ -103,6 +121,41 @@
                 { who: 'duda', art: 'drex', say: 'E o Drex, o real digital do Banco Central? Ele não chegou às pessoas: em 2025 o Banco Central desligou a versão com blockchain.', voice: 'E o Drex, o real digital do Banco Central? Ele não chegou às pessoas: em dois mil e vinte e cinco o Banco Central desligou a versão com blockchain.' },
                 { who: 'duda', art: 'reserve', say: 'Stablecoin é ótima pra guardar reais ou dólares por pouco tempo e mandar rápido. Mas lembre: você está confiando na empresa que guarda o dinheiro.' },
                 { who: 'bit', art: 'brl2', say: 'Valendo!', quiz: { q: 'Qual a diferença entre BRZ e BRLA?', options: [['🏢 São de empresas diferentes', true], ['💸 Um vale mais que o outro', false], ['🤷 Nenhuma, é a mesma coisa', false]] }, voice: 'Valendo! Qual a diferença entre B R Z e B R L A?' }
+            ]
+        },
+        {
+            id: 'lastro', icon: '⚓', title: 'Onde seu dinheiro fica preso', scenes: [
+                { who: 'duda', art: 'rows', rows: [['⚓', 'Lastro', 'o que segura o valor', 'ok'], ['💧', 'Liquidez', 'quão rápido vira Pix', 'ok']], say: 'Toda moeda tem duas perguntas: o que segura o valor dela, o lastro. E quão rápido ela vira dinheiro no Pix, a liquidez.' },
+                { who: 'bit', art: 'rows', rows: [['🇧🇷', 'Real', 'confiança no governo do Brasil', 'mid'], ['🇺🇸', 'Dólar', 'confiança no governo dos EUA', 'mid']], say: 'O real e o dólar não são presos a ouro faz tempo. O que segura o valor é a confiança no governo, que pode imprimir mais.' },
+                { who: 'duda', art: 'rows', rows: [['₿', 'Bitcoin', 'só 21 milhões • ninguém imprime', 'ok'], ['🔑', 'Fica preso', 'só na sua chave', 'ok']], say: 'O Bitcoin não tem ninguém por trás. O valor vem de ser raro: só vão existir 21 milhões. E ele fica preso só na sua chave.', voice: 'O Bitcoin não tem ninguém por trás. O valor vem de ser raro: só vão existir vinte e um milhões. E ele fica preso só na sua chave.' },
+                { who: 'bit', art: 'rows', rows: [['💲', 'USDC', 'dinheiro e títulos dos EUA, num fundo da BlackRock', 'mid'], ['₮', 'USDT', 'quase tudo em títulos dos EUA; o resto em ouro, bitcoin e empréstimos', 'mid']], say: 'O dólar digital é um recibo. O USDC é coberto por dinheiro e títulos do governo americano. O USDT tem a maior parte em títulos americanos, e o resto em ouro, bitcoin e empréstimos.', voice: 'O dólar digital é um recibo. O U S D C é coberto por dinheiro e títulos do governo americano. O U S D T tem a maior parte em títulos americanos, e o resto em ouro, bitcoin e empréstimos.' },
+                { who: 'duda', art: 'rows', rows: [['🇧🇷', 'BRZ', 'Transfero guarda os reais', 'mid'], ['🇧🇷', 'BRLA', 'Avenia guarda os reais', 'mid']], say: 'O real digital também é recibo: a empresa diz guardar um real de verdade, em conta e títulos do governo, para cada moeda.' },
+                { who: 'bit', art: 'rows', rows: [['🎁', 'WBTC', 'Bitcoin guardado por uma empresa', 'mid'], ['⛽', 'POL, ETH, CELO', 'sem lastro: valem pelo uso da rede', 'mid']], say: 'E o WBTC? É um recibo de Bitcoin guardado por uma empresa. Não é o Bitcoin na sua mão. Já POL e ETH valem porque pagam as taxas das redes.', voice: 'E o W B T C? É um recibo de Bitcoin guardado por uma empresa. Não é o Bitcoin na sua mão. Já POL e E T H valem porque pagam as taxas das redes.' },
+                { who: 'duda', art: 'rows', rows: [['🏦', 'Real no banco', 'vira Pix na hora', 'ok', 5], ['💵', 'USDT e USDC', 'mercado enorme, troca em minutos', 'ok', 5], ['₿', 'Bitcoin', 'troca 24 horas, no mundo todo', 'ok', 4], ['🇧🇷', 'BRZ e BRLA', 'mercado menor: confira o preço', 'mid', 3], ['📈', 'Render', 'sai quando quiser, mas pode voltar diferente', 'mid', 2], ['🪙', 'Moeda pequena', 'pode não ter comprador', 'bad', 1]], say: 'Agora a liquidez: quanto mais cheia a barrinha, mais fácil vira Pix.' },
+                { who: 'bit', art: 'rows', rows: [['₿', 'Bitcoin', 'o que segura o valor?', 'ok']], say: 'Valendo!', quiz: { q: 'O que segura o valor do Bitcoin?', options: [['💎 Ser raro e ninguém poder imprimir', true], ['🏦 Um banco que guarda ouro', false], ['🏛️ O governo', false]] } }
+            ]
+        },
+        {
+            id: 'confisco', icon: '🧊', title: 'Quem pode congelar seu dinheiro', scenes: [
+                { who: 'duda', art: 'rows', rows: [['🏦', 'Banco e Pix', 'um juiz pode bloquear', 'bad'], ['📅', '1990', 'Plano Collor congelou a poupança', 'bad']], say: 'No banco, um juiz pode bloquear sua conta. E em 1990 o governo congelou a poupança de todo mundo, no Plano Collor.', voice: 'No banco, um juiz pode bloquear sua conta. E em mil novecentos e noventa o governo congelou a poupança de todo mundo, no Plano Collor.' },
+                { who: 'bit', art: 'rows', rows: [['₮', 'USDT', 'a Tether bloqueia e pode apagar o saldo', 'bad'], ['💲', 'USDC', 'a Circle também pode bloquear', 'bad']], say: 'Com o dólar digital é parecido. A Tether, dona do USDT, pode bloquear qualquer carteira. Já são mais de 11 mil carteiras bloqueadas.', voice: 'Com o dólar digital é parecido. A Tether, dona do U S D T, pode bloquear qualquer carteira. Já são mais de onze mil carteiras bloqueadas.' },
+                { who: 'duda', art: 'rows', rows: [['🇧🇷', 'BRZ e BRLA', 'a empresa tem botão de bloquear', 'bad']], say: 'O real digital, BRZ e BRLA, também tem esse botão. É uma empresa, e segue ordens da justiça.', voice: 'O real digital, B R Z e B R L A, também tem esse botão. É uma empresa, e segue ordens da justiça.' },
+                { who: 'bit', art: 'rows', rows: [['₿', 'Bitcoin na sua chave', 'não existe botão de bloquear', 'ok']], say: 'E o Bitcoin? Não existe botão. Ninguém consegue mover seu Bitcoin sem a sua chave: nem banco, nem governo, nem a gente.' },
+                { who: 'duda', art: 'rows', rows: [['🏢', 'Bitcoin na corretora', 'a chave é dela: pode bloquear', 'bad'], ['🔑', 'Bitcoin no seu cofre', 'a chave é sua', 'ok']], say: 'Mas atenção: Bitcoin numa corretora é da corretora. Ela tem a chave, então pode bloquear. Livre mesmo é na sua chave.' },
+                { who: 'bit', art: 'rows', rows: [['🟢', 'BRLm (Celo)', 'feito por programa e garantido por cripto', 'mid'], ['⚖️', 'Mas…', 'depende de regras e cotações de fora', 'mid']], say: 'Existe real digital sem dono? O mais perto é o BRLm, da rede Celo, garantido por cripto. Mas ainda depende de regras e cotações de fora. Não é livre como o Bitcoin.', voice: 'Existe real digital sem dono? O mais perto é o B R L eme, da rede Celo, garantido por cripto. Mas ainda depende de regras e cotações de fora. Não é livre como o Bitcoin.' },
+                { who: 'duda', art: 'rows', rows: [['💸', 'Real e dólar digital', 'bons pra pagar e mandar', 'mid'], ['🏔️', 'Bitcoin na sua chave', 'pra guardar o esforço de anos', 'ok']], say: 'Resumo: real e dólar digital são bons pra pagar e mandar. Pra guardar o esforço de anos, o Bitcoin na sua chave.' },
+                { who: 'bit', art: 'rows', rows: [['₮', 'USDT', 'quem pode congelar?', 'bad']], say: 'Valendo!', quiz: { q: 'Quem pode congelar o USDT da sua carteira?', options: [['🏢 A Tether, empresa que cria o USDT', true], ['🙅 Ninguém', false], ['🧑 Só você', false]] }, voice: 'Valendo! Quem pode congelar o U S D T da sua carteira?' }
+            ]
+        },
+        {
+            id: 'privacidade', icon: '🕵️', title: 'Quem vê o seu dinheiro', scenes: [
+                { who: 'duda', art: 'rows', rows: [['📖', 'Blockchain', 'um caderno que todo mundo lê', 'mid']], say: 'A blockchain é um caderno aberto. Quem souber o seu endereço vê o saldo e tudo que entrou e saiu.' },
+                { who: 'bit', art: 'rows', rows: [['🙈', 'Sem cadastro', 'sem nome, CPF ou e-mail', 'ok'], ['🛰️', 'Servidores das redes', 'veem seu endereço e sua internet', 'mid']], say: 'Aqui no app não tem cadastro: nada de nome, CPF ou e-mail. Mas, pra ler seu saldo, o app pergunta pra servidores públicos das redes. Eles veem o endereço e a sua internet.' },
+                { who: 'duda', art: 'rows', rows: [['🔀', 'Na troca', 'o serviço de rotas vê os endereços', 'mid'], ['🪪', 'Pix numa empresa', 'liga seu CPF ao seu endereço', 'bad']], say: 'Quando você troca, o serviço de rotas vê os endereços da troca. E quando você compra com Pix numa empresa, ela liga o seu CPF ao seu endereço.' },
+                { who: 'bit', art: 'rows', rows: [['₿', 'Endereço Bitcoin', 'hoje é sempre o mesmo', 'mid']], say: 'Um ponto fraco de hoje: no app, seu Bitcoin usa sempre o mesmo endereço. Quem tiver esse endereço vê seu saldo de Bitcoin.' },
+                { who: 'duda', art: 'rows', rows: [['🤐', 'Não poste', 'seu endereço em rede social', 'ok'], ['🗂️', 'Dois cofres', 'um pra receber, outro pra guardar', 'ok'], ['🛡️', 'VPN', 'esconde a sua internet', 'ok']], say: 'Passos seguros: não poste seu endereço. Use um cofre pra receber e outro pra guardar. E, se quiser mais, use VPN.' },
+                { who: 'bit', art: 'scam', say: 'E o mais importante: as palavras da sua chave nunca vão pra internet. Nem foto, nem nuvem, nem WhatsApp.' },
+                { who: 'duda', art: 'rows', rows: [['📖', 'Seu endereço', 'quem vê o saldo?', 'mid']], say: 'Valendo!', quiz: { q: 'Quem consegue ver o saldo do seu endereço?', options: [['📖 Qualquer pessoa que souber o endereço', true], ['🔒 Só eu', false], ['🏦 Só o banco', false]] } }
             ]
         },
         {

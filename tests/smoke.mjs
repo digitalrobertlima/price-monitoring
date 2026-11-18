@@ -96,7 +96,7 @@ try {
     const verified = audit.filter((a) => a.symbol && !a.error);
     console.log('   contratos:', audit.map((a) => a.unreachable ? `${a.chain}: SEM RPC (${a.unreachable})` : `${a.symbol}@${a.chain}=${a.onchain || a.error}(${a.dec || '-'})`).join(' | '));
     check('contratos das moedas conferem com símbolo e casas decimais lidos na rede', bad.length === 0 && verified.length >= 15, `${verified.length} conferidos; problemas: ${JSON.stringify(bad)}`);
-    check('todas as 6 redes responderam', audit.every((a) => !a.unreachable), audit.filter((a) => a.unreachable).map((a) => a.chain).join(','));
+    check('todas as 7 redes responderam', audit.every((a) => !a.unreachable), audit.filter((a) => a.unreachable).map((a) => a.chain).join(','));
 
     // ---- Bitcoin: API pública responde ----
     const btcNet = await page.evaluate(async () => {
@@ -116,6 +116,7 @@ try {
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
+    console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 600); }));
     const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
     console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}`);
     // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela

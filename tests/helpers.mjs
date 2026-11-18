@@ -130,7 +130,7 @@ export async function mockNetwork(page, chains, opts = {}) {
     const map = chains && typeof chains.handle === 'function' ? { 137: chains } : (chains || {});
     const polygon = map[137];
     const external = [];
-    await page.route((u) => !u.href.startsWith('http://localhost'), async (route) => {
+    await page.route((u) => !u.href.startsWith('http://localhost') && !u.href.startsWith('file:'), async (route) => {
         const req = route.request();
         const u = req.url();
         external.push(u);
@@ -237,6 +237,7 @@ export async function mockNetwork(page, chains, opts = {}) {
                 else if (k === 'coingecko:ethereum') coins[k] = { price: 3000 };
                 else if (k === 'coingecko:bitcoin') coins[k] = { price: 90000 };
                 else if (k === 'coingecko:celo') coins[k] = { price: 0.5 };
+                else if (k === 'coingecko:binancecoin') coins[k] = { price: 600 };
                 else if (opts.customPrices && opts.customPrices[k.split(':')[1].toLowerCase()]) coins[k] = { price: opts.customPrices[k.split(':')[1].toLowerCase()] };
             });
             return json({ coins });
