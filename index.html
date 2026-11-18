@@ -37,6 +37,7 @@
     <script src="history.js" defer></script>
     <script src="onboarding.js" defer></script>
     <script src="vault-door.js" defer></script>
+    <script src="learn.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -243,6 +244,20 @@
         </section>
 
         <!-- =================================================================
+             APRENDER (Duda e Bit)
+             ================================================================= -->
+        <section id="tab-panel-learn" class="tab-panel" aria-label="Aprender">
+            <div class="section-card learn-hero">
+                <div class="learn-guide" id="learn-guide" aria-hidden="false"></div>
+                <h1>Aprender do zero</h1>
+                <p class="muted-sm">Com a Duda e o Bit. Um minutinho por lição, com voz e desenho.</p>
+                <div class="learn-progress" id="learn-progress"></div>
+                <button type="button" class="btn-primary" id="btn-learn-start">▶ Continuar de onde parei</button>
+            </div>
+            <ol class="learn-path" id="learn-path"></ol>
+        </section>
+
+        <!-- =================================================================
              TROCAR
              ================================================================= -->
         <section id="tab-panel-pixswap" class="tab-panel" aria-label="Trocar">
@@ -345,6 +360,7 @@
     <!-- Navegação na parte de baixo (onde o polegar alcança) -->
     <nav class="main-nav" aria-label="Navegação principal">
         <button type="button" class="nav-tab-btn active" data-tab="wallet" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg><span>Início</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="learn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 12 5l10 4.5L12 14z"/><path d="M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5"/><path d="M22 9.5v5"/></svg><span>Aprender</span></button>
         <button type="button" class="nav-tab-btn" data-tab="pixswap" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5h13"/><path d="M17 13l3.5 3.5L17 20"/><path d="M20.5 16.5h-13"/></svg><span>Trocar</span></button>
         <button type="button" class="nav-tab-btn" data-tab="earn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4.5-4.5 3.5 3.5L19.5 7"/><path d="M15 7h4.5v4.5"/></svg><span>Render</span></button>
         <button type="button" class="nav-tab-btn" data-tab="audit" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/></svg><span>Extrato</span></button>

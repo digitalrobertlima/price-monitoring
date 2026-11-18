@@ -29,21 +29,13 @@ try {
     const ui = (fn, arg) => page.evaluate(fn, arg);
 
     // ================================================================ 1. Primeira abertura
-    await page.waitForSelector('.ob-intro', { timeout: 10000 });
-    const intro1 = (await page.innerText('.ob-intro')).replace(/\s+/g, ' ');
-    check('primeira abertura mostra boas-vindas explicando o que é a carteira', /Bem-vindo/.test(intro1) && /só você tem a chave/.test(intro1), intro1.slice(0, 120));
-    check('boas-vindas tem só 4 cartões, com progresso visível', (await page.locator('.ob-dots span').count()) === 4);
-    await page.click('#ob-next');
-    check('2º cartão explica as 12 palavras e a responsabilidade', /12 palavras/.test(await page.innerText('.ob-intro')));
-    await page.click('#ob-next');
-    check('3º cartão explica por que guardar em Bitcoin e os riscos das redes jovens', /Bitcoin: a sua reserva/.test(await page.innerText('.ob-intro')) && /desde 2009/.test(await page.innerText('.ob-intro')) && /ainda estão nascendo/.test(await page.innerText('.ob-intro')));
-    await page.click('#ob-next');
-    check('4º cartão mostra o que dá para fazer', /Receber/.test(await page.innerText('.ob-intro')) && /render/i.test(await page.innerText('.ob-intro')));
+    // A primeira abertura agora é a Duda ensinando (a trilha completa é testada em tests/aprender.mjs)
+    await page.waitForSelector('#learn-stage', { timeout: 10000 });
+    const intro1 = (await page.innerText('#learn-stage')).replace(/\s+/g, ' ');
+    check('primeira abertura: a Duda se apresenta antes de qualquer coisa', /Duda/.test(intro1) && (await page.locator('#learn-stage .av-duda').count()) === 1 && (await page.locator('#learn-stage .av-bit').count()) === 1, intro1.slice(0, 120));
     await page.screenshot({ path: 'tests/artifacts-xp-boasvindas.png' });
-    await page.click('#ob-next'); // "Vamos começar"
-    await page.waitForSelector('#rdesk-mw-sheet .rmw-opt-btn', { timeout: 10000 });
-    check('"Vamos começar" leva direto para criar ou abrir a carteira', /Criar meu cofre/.test(await page.innerText('#rdesk-mw-sheet')));
-    await ui(() => window.RdeskWallet.closeModal());
+    await page.click('#ls-close');
+    check('dá para pular as lições e olhar o app', !(await page.locator('#learn-stage').count()) && (await ui(() => window.RdeskOnboarding.getState().introDone)));
 
     // Sem carteira: convite, não painel
     check('sem carteira, a tela inicial mostra um convite e esconde o saldo', await ui(() => !document.getElementById('welcome-card').hidden && getComputedStyle(document.getElementById('balance-card')).display === 'none'));
@@ -211,14 +203,15 @@ try {
     // ================================================================ 5. Menu e explicações
     await page.click('#btn-open-menu');
     const menu = (await page.innerText('.ob-menu')).replace(/\s+/g, ' ');
-    check('menu tem carteiras, adicionar moeda, esconder saldos, tutorial e explicações', ['Minhas carteiras', 'Adicionar uma moeda', 'Esconder saldos', 'Rever o tutorial', 'protegida', 'Render funciona'].every((s) => menu.includes(s)), menu);
+    check('menu tem carteiras, adicionar moeda, esconder saldos, aprender, boas-vindas e explicações', ['Minhas carteiras', 'Adicionar uma moeda', 'Esconder saldos', 'Aprender com a Duda', 'Rever as boas-vindas', 'protegida', 'Render funciona'].every((s) => menu.includes(s)), menu);
     await page.locator('.ob-menu button', { hasText: 'Render funciona' }).click();
     check('explicação do Render mostra os riscos em linguagem simples', /Riscos/.test(await page.innerText('.ob-explain')) && /estimativas/.test(await page.innerText('.ob-explain')));
     await page.click('#ob-close');
     await page.click('#btn-open-menu');
-    await page.locator('.ob-menu button', { hasText: 'Rever o tutorial' }).click();
-    check('"Rever o tutorial" mostra as boas-vindas de novo', (await page.locator('.ob-intro').count()) === 1);
-    await page.click('#ob-skip'); await page.click('#ob-skip').catch(() => {}); await page.click('#ob-skip').catch(() => {});
+    await page.locator('.ob-menu button', { hasText: 'Rever as boas-vindas' }).click();
+    await page.waitForSelector('#learn-stage', { timeout: 5000 });
+    check('"Rever as boas-vindas" traz a Duda de novo', /Duda/.test(await page.innerText('#learn-stage')));
+    await page.click('#ls-close');
 
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
     await context.close();
