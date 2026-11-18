@@ -18,10 +18,12 @@ try {
     const m = ethers.Wallet.createRandom().mnemonic.phrase.split(' ');
     // palavra por palavra: a primeira pela sugestão, as outras digitadas
     await page.click('.sg-cell:nth-child(1) input');
-    await page.keyboard.type(m[0].slice(0, 3));
+    await page.keyboard.type('pre');
     const chips = await page.$$eval('.sg-chip', (els) => els.map((e) => e.textContent));
-    check('enquanto digita, sugere palavras da lista oficial', chips.includes(m[0]) || chips.length > 0, chips.join(','));
-    if (chips.includes(m[0])) await page.click(`.sg-chip[data-w="${m[0]}"]`); else { await page.fill('.sg-cell:nth-child(1) input', m[0]); }
+    check('enquanto digita, sugere palavras da lista oficial', chips.includes('predict') && chips.length === 4, chips.join(','));
+    await page.click('.sg-chip[data-w="predict"]');
+    check('tocar na sugestão preenche e pula para a próxima caixa', (await page.inputValue('.sg-cell:nth-child(1) input')) === 'predict' && (await page.evaluate(() => document.activeElement?.dataset?.i)) === '1');
+    await page.fill('.sg-cell:nth-child(1) input', m[0]);
     for (let i = 1; i < 12; i++) {
         await page.click(`.sg-cell:nth-child(${i + 1}) input`);
         await page.fill(`.sg-cell:nth-child(${i + 1}) input`, m[i]);
