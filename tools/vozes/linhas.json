@@ -430,19 +430,24 @@
   "text": "Aqui no app não tem cadastro: nada de nome, CPF ou e-mail. Mas, pra ler seu saldo, o app pergunta pra servidores públicos das redes. Eles veem o endereço e a sua internet."
  },
  {
-  "key": "duda-2b0f3159",
+  "key": "duda-b0b28543",
   "who": "duda",
-  "text": "Quando você troca, o serviço de rotas vê os endereços da troca. E quando você compra com Pix numa empresa, ela liga o seu CPF ao seu endereço."
+  "text": "Na troca, o preço é consultado sem o seu endereço. Ele só vai quando você confirma. Mas atenção: comprar com Pix numa empresa liga o seu CPF ao seu endereço."
  },
  {
-  "key": "bit-65cb31a5",
+  "key": "bit-abbc6cf0",
   "who": "bit",
-  "text": "Um ponto fraco de hoje: no app, seu Bitcoin usa sempre o mesmo endereço. Quem tiver esse endereço vê seu saldo de Bitcoin."
+  "text": "O seu Bitcoin ganha um endereço novo a cada vez que recebe. Quem te paga não vê os seus outros pagamentos nem o seu saldo."
  },
  {
-  "key": "duda-b4ee02e6",
+  "key": "duda-bd15043a",
   "who": "duda",
-  "text": "Passos seguros: não poste seu endereço. Use um cofre pra receber e outro pra guardar. E, se quiser mais, use VPN."
+  "text": "Quer o máximo? Ligue o modo anônimo no menu, use o Tor Browser ou o Tails, e se precisar, apague tudo do aparelho. As palavras trazem tudo de volta."
+ },
+ {
+  "key": "bit-8ee070e6",
+  "who": "bit",
+  "text": "E dois cuidados que só você pode ter: não poste seu endereço, e use um cofre pra receber de estranhos e outro pra guardar."
  },
  {
   "key": "bit-a5f3b23c",
