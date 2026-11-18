@@ -347,6 +347,7 @@ try {
 
     // leitor nos outros campos: endereço de observação e contrato de moeda
     await qr.page.evaluate(() => window.RdeskWallet.openModal('add'));
+    if (await qr.page.locator('.more-opts:not([open]) > summary').count()) await qr.page.click('.more-opts > summary');
     await qr.page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'observação' }).click();
     await qr.page.click('[data-scan-for="rmw-f-watch-input"]');
     await qr.page.setInputFiles('.qr-scan-overlay input[type=file]', pngEvm);
@@ -355,6 +356,7 @@ try {
     check('telas de importar têm botão de ler QR (chave privada e frase)', await qr.page.evaluate(() => {
         window.RdeskWallet.openModal('add'); return true;
     }) && (await (async () => {
+        if (await qr.page.locator('.more-opts:not([open]) > summary').count()) await qr.page.click('.more-opts > summary');
         await qr.page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Importar chave privada' }).click();
         const pk = await qr.page.locator('[data-scan-for="rmw-f-pk-input"]').count();
         await qr.page.evaluate(() => window.RdeskWallet.openModal('add'));

@@ -1361,7 +1361,7 @@
                 display: flex; align-items: center; justify-content: space-between; gap: 10px;
                 cursor: pointer; transition: border-color 0.2s, background 0.2s;
             }
-            .rmw-acc-card.active { border-color: #34d399; background: rgba(52, 211, 153, 0.09); }
+            .rmw-acc-card.active { border-color: #f7931a; background: rgba(247, 147, 26, 0.09); }
             .rmw-avatar {
                 width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
                 display: flex; align-items: center; justify-content: center;
@@ -1380,13 +1380,13 @@
                 display: flex; align-items: center; gap: 12px; color: #f8fafc;
                 cursor: pointer; text-align: left; font-size: 0.94rem; font-weight: 600;
             }
-            .rmw-opt-btn:hover { border-color: #34d399; background: #1e2638; }
+            .rmw-opt-btn:hover { border-color: #f7931a; background: #1e2638; }
             .rmw-opt-ico {
                 width: 34px; height: 34px; border-radius: 10px; display: flex;
                 align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
             }
             .rmw-btn-primary {
-                width: 100%; background: #34d399; color: #090b10; border: none;
+                width: 100%; background: linear-gradient(180deg, #ffa53a, #e07b00); color: #1a0f00; border: none;
                 border-radius: 12px; padding: 12px; font-weight: 800; font-size: 0.94rem;
                 cursor: pointer; margin-top: 6px;
             }
@@ -1688,7 +1688,7 @@
             ${state.isLocked && hasVaultAccounts ? `
                 <div class="rmw-alert-err" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                     <span>🔒 Cofre bloqueado (modo leitura).</span>
-                    <button class="rmw-icon-btn" id="rmw-quick-unlock" style="background:#34d399;color:#000;font-weight:700;">Desbloquear</button>
+                    <button class="rmw-icon-btn" id="rmw-quick-unlock" style="background:#f7931a;color:#1a0f00;font-weight:700;">Desbloquear</button>
                 </div>
             ` : ''}
 
@@ -1733,33 +1733,26 @@
 
         sheet.innerHTML = `
             <div class="rmw-header">
-                <div class="rmw-title">🔐 Desbloquear Cofre Local</div>
+                <div class="rmw-title">🔐 Abrir o cofre</div>
                 <div style="display:flex;gap:6px;">
                     ${state.accounts.length ? '<button class="rmw-icon-btn" id="rmw-back-list">Carteiras</button>' : ''}
-                    <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
+                    <button class="rmw-icon-btn" id="rmw-close-btn" aria-label="Fechar">✕</button>
                 </div>
             </div>
 
-            <div style="background:#181e2c;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;margin-bottom:12px;">
-                <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">👆 Acesso Rápido por Biometria / Windows Hello</div>
-                <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:10px;">
-                    ${bioReady
-                        ? 'Biometria ativa neste dispositivo. Toque abaixo para liberar suas carteiras.'
-                        : 'Desbloqueie com sua Senha/PIN abaixo e ative a biometria nos detalhes da carteira.'}
-                </div>
-                <button class="rmw-btn-primary" id="rmw-bio-unlock-btn" style="margin-top:0;${bioReady ? '' : 'display:none;'}">👆 Desbloquear com Biometria</button>
-            </div>
+            <button class="rmw-btn-primary ks-cta" id="rmw-bio-unlock-btn" style="${bioReady ? '' : 'display:none;'}">👆 Abrir com a digital</button>
 
-            <label class="rmw-label">Senha / PIN do Cofre Local</label>
+            <label class="rmw-label" for="rmw-pass-input">${bioReady ? 'Ou com a senha' : 'Sua senha'}</label>
             <div style="display:flex;gap:8px;align-items:center;">
-                <input type="password" class="rmw-input" id="rmw-pass-input" placeholder="Digite sua senha/PIN..." style="margin:0;">
-                <button class="rmw-btn-primary" id="rmw-pass-unlock-btn" style="width:auto;padding:11px 16px;margin:0;">Entrar</button>
+                <input type="password" class="rmw-input" id="rmw-pass-input" placeholder="Sua senha" style="margin:0;" autocomplete="current-password">
+                <button class="rmw-btn-primary" id="rmw-pass-unlock-btn" style="width:auto;padding:11px 18px;margin:0;">Abrir</button>
             </div>
 
             <div id="rmw-unlock-msg"></div>
 
-            <button class="rmw-btn-secondary" id="rmw-goto-add-from-unlock">+ Adicionar / Importar Outra Carteira</button>
-            <button class="rmw-btn-danger" id="rmw-reset-vault-btn">🗑️ Limpar Cofre Local e Recomeçar</button>
+            <div class="ks-card" style="margin-top:14px;"><span class="ks-ico">📜</span><b>Esqueceu a senha?</b><small>Suas 12 palavras abrem tudo de novo: apague o cofre deste celular e entre com elas.</small></div>
+            <button class="rmw-btn-secondary" id="rmw-goto-add-from-unlock">＋ Adicionar outra carteira</button>
+            <button class="rmw-btn-danger" id="rmw-reset-vault-btn">🗑️ Apagar o cofre deste celular</button>
         `;
 
         const msgBox = sheet.querySelector('#rmw-unlock-msg');
@@ -1814,7 +1807,7 @@
             <div class="rmw-header">
                 <div class="rmw-title">
                     ${state.accounts.length ? '<button class="rmw-icon-btn" id="rmw-back-btn">←</button>' : ''}
-                    Selecionar método para adicionar
+                    ${state.accounts.length ? 'Adicionar carteira' : 'Vamos começar'}
                 </div>
                 <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
             </div>
@@ -1827,55 +1820,42 @@
                 <button class="rmw-btn-primary" id="rmw-legacy-import" style="margin-top:8px;">Recuperar carteira anterior</button>
             </div>` : ''}
 
-            <button class="rmw-opt-btn" data-mode="create-seed">
-                <div class="rmw-opt-ico" style="background:rgba(0,230,118,0.16);color:#00e676;">+</div>
+            <button class="rmw-opt-btn big-choice" data-mode="create-seed">
+                <div class="rmw-opt-ico big">🔑</div>
                 <div>
-                    <div>Criar carteira</div>
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Gera nova frase-semente com verificação de 3 palavras</div>
+                    <div>Criar meu cofre</div>
+                    <div class="opt-sub">Primeira vez? Comece aqui • criar carteira nova</div>
                 </div>
             </button>
 
-            ${hasUnlockedSeed ? `
+            <button class="rmw-opt-btn big-choice" data-mode="import-seed">
+                <div class="rmw-opt-ico big">📜</div>
+                <div>
+                    <div>Já tenho minhas 12 palavras</div>
+                    <div class="opt-sub">Importar frase-semente (Rabby, MetaMask…)</div>
+                </div>
+            </button>
+
+            <details class="more-opts">
+                <summary>Mais opções</summary>
+                ${hasUnlockedSeed ? `
                 <button class="rmw-opt-btn" id="rmw-derive-from-existing-seed">
-                    <div class="rmw-opt-ico" style="background:rgba(52,211,153,0.18);color:#34d399;">🌱</div>
-                    <div>
-                        <div>Adicionar conta da frase-semente atual</div>
-                        <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Deriva o próximo endereço HD (BIP44) em 1 clique</div>
-                    </div>
+                    <div class="rmw-opt-ico">🌱</div>
+                    <div><div>Outra conta com as mesmas palavras</div><div class="opt-sub">Cria o próximo endereço da sua chave</div></div>
+                </button>` : ''}
+                <button class="rmw-opt-btn" data-mode="import-pk">
+                    <div class="rmw-opt-ico">🗝️</div>
+                    <div><div>Importar chave privada</div><div class="opt-sub">Código 0x… de 64 letras e números</div></div>
                 </button>
-            ` : ''}
-
-            <button class="rmw-opt-btn" data-mode="import-seed">
-                <div class="rmw-opt-ico" style="background:rgba(59,130,246,0.18);color:#60a5fa;">📝</div>
-                <div>
-                    <div>Importar frase-semente</div>
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">12 ou 24 palavras (Rabby, MetaMask, Ledger)</div>
-                </div>
-            </button>
-
-            <button class="rmw-opt-btn" data-mode="import-pk">
-                <div class="rmw-opt-ico" style="background:rgba(245,158,11,0.18);color:#fbbf24;">🔑</div>
-                <div>
-                    <div>Importar chave privada</div>
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Chave hexadecimal avulsa (0x...)</div>
-                </div>
-            </button>
-
-            <button class="rmw-opt-btn" id="rmw-opt-rabby">
-                <div class="rmw-opt-ico" style="background:rgba(99,102,241,0.2);color:#a5b4fc;">🦊</div>
-                <div>
-                    <div>Conectar Rabby Wallet / Extensão</div>
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Assinatura externa via extensão ou navegador Rabby</div>
-                </div>
-            </button>
-
-            <button class="rmw-opt-btn" data-mode="watch-only">
-                <div class="rmw-opt-ico" style="background:rgba(148,163,184,0.16);color:#cbd5e1;">👁️</div>
-                <div>
-                    <div>Endereço de observação (Watch-Only)</div>
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:400;">Acompanhar saldos, pools e lucro real sem chave</div>
-                </div>
-            </button>
+                <button class="rmw-opt-btn" id="rmw-opt-rabby">
+                    <div class="rmw-opt-ico">🦊</div>
+                    <div><div>Conectar a Rabby</div><div class="opt-sub">A extensão Rabby assina por você</div></div>
+                </button>
+                <button class="rmw-opt-btn" data-mode="watch-only">
+                    <div class="rmw-opt-ico">👁️</div>
+                    <div><div>Só acompanhar (observação)</div><div class="opt-sub">Vê saldos de um endereço, sem poder mexer</div></div>
+                </button>
+            </details>
 
             <div id="rmw-add-msg"></div>
         `;
@@ -1901,15 +1881,7 @@
             btn.onclick = () => {
                 activeFormMode = btn.getAttribute('data-mode');
                 if (activeFormMode === 'create-seed') {
-                    createSeedDraft = {
-                        mnemonic: ethers.Wallet.createRandom().mnemonic.phrase,
-                        wordCount: 12,
-                        step: 'show',
-                        challengeIndices: [],
-                        name: '',
-                        password: '',
-                        enableBio: false
-                    };
+                    createSeedDraft = newSeedDraft();
                 }
                 currentView = 'form';
                 renderModal();
@@ -1950,6 +1922,174 @@
     }
 
     // -------------------------------------------------------------------------
+    // CRIAR O COFRE: uma história visual em 4 passos
+    //   1. o que é a chave  2. ver a chave (12 palavras)  3. conferir  4. proteger
+    // -------------------------------------------------------------------------
+    function newSeedDraft() {
+        return { mnemonic: ethers.Wallet.createRandom().mnemonic.phrase, wordCount: 12, step: 'intro', revealed: false,
+            quiz: [], quizAt: 0, name: '', password: '', enableBio: isBiometrySupported() };
+    }
+
+    // Chave dourada: cada dente é uma palavra (lit = quantos dentes acesos)
+    function keySvg(lit = 12, total = 12) {
+        const teeth = Array.from({ length: total }, (_, i) => {
+            const hgt = [10, 16, 8, 14, 18, 9, 13, 17, 7, 15, 11, 16][i % 12];
+            const x = 96 + i * 9.4;
+            return `<rect class="kt ${i < lit ? 'on' : ''}" x="${x.toFixed(1)}" y="53" width="6.4" height="${hgt}" rx="1.6"/>`;
+        }).join('');
+        return `<svg class="key-svg" viewBox="0 0 220 90" aria-hidden="true">
+            <defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe0a3"/><stop offset=".5" stop-color="#f7931a"/><stop offset="1" stop-color="#b45f00"/></linearGradient></defs>
+            <circle cx="46" cy="45" r="36" fill="url(#kg)"/><circle cx="46" cy="45" r="15" fill="#0f1218"/>
+            <text x="46" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="#f7931a">₿</text>
+            <rect x="78" y="37" width="138" height="16" rx="5" fill="url(#kg)"/>${teeth}
+        </svg>`;
+    }
+
+    function renderCreateKeyStory(sheet, { needsPassword, isLockedExisting }) {
+        const d = createSeedDraft;
+        const words = d.mnemonic.split(' ');
+        const steps = ['intro', 'show', 'verify', 'protect'];
+        const stepNo = steps.indexOf(d.step) + 1;
+        const dots = steps.map((s, i) => `<span class="ks-dot ${i < stepNo ? 'on' : ''}"></span>`).join('');
+        const head = (back) => `
+            <div class="rmw-header">
+                <div class="rmw-title"><button class="rmw-icon-btn" id="ks-back" data-rmw-back="1" aria-label="Voltar">←</button><span class="ks-dots" aria-label="Passo ${stepNo} de 4">${dots}</span></div>
+                <button class="rmw-icon-btn" id="rmw-close-btn" aria-label="Fechar">✕</button>
+            </div>`;
+        const go = (step) => { d.step = step; renderModal(); };
+        const bindHead = (backTo) => {
+            sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
+            sheet.querySelector('#ks-back').onclick = () => (backTo ? go(backTo) : (currentView = 'add', renderModal()));
+        };
+
+        if (d.step === 'intro') {
+            sheet.innerHTML = `${head()}
+                <div class="ks">
+                    <div class="ks-hero">${keySvg(12)}<div class="ks-vault-mini">🔒</div></div>
+                    <h2 class="ks-title">Seu cofre precisa de uma chave</h2>
+                    <div class="ks-cards">
+                        <div class="ks-card"><span class="ks-ico">🔑</span><b>A chave são 12 palavras</b><small>O app cria pra você. Você <u>não escolhe</u> nada.</small></div>
+                        <div class="ks-card"><span class="ks-ico">✍️</span><b>Escreva num papel</b><small>Na ordem, de 1 a 12.</small></div>
+                        <div class="ks-card warn"><span class="ks-ico">🙈</span><b>Só você pode ver</b><small>Quem tem as palavras abre o cofre. Nunca mande foto nem print.</small></div>
+                    </div>
+                    <button class="rmw-btn-primary ks-cta" id="ks-next">Pegar papel e caneta e continuar →</button>
+                </div>`;
+            bindHead(null);
+            sheet.querySelector('#ks-next').onclick = () => go('show');
+            return;
+        }
+
+        if (d.step === 'show') {
+            sheet.innerHTML = `${head()}
+                <div class="ks">
+                    <div class="ks-hero small">${keySvg(12)}</div>
+                    <h2 class="ks-title">Esta é a chave do seu cofre</h2>
+                    <p class="ks-sub">Copie as 12 palavras no papel, <b>na ordem</b>.</p>
+                    <div class="ks-words ${d.revealed ? 'revealed' : ''}" id="ks-words">
+                        <div class="rmw-words-grid">${words.map((w, i) => `<div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}</span>${esc(w)}</div>`).join('')}</div>
+                        <button type="button" class="ks-veil" id="ks-reveal"><span class="ks-ico">👀</span><b>Toque para ver sua chave</b><small>Confira se ninguém está olhando</small></button>
+                    </div>
+                    <div class="ks-rules"><span>✍️ No papel</span><span>🔢 Na ordem</span><span>🚫📸 Sem foto</span></div>
+                    <div id="rmw-form-msg"></div>
+                    <button class="rmw-btn-primary ks-cta" id="rmw-f-next-verify" ${d.revealed ? '' : 'disabled'}>Já escrevi no papel →</button>
+                </div>`;
+            bindHead('intro');
+            sheet.querySelector('#ks-reveal').onclick = () => { d.revealed = true; sheet.querySelector('#ks-words').classList.add('revealed'); sheet.querySelector('#rmw-f-next-verify').disabled = false; };
+            sheet.querySelector('#rmw-f-next-verify').onclick = () => {
+                // 3 perguntas: "qual é a palavra nº X?" com 3 opções tiradas da própria chave
+                d.quiz = pickThreeRandomWordIndices(words.length).map((idx) => {
+                    const others = words.map((w, i) => i).filter((i) => i !== idx && words[i] !== words[idx]).sort(() => Math.random() - 0.5).slice(0, 2);
+                    return { idx, options: [idx, ...others].sort(() => Math.random() - 0.5).map((i) => words[i]) };
+                });
+                d.quizAt = 0;
+                go('verify');
+            };
+            return;
+        }
+
+        if (d.step === 'verify') {
+            const q = d.quiz[d.quizAt];
+            sheet.innerHTML = `${head()}
+                <div class="ks">
+                    <div class="ks-hero small">${keySvg(d.quizAt)}</div>
+                    <h2 class="ks-title">Vamos conferir seu papel</h2>
+                    <p class="ks-sub">Pergunta ${d.quizAt + 1} de 3</p>
+                    <div class="ks-ask">Qual é a palavra <span class="ks-num" id="ks-num">nº ${q.idx + 1}</span>?</div>
+                    <div class="ks-options" id="ks-options">
+                        ${q.options.map((w) => `<button type="button" class="ks-opt" data-word="${esc(w)}">${esc(w)}</button>`).join('')}
+                    </div>
+                    <div id="rmw-form-msg"></div>
+                    <button type="button" class="rmw-btn-secondary" id="ks-review">👀 Ver a chave de novo</button>
+                </div>`;
+            bindHead('show');
+            sheet.querySelector('#ks-review').onclick = () => go('show');
+            sheet.querySelectorAll('.ks-opt').forEach((b) => {
+                b.onclick = () => {
+                    const msg = sheet.querySelector('#rmw-form-msg');
+                    if (b.getAttribute('data-word') === words[q.idx]) {
+                        b.classList.add('right');
+                        sheet.querySelectorAll('.ks-opt').forEach((x) => { x.disabled = true; });
+                        setTimeout(() => {
+                            if (d.quizAt < 2) { d.quizAt += 1; renderModal(); } else go('protect');
+                        }, 420);
+                    } else {
+                        b.classList.remove('wrong'); void b.offsetWidth; b.classList.add('wrong');
+                        try { navigator.vibrate?.([40, 50, 40]); } catch (e) { /* sem vibração */ }
+                        msg.innerHTML = `<div class="rmw-alert-err">Não é essa. Olhe a palavra nº ${q.idx + 1} no seu papel.</div>`;
+                    }
+                };
+            });
+            return;
+        }
+
+        // 4. proteger: senha para abrir neste celular (+ digital)
+        const askPass = needsPassword || isLockedExisting;
+        sheet.innerHTML = `${head()}
+            <div class="ks">
+                <div class="ks-hero small"><div class="ks-phone">📱<span>🔒</span></div></div>
+                <h2 class="ks-title">${askPass ? (needsPassword ? 'Uma senha para este celular' : 'Senha do seu cofre') : 'Quase pronto!'}</h2>
+                <p class="ks-sub">${needsPassword ? 'Ela abre o cofre só neste aparelho. Perdeu o celular? Suas 12 palavras recuperam tudo.' : askPass ? 'A mesma senha que você já usa para abrir o cofre.' : 'Dê um nome para o seu cofre.'}</p>
+                <label class="rmw-label" for="rmw-f-name">Nome do cofre</label>
+                <input type="text" class="rmw-input" id="rmw-f-name" value="${esc(d.name)}" placeholder="Meu cofre" maxlength="40">
+                ${askPass ? `
+                    <label class="rmw-label" for="rmw-f-pass">${needsPassword ? 'Crie uma senha' : 'Senha'}</label>
+                    <input type="password" class="rmw-input" id="rmw-f-pass" value="${esc(d.password)}" placeholder="${needsPassword ? 'Pelo menos 8 letras ou números' : 'Sua senha'}" autocomplete="${needsPassword ? 'new-password' : 'current-password'}">` : ''}
+                ${needsPassword ? `
+                    <label class="ks-bio"><input type="checkbox" id="rmw-f-bio" ${d.enableBio ? 'checked' : ''}><span class="ks-ico">👆</span><span><b>Abrir com a digital</b><small>Mais rápido e seguro no dia a dia</small></span></label>` : ''}
+                <div id="rmw-form-msg"></div>
+                <button class="rmw-btn-primary ks-cta" id="rmw-verify-confirm-btn">🔐 Criar meu cofre</button>
+            </div>`;
+        bindHead('show');
+        sheet.querySelector('#rmw-verify-confirm-btn').onclick = async () => {
+            const msgBox = sheet.querySelector('#rmw-form-msg');
+            const btn = sheet.querySelector('#rmw-verify-confirm-btn');
+            msgBox.innerHTML = '';
+            const pwd = sheet.querySelector('#rmw-f-pass')?.value || '';
+            if (needsPassword && pwd.length < MIN_PASSWORD_LENGTH) {
+                msgBox.innerHTML = `<div class="rmw-alert-err">A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} letras ou números.</div>`;
+                return;
+            }
+            if (isLockedExisting && !pwd) { msgBox.innerHTML = '<div class="rmw-alert-err">Digite a senha do seu cofre.</div>'; return; }
+            d.name = sheet.querySelector('#rmw-f-name').value.trim();
+            d.password = pwd;
+            d.enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked);
+            btn.disabled = true;
+            btn.textContent = 'Fechando o cofre…';
+            try {
+                await addAccountFromMnemonic({ mnemonic: d.mnemonic, name: d.name || 'Meu cofre', hdIndex: 0, password: d.password, enableBio: d.enableBio });
+                const name = d.name || 'Meu cofre';
+                createSeedDraft = null;
+                closeWalletModal();
+                window.RdeskVaultDoor?.celebrate?.(name);
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = '🔐 Criar meu cofre';
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
+            }
+        };
+    }
+
+    // -------------------------------------------------------------------------
     // TELA D: FORMULÁRIOS (COM DESAFIO DE 3 PALAVRAS NA CRIAÇÃO DE CARTEIRA)
     // -------------------------------------------------------------------------
     function renderFormView(sheet) {
@@ -1957,180 +2097,15 @@
         const isLockedExisting = !state.unlockedSecrets && Boolean(readVaultMetaFromStorage()?.encryptedSecrets);
 
         if (activeFormMode === 'create-seed') {
-            if (!createSeedDraft) {
-                createSeedDraft = {
-                    mnemonic: ethers.Wallet.createRandom().mnemonic.phrase,
-                    wordCount: 12,
-                    step: 'show',
-                    challengeIndices: [],
-                    name: '',
-                    password: '',
-                    enableBio: false
-                };
-            }
-
-            const wordsArr = createSeedDraft.mnemonic.split(' ');
-
-            if (createSeedDraft.step === 'verify') {
-                const [idx1, idx2, idx3] = createSeedDraft.challengeIndices;
-                sheet.innerHTML = `
-                    <div class="rmw-header">
-                        <div class="rmw-title">
-                            <button class="rmw-icon-btn" id="rmw-verify-back">←</button>
-                            Confirmar Palavras Anotadas
-                        </div>
-                        <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
-                    </div>
-
-                    <div style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.35);border-radius:12px;padding:11px;font-size:0.82rem;color:#fde047;margin-bottom:12px;">
-                        🛡️ <strong>Prova de Segurança:</strong> Digite exatamente as 3 palavras solicitadas abaixo para comprovar que você anotou sua frase-semente.
-                    </div>
-
-                    <label class="rmw-label">Palavra #${idx1 + 1}</label>
-                    <input type="text" class="rmw-input" id="rmw-chk-w1" autocomplete="off" autocapitalize="none" placeholder="Digite a ${idx1 + 1}ª palavra...">
-
-                    <label class="rmw-label">Palavra #${idx2 + 1}</label>
-                    <input type="text" class="rmw-input" id="rmw-chk-w2" autocomplete="off" autocapitalize="none" placeholder="Digite a ${idx2 + 1}ª palavra...">
-
-                    <label class="rmw-label">Palavra #${idx3 + 1}</label>
-                    <input type="text" class="rmw-input" id="rmw-chk-w3" autocomplete="off" autocapitalize="none" placeholder="Digite a ${idx3 + 1}ª palavra...">
-
-                    <div id="rmw-form-msg"></div>
-
-                    <button class="rmw-btn-primary" id="rmw-verify-confirm-btn">✅ Confirmar Backup e Criar Carteira</button>
-                    <button class="rmw-btn-secondary" id="rmw-verify-review-btn">👁️ Voltar para rever as palavras novamente</button>
-                `;
-
-                sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
-                const goBackToWords = () => { createSeedDraft.step = 'show'; renderModal(); };
-                sheet.querySelector('#rmw-verify-back').onclick = goBackToWords;
-                sheet.querySelector('#rmw-verify-review-btn').onclick = goBackToWords;
-
-                sheet.querySelector('#rmw-verify-confirm-btn').onclick = async () => {
-                    const msgBox = sheet.querySelector('#rmw-form-msg');
-                    msgBox.innerHTML = '';
-
-                    const a1 = sheet.querySelector('#rmw-chk-w1').value.trim().toLowerCase();
-                    const a2 = sheet.querySelector('#rmw-chk-w2').value.trim().toLowerCase();
-                    const a3 = sheet.querySelector('#rmw-chk-w3').value.trim().toLowerCase();
-
-                    if (a1 !== wordsArr[idx1]) {
-                        msgBox.innerHTML = `<div class="rmw-alert-err">A <strong>Palavra #${idx1 + 1}</strong> não confere. Verifique suas anotações.</div>`;
-                        return;
-                    }
-                    if (a2 !== wordsArr[idx2]) {
-                        msgBox.innerHTML = `<div class="rmw-alert-err">A <strong>Palavra #${idx2 + 1}</strong> não confere. Verifique suas anotações.</div>`;
-                        return;
-                    }
-                    if (a3 !== wordsArr[idx3]) {
-                        msgBox.innerHTML = `<div class="rmw-alert-err">A <strong>Palavra #${idx3 + 1}</strong> não confere. Verifique suas anotações.</div>`;
-                        return;
-                    }
-
-                    try {
-                        await addAccountFromMnemonic({
-                            mnemonic: createSeedDraft.mnemonic,
-                            name: createSeedDraft.name || 'CAIXA FORTE',
-                            hdIndex: 0,
-                            password: createSeedDraft.password,
-                            enableBio: createSeedDraft.enableBio
-                        });
-                        createSeedDraft = null;
-                        currentView = 'list';
-                        renderModal();
-                    } catch (err) {
-                        msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
-                    }
-                };
-                return;
-            }
-
-            const numberedGridHtml = wordsArr.map((w, i) => `
-                <div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}.</span>${w}</div>
-            `).join('');
-
-            sheet.innerHTML = `
-                <div class="rmw-header">
-                    <div class="rmw-title">
-                        <button class="rmw-icon-btn" id="rmw-form-back">←</button>
-                        ✨ Criar Nova Carteira
-                    </div>
-                    <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
-                </div>
-
-                <label class="rmw-label">Apelido da Carteira</label>
-                <input type="text" class="rmw-input" id="rmw-f-name" value="${esc(createSeedDraft.name)}" placeholder="Ex: CAIXA FORTE, POOL V3...">
-
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-                    <label class="rmw-label" style="margin:0;">Anote estas ${createSeedDraft.wordCount} palavras na ordem exata:</label>
-                    <select id="rmw-f-words" class="rmw-select" style="width:auto;padding:4px 8px;margin:0;font-size:0.78rem;">
-                        <option value="12" ${createSeedDraft.wordCount === 12 ? 'selected' : ''}>12 palavras</option>
-                        <option value="24" ${createSeedDraft.wordCount === 24 ? 'selected' : ''}>24 palavras</option>
-                    </select>
-                </div>
-
-                <div class="rmw-words-grid">${numberedGridHtml}</div>
-                <button type="button" class="rmw-btn-secondary" id="rmw-f-copy-gen" style="margin-top:8px;">📋 Copiar Palavras para Guardar Offline</button>
-
-                ${needsPassword || isLockedExisting ? `
-                    <label class="rmw-label" style="margin-top:10px;">${needsPassword ? 'Crie uma Senha/PIN para o Cofre Local' : 'Digite a Senha/PIN do seu Cofre Local'}</label>
-                    <input type="password" class="rmw-input" id="rmw-f-pass" value="${esc(createSeedDraft.password)}" placeholder="Mínimo 8 caracteres">
-                ` : ''}
-
-                ${needsPassword ? `
-                    <label style="display:flex;align-items:center;gap:8px;font-size:0.84rem;color:#cbd5e1;margin:8px 0;cursor:pointer;">
-                        <input type="checkbox" id="rmw-f-bio" ${createSeedDraft.enableBio ? 'checked' : ''}>
-                        <span>👆 Ativar desbloqueio por biometria neste aparelho</span>
-                    </label>
-                ` : ''}
-
-                <div id="rmw-form-msg"></div>
-                <button class="rmw-btn-primary" id="rmw-f-next-verify">Já anotei — Verificar 3 Palavras →</button>
-            `;
-
-            sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
-            sheet.querySelector('#rmw-form-back').onclick = () => { currentView = 'add'; renderModal(); };
-
-            sheet.querySelector('#rmw-f-words').onchange = (e) => {
-                const count = Number(e.target.value);
-                const bits = count === 24 ? 32 : 16;
-                createSeedDraft.wordCount = count;
-                createSeedDraft.mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(bits));
-                createSeedDraft.name = sheet.querySelector('#rmw-f-name').value;
-                createSeedDraft.password = sheet.querySelector('#rmw-f-pass')?.value || '';
-                renderModal();
-            };
-
-            sheet.querySelector('#rmw-f-copy-gen').onclick = async () => {
-                await copyToClipboardSafe(createSeedDraft.mnemonic);
-                sheet.querySelector('#rmw-f-copy-gen').textContent = '✅ Palavras Copiadas!';
-            };
-
-            sheet.querySelector('#rmw-f-next-verify').onclick = () => {
-                const msgBox = sheet.querySelector('#rmw-form-msg');
-                const pwd = sheet.querySelector('#rmw-f-pass')?.value || '';
-                if (needsPassword && pwd.length < MIN_PASSWORD_LENGTH) {
-                    msgBox.innerHTML = `<div class="rmw-alert-err">Crie uma senha de pelo menos ${MIN_PASSWORD_LENGTH} caracteres para o cofre antes de continuar.</div>`;
-                    return;
-                }
-                if (isLockedExisting && !pwd) {
-                    msgBox.innerHTML = `<div class="rmw-alert-err">Informe a senha do cofre antes de continuar.</div>`;
-                    return;
-                }
-                createSeedDraft.name = sheet.querySelector('#rmw-f-name').value;
-                createSeedDraft.password = pwd;
-                createSeedDraft.enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked);
-                createSeedDraft.challengeIndices = pickThreeRandomWordIndices(wordsArr.length);
-                createSeedDraft.step = 'verify';
-                renderModal();
-            };
+            if (!createSeedDraft) createSeedDraft = newSeedDraft();
+            renderCreateKeyStory(sheet, { needsPassword, isLockedExisting });
             return;
         }
 
         const titles = {
-            'import-seed': '📝 Importar Frase-Semente',
-            'import-pk': '🔑 Importar Chave Privada',
-            'watch-only': '👁️ Adicionar Endereço de Observação'
+            'import-seed': '📜 Abrir com minhas 12 palavras',
+            'import-pk': '🗝️ Importar chave privada',
+            'watch-only': '👁️ Só acompanhar um endereço'
         };
 
         sheet.innerHTML = `
@@ -2142,15 +2117,21 @@
                 <button class="rmw-icon-btn" id="rmw-close-btn">✕</button>
             </div>
 
-            <label class="rmw-label">Apelido da Carteira</label>
-            <input type="text" class="rmw-input" id="rmw-f-name" placeholder="Ex: CAIXA FORTE, POOL V3, RESERVA...">
+            ${activeFormMode === 'import-seed' ? `
+                <div class="ks-hero small">${keySvg(12)}</div>
+                <p class="ks-sub" style="margin:0 0 6px;">Digite as palavras do seu papel, <b>na ordem</b>, com espaço entre elas.</p>
+                <textarea class="rmw-textarea" id="rmw-f-seed-input" placeholder="palavra1 palavra2 palavra3 …" autocapitalize="none" autocomplete="off" spellcheck="false" style="min-height:110px;font-size:1.05rem;"></textarea>
+                <button type="button" class="rmw-btn-secondary" data-scan-for="rmw-f-seed-input" data-scan-raw="1" style="margin-top:6px;padding:8px;">📷 Ler de um QR Code</button>
+            ` : ''}
+
+            <label class="rmw-label">Nome ${activeFormMode === 'watch-only' ? '' : 'do cofre'}</label>
+            <input type="text" class="rmw-input" id="rmw-f-name" placeholder="${activeFormMode === 'watch-only' ? 'Ex.: Carteira da loja' : 'Meu cofre'}">
 
             ${activeFormMode === 'import-seed' ? `
-                <label class="rmw-label">Frase-Semente (12 ou 24 palavras separadas por espaço)</label>
-                <textarea class="rmw-textarea" id="rmw-f-seed-input" placeholder="word1 word2 word3 ..."></textarea>
-                <button type="button" class="rmw-btn-secondary" data-scan-for="rmw-f-seed-input" data-scan-raw="1" style="margin-top:6px;padding:8px;">📷 Ler a frase de um QR Code</button>
-                <label class="rmw-label">Índice da Conta HD (BIP44 — padrão #0)</label>
-                <input type="number" class="rmw-input" id="rmw-f-hd-index" value="0" min="0" max="50">
+                <details class="more-opts"><summary>Avançado</summary>
+                    <label class="rmw-label">Número da conta (padrão 0)</label>
+                    <input type="number" class="rmw-input" id="rmw-f-hd-index" value="0" min="0" max="50">
+                </details>
             ` : ''}
 
             ${activeFormMode === 'import-pk' ? `
@@ -2170,19 +2151,16 @@
             ` : ''}
 
             ${activeFormMode !== 'watch-only' && (needsPassword || isLockedExisting) ? `
-                <label class="rmw-label">${needsPassword ? 'Crie uma Senha/PIN para o Cofre Local' : 'Digite a Senha/PIN do seu Cofre Local'}</label>
-                <input type="password" class="rmw-input" id="rmw-f-pass" placeholder="Mínimo 8 caracteres">
+                <label class="rmw-label">${needsPassword ? 'Crie uma senha para este celular' : 'Senha do seu cofre'}</label>
+                <input type="password" class="rmw-input" id="rmw-f-pass" placeholder="${needsPassword ? 'Pelo menos 8 letras ou números' : 'Sua senha'}">
             ` : ''}
 
             ${activeFormMode !== 'watch-only' && needsPassword ? `
-                <label style="display:flex;align-items:center;gap:8px;font-size:0.84rem;color:#cbd5e1;margin:8px 0;cursor:pointer;">
-                    <input type="checkbox" id="rmw-f-bio">
-                    <span>👆 Ativar desbloqueio por biometria neste aparelho</span>
-                </label>
+                <label class="ks-bio" style="margin-top:10px;"><input type="checkbox" id="rmw-f-bio"><span class="ks-ico">👆</span><span><b>Abrir com a digital</b><small>Mais rápido no dia a dia</small></span></label>
             ` : ''}
 
             <div id="rmw-form-msg"></div>
-            <button class="rmw-btn-primary" id="rmw-f-submit">Salvar e Ativar Carteira</button>
+            <button class="rmw-btn-primary" id="rmw-f-submit">${activeFormMode === 'watch-only' ? '👁️ Acompanhar' : '🔐 Abrir meu cofre'}</button>
         `;
 
         sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
@@ -2742,7 +2720,7 @@
         const lockBtn = document.getElementById('btn-lock-vault');
         if (lockBtn) lockBtn.style.display = isVault && !state.isLocked ? 'inline-block' : 'none';
         const lockBar = document.getElementById('locked-vault-bar');
-        if (lockBar) lockBar.style.display = isVault && state.isLocked ? 'flex' : 'none';
+        if (lockBar) lockBar.style.display = 'none'; // trancado = porta do cofre (vault-door.js)
 
         // Lista "Suas Moedas"
         const listEl = document.getElementById('wallet-assets-list');
@@ -2926,6 +2904,8 @@
         switchAccount: switchActiveAccount,
         lockVault: lockVaultNow,
         unlockWithBiometrics: unlockWithBiometry,
+        unlockWithPassword: (pwd) => unlockVaultWithPassword(pwd),
+        isBiometryReady: () => { try { return isBiometryRegistered(); } catch (e) { return false; } },
         copyText: copyToClipboardSafe,
         shortAddress: (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '',
         onChange: registerChangeListener,

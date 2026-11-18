@@ -2,7 +2,7 @@
 // conferências de segurança antes de assinar e todas as taxas em reais. Rede e serviços simulados.
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, TEST_MNEMONIC, USD_BRL, ROOT } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, unlockViaDoor, TEST_MNEMONIC, USD_BRL, ROOT } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 import { buildPsbt, decodeTx } from './psbt.mjs';
 
@@ -162,6 +162,7 @@ try {
 
     // ================================================================ 6. Bitcoin no centro
     await page.goto(url + '/index.html');
+    await unlockViaDoor(page);
     await page.waitForSelector('#wallet-assets-list .asset-row', { timeout: 20000 });
     const first = await page.$$eval('#wallet-assets-list .asset-row', (r) => r.slice(0, 1).map((x) => x.innerText.replace(/\s+/g, ' ')));
     check('Bitcoin vem primeiro na lista de moedas, com selo "A mais consolidada"', /Bitcoin/.test(first[0]) && /A mais consolidada · desde 2009/.test(first[0]), first[0]);

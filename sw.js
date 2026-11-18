@@ -3,7 +3,7 @@
    Arquivo 2 de 7: sw.js
    ========================================================================= */
 
-const CACHE_NAME = 'rdesk-sentinel-v33';
+const CACHE_NAME = 'rdesk-sentinel-v34';
 
 const CORE_ASSETS = [
   './',
@@ -16,6 +16,7 @@ const CORE_ASSETS = [
   './qr-scanner.js',
   './wallet-views.js',
   './onboarding.js',
+  './vault-door.js',
   './history.js',
   './wallet-service.js',
   './defi-pix-service.js',

@@ -299,6 +299,16 @@ export async function importWalletViaUi(page, { name = 'Principal', mnemonic = T
     await page.evaluate(() => window.RdeskWallet.closeModal());
 }
 
+// Abre o cofre pela porta (tela trancada) com a senha e espera a animação terminar
+export async function unlockViaDoor(page, password = TEST_PASSWORD) {
+    await page.waitForSelector('#vault-screen:not([hidden])', { timeout: 15000 });
+    if (await page.locator('#vault-pass-form[hidden]').count()) await page.click('#vault-open-btn');
+    await page.fill('#vault-pass-input', password);
+    await page.click('#vault-pass-go');
+    await waitFn(page, () => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });
+}
+
 const results = [];
 export function check(name, cond, detail = '') {
     results.push({ name, ok: Boolean(cond), detail });

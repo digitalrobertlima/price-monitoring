@@ -1,7 +1,7 @@
 // Gerenciador de carteiras testado com cliques reais em tela de celular:
 // criar (com prova das 3 palavras), adicionar, trocar, ver a frase, apagar,
 // bloquear/desbloquear, persistência, cópia de segurança e biometria (WebAuthn PRF).
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, TEST_PASSWORD, waitFn } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, TEST_PASSWORD, waitFn, unlockViaDoor } from './helpers.mjs';
 import { MockChain, ethers } from './mock-chain.mjs';
 
 const VAULT_KEY = 'rdesk_multi_vault_v2';
@@ -42,40 +42,66 @@ try {
     let { page, pageErrors, dialogs, external, cspViolations } = await openApp(context, url, chain);
 
     await page.click('#btn-wallet-trigger');
+    const firstMenu = await sheetText(page);
+    check('primeira tela: duas escolhas grandes e simples', /Criar meu cofre/.test(firstMenu) && /Já tenho minhas 12 palavras/.test(firstMenu), firstMenu.slice(0, 160));
+    await page.click('.more-opts > summary');
     const addMenu = await sheetText(page);
-    check('menu oferece criar, importar frase, importar chave, Rabby e observação',
-        ['Criar carteira', 'Importar frase-semente', 'Importar chave privada', 'Rabby', 'observação'].every((t) => addMenu.includes(t)), addMenu.slice(0, 120));
+    check('"Mais opções" guarda importar chave, Rabby e observação',
+        ['criar carteira', 'importar frase-semente', 'importar chave privada', 'rabby', 'observação'].every((x) => addMenu.toLowerCase().includes(x)), addMenu.slice(0, 200));
     await page.screenshot({ path: 'tests/artifacts-ui-adicionar.png' });
 
-    await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Criar carteira' }).click();
+    // História da chave: 1. o que é  2. ver  3. conferir  4. proteger
+    await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Criar meu cofre' }).click();
+    await page.waitForSelector('#ks-next');
+    const intro = await sheetText(page);
+    check('passo 1 explica com imagens: a chave são 12 palavras, você não escolhe, escreva no papel', /12 palavras/.test(intro) && /não escolhe/.test(intro) && /papel/.test(intro) && (await page.locator('#rdesk-mw-sheet .key-svg').count()) === 1);
+    await page.screenshot({ path: 'tests/artifacts-ui-chave-1.png' });
+    await page.click('#ks-next');
     await page.waitForSelector('.rmw-word-pill');
+    check('passo 2: palavras começam escondidas (embaçadas) e o botão de seguir travado',
+        await page.isDisabled('#rmw-f-next-verify') && (await page.evaluate(() => getComputedStyle(document.querySelector('.ks-words .rmw-words-grid')).filter)).includes('blur'));
+    await page.click('#ks-reveal');
     const words = await page.$$eval('.rmw-word-pill', (els) => els.map((e) => {
         const clone = e.cloneNode(true); clone.querySelector('.rmw-word-num')?.remove(); return clone.textContent.trim();
     }));
     check('mostra 12 palavras para anotar', words.length === 12 && ethers.utils.isValidMnemonic(words.join(' ')), `${words.length} palavras`);
     await page.screenshot({ path: 'tests/artifacts-ui-palavras.png' });
+    await page.click('#rmw-f-next-verify');
 
+    for (let round = 0; round < 3; round++) {
+        await page.waitForSelector('#ks-num');
+        await waitFn(page, (r) => (document.querySelector('.ks-sub')?.textContent || '').includes(`Pergunta ${r + 1} de 3`), round, { timeout: 5000 });
+        const n = Number((await page.innerText('#ks-num')).replace(/\D/g, ''));
+        const opts = await page.$$eval('.ks-opt', (els) => els.map((e) => e.getAttribute('data-word')));
+        if (round === 0) {
+            check('passo 3: pergunta "qual é a palavra nº X?" com 3 opções', opts.length === 3 && opts.includes(words[n - 1]), `${n}: ${opts.join(',')}`);
+            await page.screenshot({ path: 'tests/artifacts-ui-chave-3.png' });
+            const wrong = opts.find((w) => w !== words[n - 1]);
+            await page.click(`.ks-opt[data-word="${wrong}"]`);
+            check('resposta errada avisa para olhar o papel e não avança', /Olhe a palavra nº/.test(await page.innerText('#rmw-form-msg')) && (await accounts(page)).length === 0);
+        }
+        await page.click(`.ks-opt[data-word="${words[n - 1]}"]`);
+    }
+    await page.waitForSelector('#rmw-verify-confirm-btn');
     await page.fill('#rmw-f-name', 'Caixa <b>Forte</b>');
     await page.fill('#rmw-f-pass', 'curta1');
-    await page.click('#rmw-f-next-verify');
-    check('senha com menos de 8 caracteres é recusada', /pelo menos 8/.test(await page.innerText('#rmw-form-msg')), await page.innerText('#rmw-form-msg'));
-    await page.fill('#rmw-f-pass', TEST_PASSWORD);
-    await page.click('#rmw-f-next-verify');
-
-    await page.waitForSelector('#rmw-chk-w1');
-    const asked = await page.$$eval('.rmw-label', (els) => els.map((e) => Number((e.textContent.match(/#(\d+)/) || [])[1])).filter(Boolean));
-    check('pede 3 palavras para provar o backup', asked.length === 3, asked.join(', '));
-    await page.fill('#rmw-chk-w1', 'errada');
-    await page.fill('#rmw-chk-w2', words[asked[1] - 1]);
-    await page.fill('#rmw-chk-w3', words[asked[2] - 1]);
     await page.click('#rmw-verify-confirm-btn');
-    check('palavra errada bloqueia a criação', /não confere/.test(await page.innerText('#rmw-form-msg')) && (await accounts(page)).length === 0);
-    await page.fill('#rmw-chk-w1', words[asked[0] - 1]);
+    check('senha com menos de 8 caracteres é recusada', /pelo menos 8/.test(await page.innerText('#rmw-form-msg')), await page.innerText('#rmw-form-msg'));
+    await page.screenshot({ path: 'tests/artifacts-ui-chave-4.png' });
+    check('digital já vem marcada para facilitar o dia a dia', await page.isChecked('#rmw-f-bio'));
+    await page.uncheck('#rmw-f-bio'); // este navegador de teste não tem leitor de digital
+    await page.fill('#rmw-f-pass', TEST_PASSWORD);
     await page.click('#rmw-verify-confirm-btn');
     await waitFn(page, () => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await page.waitForSelector('#vault-screen.celebrate', { timeout: 10000 });
+    const party = await page.innerText('#vault-screen');
+    check('cofre criado: a porta aparece com "Seu cofre está pronto!" e abre sozinha', /Seu cofre está pronto!/.test(party) && /Caixa <b>Forte<\/b>/.test(party) && (await page.locator('#vault-screen b').count()) === 0, party.slice(0, 120));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: 'tests/artifacts-ui-cofre-pronto.png' });
+    await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });
     const created = (await accounts(page))[0];
     check('carteira criada com o endereço das palavras mostradas', created.address === ethers.Wallet.fromMnemonic(words.join(' ')).address, created.address);
-    check('nome com HTML é mostrado como texto (sem injeção)', (await page.locator('#rdesk-mw-sheet b').count()) === 0 && created.name === 'Caixa <b>Forte</b>');
+    check('nome com HTML é guardado como texto (sem injeção)', created.name === 'Caixa <b>Forte</b>');
 
     await waitFn(page, (k) => Boolean(JSON.parse(localStorage.getItem(k) || 'null')?.encryptedSecrets), VAULT_KEY, { timeout: 15000 });
     const blob = await stored(page, VAULT_KEY);
@@ -138,6 +164,15 @@ try {
     await page.evaluate(() => window.RdeskWallet.closeModal());
     await page.click('#btn-lock-vault');
     check('botão Bloquear tranca o cofre', await page.evaluate(() => window.RdeskWallet.isLocked()));
+    await page.waitForTimeout(1600);
+    const hidden = await page.evaluate(() => ({
+        door: !document.getElementById('vault-screen').hidden && getComputedStyle(document.getElementById('vault-screen')).display !== 'none',
+        hero: getComputedStyle(document.getElementById('hero-total-brl')).visibility,
+        nav: getComputedStyle(document.querySelector('.main-nav')).visibility,
+        inert: document.getElementById('app-main').inert
+    }));
+    check('trancado: a porta do cofre cobre tudo; saldo, botões e menu ficam escondidos', hidden.door && hidden.hero === 'hidden' && hidden.nav === 'hidden' && hidden.inert, JSON.stringify(hidden));
+    await page.screenshot({ path: 'tests/artifacts-ui-cofre-trancado.png' });
     let signErr = await page.evaluate(() => window.RdeskWallet.getSigner(137).then(() => '').catch((e) => e.message));
     check('cofre bloqueado não assina', /bloqueado/i.test(signErr), signErr);
     await page.evaluate(() => window.RdeskWallet.closeModal());
@@ -146,16 +181,23 @@ try {
     await waitFn(page, () => window.RdeskWallet && window.RdeskWallet.isConnected(), null, { timeout: 30000 });
     check('após recarregar: mesma carteira, cofre bloqueado',
         (await page.evaluate(() => window.RdeskWallet.getAddress())) === created.address && (await page.evaluate(() => window.RdeskWallet.isLocked())));
-    await page.click('#btn-wallet-trigger');
-    await page.waitForSelector('#rmw-pass-input');
+    check('ao abrir o app, ele já aparece com a porta do cofre fechada', await page.isVisible('#vault-open-btn'));
+    await page.click('#vault-more-btn');
+    check('"Outras opções" abre por cima da porta (senha, esqueci a senha, apagar)', await page.isVisible('#rmw-pass-input') && /Esqueceu a senha/.test(await sheetText(page)));
     await page.screenshot({ path: 'tests/artifacts-ui-desbloquear.png' });
-    await page.fill('#rmw-pass-input', 'senha-errada-000');
-    await page.click('#rmw-pass-unlock-btn');
-    await waitFn(page, () => (document.getElementById('rmw-unlock-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
-    check('senha errada não desbloqueia e avisa', (await page.evaluate(() => window.RdeskWallet.isLocked())) && /incorret/i.test(await page.innerText('#rmw-unlock-msg')));
-    await page.fill('#rmw-pass-input', TEST_PASSWORD);
-    await page.click('#rmw-pass-unlock-btn');
+    await page.evaluate(() => window.RdeskWallet.closeModal());
+    await page.click('#vault-open-btn');
+    await page.fill('#vault-pass-input', 'senha-errada-000');
+    await page.click('#vault-pass-go');
+    await waitFn(page, () => (document.getElementById('vault-msg')?.textContent || '').length > 0, null, { timeout: 30000 });
+    check('senha errada não abre o cofre e avisa', (await page.evaluate(() => window.RdeskWallet.isLocked())) && /Senha errada/.test(await page.innerText('#vault-msg')), await page.innerText('#vault-msg'));
+    await page.fill('#vault-pass-input', TEST_PASSWORD);
+    await page.click('#vault-pass-go');
     await waitFn(page, () => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    await waitFn(page, () => document.getElementById('vault-screen').classList.contains('opening'), null, { timeout: 5000 });
+    check('senha certa: a porta abre (animação) e depois some', true);
+    await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });
+    check('depois de abrir, o app volta a aparecer e responder', (await page.evaluate(() => getComputedStyle(document.getElementById('hero-total-brl')).visibility)) === 'visible' && !(await page.evaluate(() => document.getElementById('app-main').inert)));
     const signer = await page.evaluate(() => window.RdeskWallet.getSigner(137).then((s) => s.getAddress()));
     check('senha certa desbloqueia e o assinador usa o endereço da frase', signer === created.address);
 
@@ -165,6 +207,7 @@ try {
     await waitFn(page, () => window.RdeskWallet, null, { timeout: 30000 });
     await page.waitForTimeout(1200);
     check('cofre é restaurado se só o localStorage for apagado', (await page.evaluate(() => window.RdeskWallet.getAddress())) === created.address);
+    await unlockViaDoor(page);
 
     // ================================================================ 7. Receber: QR local, nada de terceiros
     await page.click('#btn-action-receive');
@@ -180,6 +223,7 @@ try {
     await page.click('#btn-wallet-trigger');
     await page.waitForSelector('#rmw-pass-input, #rmw-goto-add');
     if (await page.locator('#rmw-goto-add-from-unlock').count()) await page.click('#rmw-goto-add-from-unlock'); else await page.click('#rmw-goto-add');
+    if (await page.locator('.more-opts:not([open]) > summary').count()) await page.click('.more-opts > summary');
     await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'observação' }).click();
     await page.fill('#rmw-f-watch-input', '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3');
     await page.click('#rmw-f-submit');
@@ -202,11 +246,7 @@ try {
 
     // ================================================================ 9. Apagar a última carteira zera o cofre
     await page.click('.nav-tab-btn[data-tab="wallet"]');
-    await page.click('#btn-wallet-trigger');
-    await page.waitForSelector('#rmw-pass-input');
-    await page.fill('#rmw-pass-input', TEST_PASSWORD);
-    await page.click('#rmw-pass-unlock-btn');
-    await waitFn(page, () => window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
+    if (await page.evaluate(() => window.RdeskWallet.isLocked())) await unlockViaDoor(page);
     await page.evaluate(() => window.RdeskWallet.openModal('list'));
     for (const left of [1, 0]) {
         await page.evaluate(() => window.RdeskWallet.openModal('list'));

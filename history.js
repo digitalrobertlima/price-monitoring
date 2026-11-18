@@ -675,6 +675,11 @@
                 canvas.addEventListener('pointerdown', (ev) => { try { canvas.setPointerCapture(ev.pointerId); } catch (e) {} pick(ev); });
                 canvas.addEventListener('pointermove', (ev) => { if (ev.buttons || ev.pointerType === 'mouse') pick(ev); });
                 canvas.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse' && hover !== null) { hover = null; draw(); } }); // no toque, a informação fica até o próximo toque
+                // Tocar fora do gráfico esconde a informação
+                document.addEventListener('pointerdown', (ev) => {
+                    if (hover === null || canvas.contains(ev.target)) return;
+                    hover = null; draw();
+                }, { passive: true });
                 if (global.ResizeObserver) new ResizeObserver(() => draw()).observe(host);
             }
             return true;
