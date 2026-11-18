@@ -50,7 +50,7 @@ const ts = String(Date.now());
 const manifest = `id:1234567;request-id:req-abc;ts:${ts};`;
 const v1 = crypto.createHmac('sha256', SECRET).update(manifest).digest('hex');
 check('assinatura certa do Mercado Pago é aceita', await verifyMpSignature({ xSignature: `ts=${ts},v1=${v1}`, xRequestId: 'req-abc', dataId: '1234567', secret: SECRET }));
-check('assinatura adulterada é recusada', !(await verifyMpSignature({ xSignature: `ts=${ts},v1=${v1.replace(/.$/, '0')}`, xRequestId: 'req-abc', dataId: '1234567', secret: SECRET })));
+check('assinatura adulterada é recusada', !(await verifyMpSignature({ xSignature: `ts=${ts},v1=${v1.replace(/.$/, (c) => (c === '0' ? '1' : '0'))}`, xRequestId: 'req-abc', dataId: '1234567', secret: SECRET })));
 check('aviso antigo (repetido depois de muito tempo) é recusado', !(await verifyMpSignature({ xSignature: `ts=${Date.now() - 3600e3},v1=${v1}`, xRequestId: 'req-abc', dataId: '1234567', secret: SECRET })));
 
 // 2. Pedido

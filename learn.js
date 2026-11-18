@@ -116,36 +116,103 @@
     }
 
     // =====================================================================
-    // VOZ (do próprio celular)
+    // VOZ: áudios naturais gravados (audio/*.mp3, gerados com Kokoro) e, só se faltar
+    // algum, a voz do celular — sem mexer no tom (mexer no tom deixa robótico).
+    // A boca acompanha o volume da voz de verdade (Web Audio).
     // =====================================================================
+    let audioIndex = null;      // Set de chaves com áudio gravado
+    let audioEl = null, audioCtx = null, analyser = null, lipRaf = 0, speakingWho = null;
+    fetch('./audio/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).then((list) => { audioIndex = new Set(list); }).catch(() => { audioIndex = new Set(); });
+
     let voice = null;
     function pickVoice() {
         const vs = global.speechSynthesis?.getVoices?.() || [];
         const pt = vs.filter((v) => /^pt(-|_)BR/i.test(v.lang));
-        voice = pt.find((v) => /luciana|francisca|maria|vit[oó]ria|thalita|google português/i.test(v.name)) || pt[0] || vs.find((v) => /^pt/i.test(v.lang)) || null;
+        // vozes "naturais"/neurais primeiro; as antigas de desktop por último
+        const score = (v) => (/natural|neural|online/i.test(v.name) ? 3 : 0) + (/google/i.test(v.name) ? 2 : 0) + (/francisca|thalita|luciana|vit[oó]ria/i.test(v.name) ? 1 : 0) - (/desktop|maria|daniel/i.test(v.name) ? 2 : 0);
+        voice = pt.sort((a, b) => score(b) - score(a))[0] || vs.find((v) => /^pt/i.test(v.lang)) || null;
     }
     if (global.speechSynthesis) { pickVoice(); global.speechSynthesis.onvoiceschanged = pickVoice; }
 
+    function setMouth(level) {
+        document.querySelectorAll('.av.talking').forEach((a) => a.style.setProperty('--mouth', level.toFixed(2)));
+    }
+    function lipLoop() {
+        if (!analyser) return;
+        const buf = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+        const rms = Math.sqrt(sum / buf.length);
+        setMouth(Math.min(1, Math.max(0, (rms - 0.015) * 9)));
+        lipRaf = requestAnimationFrame(lipLoop);
+    }
+    function ensureAudio() {
+        if (audioEl) return audioEl;
+        audioEl = new Audio();
+        audioEl.preload = 'auto';
+        try {
+            const AC = global.AudioContext || global.webkitAudioContext;
+            if (AC) {
+                audioCtx = new AC();
+                const src = audioCtx.createMediaElementSource(audioEl);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 512;
+                src.connect(analyser); analyser.connect(audioCtx.destination);
+            }
+        } catch (e) { analyser = null; }
+        return audioEl;
+    }
+    // Primeiro toque na tela libera o som (regra dos navegadores)
+    const unlockAudio = () => { try { ensureAudio(); audioCtx?.resume?.(); } catch (e) { /* ok */ } };
+    ['pointerdown', 'keydown'].forEach((ev) => global.addEventListener(ev, unlockAudio, { passive: true }));
+
+    function stopSpeech() {
+        try { global.speechSynthesis?.cancel(); } catch (e) { /* nada */ }
+        if (audioEl) { audioEl.onended = null; audioEl.pause(); }
+        cancelAnimationFrame(lipRaf);
+        document.body.classList.remove('lipsync');
+    }
+
     function speak(text, who, onEnd) {
-        const synth = global.speechSynthesis;
         const plain = String(text).replace(/<[^>]+>/g, '').replace(/[*_]/g, '');
         const fallbackMs = Math.min(9000, 900 + plain.length * 55);
         let done = false;
-        const finish = () => { if (done) return; done = true; onEnd?.(); };
-        if (!synth || st.muted || typeof global.SpeechSynthesisUtterance !== 'function') { setTimeout(finish, st.muted ? 600 : fallbackMs); return; }
+        const finish = () => { if (done) return; done = true; cancelAnimationFrame(lipRaf); document.body.classList.remove('lipsync'); onEnd?.(); };
+        stopSpeech();
+        speakingWho = who;
+        if (st.muted) { setTimeout(finish, 600); return; }
+        const key = DATA.voiceKey(who, plain);
+        // 1) áudio natural gravado
+        if (audioIndex && audioIndex.has(key)) {
+            const a = ensureAudio();
+            a.onended = finish; a.onerror = () => speakSynth(plain, who, finish, fallbackMs);
+            a.src = `./audio/${key}.mp3`;
+            const p = a.play();
+            if (p && p.catch) {
+                p.then(() => { if (analyser) { document.body.classList.add('lipsync'); lipLoop(); } })
+                    .catch(() => { stage?.classList.add('needs-tap'); setTimeout(finish, fallbackMs); });
+            }
+            return;
+        }
+        // 2) voz do celular (só para falas sem áudio gravado)
+        speakSynth(plain, who, finish, fallbackMs);
+    }
+    function speakSynth(plain, who, finish, fallbackMs) {
+        const synth = global.speechSynthesis;
+        if (!synth || typeof global.SpeechSynthesisUtterance !== 'function') { setTimeout(finish, fallbackMs); return; }
         try {
             synth.cancel();
             const u = new global.SpeechSynthesisUtterance(plain);
             u.lang = 'pt-BR';
             try { if (voice) u.voice = voice; } catch (e) { /* voz inválida: usa a padrão do pt-BR */ }
-            u.rate = who === 'bit' ? 1.08 : 1.0;
-            u.pitch = who === 'bit' ? 1.55 : 1.08;
+            u.rate = who === 'bit' ? 1.06 : 1.0;
+            u.pitch = 1;
             u.onend = finish; u.onerror = finish;
             synth.speak(u);
             setTimeout(finish, fallbackMs + 4000); // alguns celulares não avisam o fim
         } catch (e) { setTimeout(finish, fallbackMs); }
     }
-    const stopSpeech = () => { try { global.speechSynthesis?.cancel(); } catch (e) { /* nada */ } };
 
     // =====================================================================
     // ILUSTRAÇÕES (desenhos que explicam sozinhos)
@@ -173,8 +240,45 @@
         feira: () => `<div class="art art-feira"><span class="stall">🧺</span><span class="c c1">🪙</span><span class="c c2">💵</span><span class="you">🙋</span><small>Cada troca deixa um trocadinho pra você</small></div>`,
         guarantee: () => `<div class="art art-guar"><span class="g-money">💰</span><b>“10% por mês GARANTIDO”</b><span class="no">🚩</span></div>`,
         pix: () => `<div class="art art-pixbuy"><span class="pixbuy-art big"><span class="pb-pix">PIX</span><span class="pb-arrow">➜</span><span class="pb-coin">₿</span></span></div>`,
-        medal: () => `<div class="art art-medal"><span>🏅</span></div>`
+        medal: () => `<div class="art art-medal"><span>🏅</span></div>`,
+        // ---- Real, dólar e Bitcoin (valores ao vivo do próprio app)
+        fx1994: () => `<div class="art art-fx"><div class="fx-card old"><small>1994</small><b>R$ 1</b><i>≈</i><b>US$ 1</b></div><small>Quando o real nasceu</small></div>`,
+        fxnow: () => {
+            const p = live();
+            return `<div class="art art-fx"><div class="fx-card"><small>Hoje</small><b>US$ 1</b><i>=</i><b class="hot">${p ? esc(brl(p.usdBrl)) : '…'}</b></div><small>${p ? 'Cotação de agora, ao vivo' : 'Buscando a cotação…'}</small></div>`;
+        },
+        fxbtc: () => {
+            const p = live();
+            if (!p || !p.btcUsd) return `<div class="art art-fx"><div class="fx-card"><b>₿ 1</b><i>=</i><b>US$ …</b></div></div>`;
+            return `<div class="art art-fx"><div class="fx-eq"><span class="fx-pill btc">₿ 1 = ${esc(usd(p.btcUsd))}</span><span class="fx-x">× ${esc(brl(p.usdBrl))}</span><span class="fx-pill brl">= ${esc(brl(p.btcUsd * p.usdBrl))}</span></div><small>Preço do bitcoin × dólar = bitcoin em reais (agora)</small></div>`;
+        },
+        supply: () => `<div class="art art-supply"><div class="sp-col"><div class="sp-bars">${[22, 34, 48, 64, 82, 100].map((h, i) => `<i style="--h:${h}%;--i:${i}"></i>`).join('')}</div><small>💵 Moedas: só aumentam</small></div><div class="sp-col"><div class="sp-bars btc">${[60, 80, 90, 95, 98, 100].map((h, i) => `<i style="--h:${h}%;--i:${i}"></i>`).join('')}<span class="sp-cap">🔒 21 mi</span></div><small>₿ Bitcoin: tem teto</small></div></div>`,
+        world: () => `<div class="art art-world">${[['🏢', 'Empresas'], ['📊', 'Fundos'], ['🏛️', 'Governos']].map(([e, l], i) => `<span class="wd" style="--i:${i}"><b>${e}</b><small>${l}</small><em>₿</em></span>`).join('')}</div>`,
+        coaster: () => `<div class="art art-coaster"><svg viewBox="0 0 240 110" aria-hidden="true"><path class="cz" d="M0 90 C20 80 30 30 50 40 S80 95 100 70 S130 10 150 30 S180 100 200 60 S225 20 240 15" fill="none" stroke="#f7931a" stroke-width="5" stroke-linecap="round"/></svg><span class="cart">🎢</span><small>Sobe e desce muito: pense em anos</small></div>`,
+        // ---- Blockchain
+        ledger: () => `<div class="art art-ledger"><div class="book">${['Ana → Beto: 0,01 ₿', 'Beto → Caio: 0,002 ₿', 'Caio → Duda: 0,005 ₿'].map((l, i) => `<span style="--i:${i}">✍️ ${l}</span>`).join('')}</div></div>`,
+        copies: () => `<div class="art art-copies">${Array.from({ length: 6 }, (_, i) => `<span style="--i:${i}">💻<b>📒</b></span>`).join('')}<small>A mesma cópia em milhares de computadores</small></div>`,
+        chain: () => `<div class="art art-chain">${[1, 2, 3, 4].map((n, i) => `<span class="blk" style="--i:${i}">🧱<small>Bloco ${n}</small></span>`).join('<i class="lnk">🔗</i>')}</div>`,
+        roads: () => `<div class="art art-roads">${[['₿', 'Bitcoin', '#f7931a'], ['Ξ', 'Ethereum', '#627eea'], ['⬡', 'Polygon', '#8247e5']].map(([s, n, c], i) => `<span class="road" style="--c:${c};--i:${i}"><b>${s}</b><em>${n}</em><i class="car">🚗</i></span>`).join('')}<small>Cada rede é uma estrada • taxa = pedágio</small></div>`,
+        // ---- Stablecoins
+        stable: () => `<div class="art art-stable"><span class="st-a">💵</span><span class="st-eq">=</span><span class="st-b">🪙</span><small>1 pra 1, sempre</small></div>`,
+        reserve: () => `<div class="art art-reserve"><span class="rv-safe">🏦<small>dinheiro guardado</small></span><span class="rv-arr">➜</span><span class="rv-coins">🪙🪙🪙<small>moeda digital</small></span></div>`,
+        usd2: () => `<div class="art art-two"><div class="tw usdt"><b>USDT</b><small>Tether • 2014</small><em>o maior</em></div><div class="tw usdc"><b>USDC</b><small>Circle • 2018</small><em>regras dos EUA, relatório mensal</em></div></div>`,
+        brl2: () => `<div class="art art-two"><div class="tw brz"><b>BRZ</b><small>Transfero • 2019</small><em>várias redes</em></div><div class="tw brla"><b>BRLA</b><small>Avenia</small><em>Polygon e Celo</em></div></div>`,
+        brlnets: () => `<div class="art art-roads"><span class="road" style="--c:#35d07f;--i:0"><b>🟢</b><em>Celo</em><i class="car">🇧🇷</i></span><span class="road" style="--c:#8247e5;--i:1"><b>⬡</b><em>Polygon</em><i class="car">🇧🇷</i></span><span class="road" style="--c:#627eea;--i:2"><b>Ξ</b><em>Ethereum e outras</em><i class="car">🇧🇷</i></span><small>Onde o real digital mais circula</small></div>`,
+        drex: () => `<div class="art art-drex"><span class="dx">🏛️<small>Drex (Banco Central)</small></span><span class="no">⏸️</span><small>Desligado em 2025: não chegou às pessoas</small></div>`
     };
+    // Cotação ao vivo (do próprio app)
+    function live() {
+        try {
+            const p = W()?.getPrices?.();
+            const usdBrl = Number(p?.USD_BRL || p?.usdBrl);
+            const btcUsd = Number(p?.BTC);
+            return usdBrl > 0 ? { usdBrl, btcUsd: btcUsd > 0 ? btcUsd : null } : null;
+        } catch (e) { return null; }
+    }
+    const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: v >= 1000 ? 0 : 2 });
+    const usd = (v) => `US$ ${Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
     function animateArt(el) {
         const n = el.querySelector('[data-count]');
         if (!n) return;
@@ -193,90 +297,20 @@
     // =====================================================================
     const hasWallet = () => (W()?.getAccounts?.() || []).length > 0;
     const goTab = (tab) => document.querySelector(`.nav-tab-btn[data-tab="${tab}"]`)?.click();
-    const LESSONS = [
-        {
-            id: 'dinheiro', icon: '💵', title: 'O que é dinheiro?', scenes: [
-                { who: 'duda', art: 'barter', say: 'Antigamente não existia dinheiro. Quem tinha galinha trocava por milho, direto.' },
-                { who: 'bit', art: 'barter', say: 'Mas e se o dono do milho não quisesse galinha? Aí complicava!' },
-                { who: 'duda', art: 'history', say: 'Por isso inventaram o dinheiro: primeiro conchas, depois moedas, papel, e hoje o Pix.' },
-                { who: 'bit', art: 'history', say: 'E agora tem eu: o Bitcoin, dinheiro que vive na internet!' },
-                { who: 'duda', art: 'history', say: 'Pergunta rápida:', quiz: { q: 'Pra que serve o dinheiro?', options: [['🔄 Trocar por coisas e guardar valor', true], ['🎀 Só para enfeitar', false], ['🤷 Pra nada', false]] } }
-            ]
-        },
-        {
-            id: 'inflacao', icon: '🥟', title: 'Por que tudo fica mais caro?', scenes: [
-                { who: 'duda', art: 'pastel', say: 'Já reparou que o pastel vai ficando mais caro com o tempo? O pastel é o mesmo. Quem perdeu valor foi o dinheiro.' },
-                { who: 'bit', art: 'printer', say: 'É que o governo pode imprimir mais dinheiro. Quanto mais nota existe, menos cada uma vale.' },
-                { who: 'duda', art: 'printer', say: 'Nos anos oitenta e noventa, aqui no Brasil, os preços chegavam a mudar todo dia. Chamamos isso de inflação.' },
-                { who: 'duda', art: 'pastel', say: 'Pergunta rápida:', quiz: { q: 'Quando imprimem muito dinheiro, o pastel…', options: [['📈 Fica mais caro', true], ['📉 Fica mais barato', false], ['➖ Não muda nada', false]] } }
-            ]
-        },
-        {
-            id: 'bitcoin', icon: '₿', title: 'O que é o Bitcoin?', scenes: [
-                { who: 'bit', art: 'genesis', say: 'Eu nasci em 2009, logo depois de uma grande crise dos bancos. Quem me criou usou um apelido: Satoshi Nakamoto.' },
-                { who: 'duda', art: 'limit', say: 'O mais importante: só vão existir vinte e um milhões de bitcoins. Ninguém pode imprimir mais. Nem governo, nem banco, nem empresa.' },
-                { who: 'bit', art: 'network', say: 'E eu não tenho dono! Milhares de computadores no mundo todo cuidam de mim, vinte e quatro horas por dia, desde 2009.' },
-                { who: 'duda', art: 'limit', say: 'Por isso muita gente usa o Bitcoin para guardar valor por muitos anos. O preço sobe e desce bastante no caminho, então pense no longo prazo.' },
-                { who: 'bit', art: 'limit', say: 'Valendo!', quiz: { q: 'Quantos bitcoins vão existir no máximo?', options: [['🔒 21 milhões', true], ['♾️ Infinitos', false], ['🏦 O banco decide', false]] } }
-            ]
-        },
-        {
-            id: 'chave', icon: '🔑', title: 'A chave e o cofre', scenes: [
-                { who: 'duda', art: 'bank', say: 'No banco, quem guarda a chave do cofre é o banco. Aqui é diferente: a chave é só sua.' },
-                { who: 'bit', art: 'key', say: 'A chave são doze palavras. O app cria pra você. Você só precisa escrever no papel, na ordem.' },
-                { who: 'duda', art: 'key', say: 'Quem tem as doze palavras abre o cofre. Por isso: nunca mostre, nunca mande foto, nunca conte pra ninguém.' },
-                { who: 'bit', art: 'scam', say: 'Nem pra quem disser que é do suporte! Ninguém de verdade vai pedir suas palavras.', quiz: { q: 'Alguém do “suporte” pede suas 12 palavras. Você…', options: [['🚫 Não passa de jeito nenhum', true], ['📲 Manda pelo WhatsApp', false], ['✂️ Manda só metade', false]] } },
-                { who: 'duda', art: 'key', say: 'Agora é com você!', action: () => (hasWallet() ? null : { label: '🔑 Criar meu cofre agora', run: () => W()?.openModal('add') }) }
-            ]
-        },
-        {
-            id: 'receber', icon: '📲', title: 'Receber o primeiro valor', scenes: [
-                { who: 'duda', art: 'qr', say: 'Pra receber, você mostra o seu código. É tipo uma chave Pix, só que da sua carteira.' },
-                { who: 'bit', art: 'qr', say: 'A pessoa lê o código e eu chego voando na sua carteira!' },
-                { who: 'duda', art: 'qr', say: 'Confira sempre a rede: é o caminho por onde a moeda viaja. Os dois lados precisam usar a mesma.' },
-                { who: 'duda', art: 'qr', say: 'Bora ver o seu código?', action: () => ({ label: '📲 Ver meu código de receber', run: () => (hasWallet() ? W()?.openView('receive') : W()?.openModal('add')) }) }
-            ]
-        },
-        {
-            id: 'redes', icon: '🌳', title: 'Bitcoin e as redes novas', scenes: [
-                { who: 'duda', art: 'trees', say: 'Pense numa árvore. O Bitcoin é a árvore mais velha e forte: está de pé desde 2009.' },
-                { who: 'bit', art: 'trees', say: 'A Ethereum veio em 2015. Também é forte.' },
-                { who: 'duda', art: 'trees', say: 'As redes mais novas são práticas e baratas, mas ainda estão crescendo e podem ter problemas. Use pra movimentar, e guarde o grosso no Bitcoin.' },
-                { who: 'bit', art: 'trees', say: 'Valendo!', quiz: { q: 'Onde é mais seguro guardar por muitos anos?', options: [['🌳 No Bitcoin', true], ['🌱 Na rede mais nova', false], ['🎲 Tanto faz', false]] } }
-            ]
-        },
-        {
-            id: 'golpes', icon: '🚩', title: 'Como não cair em golpe', scenes: [
-                { who: 'duda', art: 'guarantee', say: 'Se alguém promete lucro garantido todo mês, desconfie. Ninguém consegue garantir isso.' },
-                { who: 'bit', art: 'scam', say: 'E nunca, nunca passe suas doze palavras. Nem pra amigo, nem pra parente, nem pra suporte.' },
-                { who: 'duda', art: 'guarantee', say: 'Na dúvida, pare e pergunte pra alguém de confiança. Pressa é a arma do golpista.' },
-                { who: 'bit', art: 'guarantee', say: 'Valendo!', quiz: { q: 'Prometeram 10% por mês garantido. Isso é…', options: [['🚩 Sinal de golpe', true], ['💎 Ótimo negócio', false], ['😴 Normal', false]] } }
-            ]
-        },
-        {
-            id: 'render', icon: '📈', title: 'Fazer o dinheiro trabalhar', scenes: [
-                { who: 'duda', art: 'feira', say: 'Pensa numa feira de trocas. Você coloca suas moedas na barraca, e cada pessoa que troca deixa um trocadinho pra você.' },
-                { who: 'bit', art: 'feira', say: 'Isso é o Render! Mas atenção: se o preço mudar muito, você pode terminar com mais de uma moeda e menos da outra.' },
-                { who: 'duda', art: 'feira', say: 'Ganho não é garantido. Use só uma parte do dinheiro, e guarde a reserva no Bitcoin.', action: () => ({ label: '📈 Conhecer o Render', run: () => goTab('earn') }) }
-            ]
-        },
-        {
-            id: 'pix', icon: '💸', title: 'Comprar com Pix', scenes: [
-                { who: 'duda', art: 'pix', say: 'Em breve você vai poder comprar cripto só mandando um Pix, do jeito que você já faz todo dia.' },
-                { who: 'bit', art: 'pix', say: 'Você paga o Pix e eu caio direto no seu cofre!', action: () => ({ label: '💸 Ver como vai funcionar', run: () => W()?.openView('buy-pix') }) }
-            ]
-        }
-    ];
-    // Boas-vindas: a Duda e o Bit se apresentam e convidam para aprender antes de usar
-    const WELCOME = {
-        id: 'boasvindas', icon: '👋', title: 'Boas-vindas', scenes: [
-            { who: 'duda', art: 'hello', say: 'Oi! Eu sou a Duda. Vou te acompanhar aqui dentro.' },
-            { who: 'bit', art: 'hello', say: 'E eu sou o Bit, uma moeda de Bitcoin! Prazer!' },
-            { who: 'duda', art: 'bank', say: 'Aqui você tem um cofre de dinheiro digital que só você abre.' },
-            { who: 'duda', art: 'hello', say: 'Antes de mexer no seu dinheiro, eu te ensino o básico em poucos minutinhos. Bora?' }
-        ]
-    };
-    const WELCOME_TRAIL = ['dinheiro', 'inflacao', 'bitcoin', 'chave'];
+    const DATA = global.RDESK_LESSONS;
+    const { LESSONS, WELCOME, WELCOME_TRAIL, REACTIONS } = DATA;
+    // Ações declaradas no conteúdo -> o que fazem no app
+    function actionFor(a) {
+        if (!a) return null;
+        if (a.onlyIfNoWallet && hasWallet()) return null;
+        const run = {
+            'create-wallet': () => W()?.openModal('add'),
+            receive: () => (hasWallet() ? W()?.openView('receive') : W()?.openModal('add')),
+            'tab:earn': () => goTab('earn'),
+            'buy-pix': () => W()?.openView('buy-pix')
+        }[a.kind];
+        return run ? { label: a.label, run } : null;
+    }
 
     // =====================================================================
     // PALCO (tela cheia): personagens + desenho + balão + prática
@@ -343,7 +377,8 @@
         function play() {
             const sc = scenes[i];
             setTalking(sc.who);
-            speak(sc.say + (sc.quiz ? ` ${sc.quiz.q}` : ''), sc.who, () => { if (stage && scenes[i] === sc) setTalking(null); });
+            stage?.classList.remove('needs-tap');
+            speak(DATA.spoken(sc), sc.who, () => { if (stage && scenes[i] === sc) setTalking(null); });
         }
         function show() {
             const sc = scenes[i];
@@ -360,7 +395,7 @@
             bubble.classList.remove('pop'); void bubble.offsetWidth; bubble.classList.add('pop');
             const bottom = stage.querySelector('#ls-bottom');
             const last = i === scenes.length - 1;
-            const action = typeof sc.action === 'function' ? sc.action() : null;
+            const action = actionFor(sc.action);
             if (sc.quiz) {
                 bottom.innerHTML = `<div class="ls-quiz">${sc.quiz.options.map(([label], k) => `<button type="button" class="ls-opt" data-k="${k}">${esc(label)}</button>`).join('')}</div>
                     <button type="button" class="ls-again" id="ls-again">🔁 Ouvir de novo</button>`;
@@ -373,13 +408,13 @@
                             stage.querySelector('.av-bit').classList.add('spin');
                             buzz(30);
                             setTalking('bit');
-                            speak('Acertou!', 'bit', () => setTalking(null));
+                            speak(REACTIONS.right.say, REACTIONS.right.who, () => setTalking(null));
                             setTimeout(next, 900);
                         } else {
                             b.classList.remove('wrong'); void b.offsetWidth; b.classList.add('wrong');
                             buzz([40, 50, 40]);
                             setTalking('duda');
-                            speak('Quase! Tenta de novo.', 'duda', () => setTalking(null));
+                            speak(REACTIONS.wrong.say, REACTIONS.wrong.who, () => setTalking(null));
                         }
                     };
                 });
@@ -419,7 +454,9 @@
         stage.querySelector('#ls-bottom').innerHTML = '<button type="button" class="ls-next" id="ls-next">Continuar ▶</button>';
         stage.querySelector('#ls-next').onclick = then;
         stage.querySelectorAll('.av').forEach((a) => a.classList.add('happy'));
-        speak('Lição concluída! Mandou bem!', 'duda');
+        const talk = (who) => stage?.querySelectorAll('.av').forEach((av) => av.classList.toggle('talking', av.getAttribute('data-av') === who));
+        talk('duda');
+        speak(REACTIONS.done.say, REACTIONS.done.who, () => talk(null));
         global.RdeskOnboarding?.celebrate?.('Lição concluída!');
         buzz([20, 40, 20, 40, 60]);
     }

@@ -83,6 +83,8 @@ try {
         await page.click(`.ks-opt[data-word="${words[n - 1]}"]`);
     }
     await page.waitForSelector('#rmw-verify-confirm-btn');
+    check('proteger: escolhe entre PIN (padrão, com teclado) e senha', (await page.locator('#ks-pinpad .pp-key').count()) === 12);
+    await page.click('[data-lock="password"]');
     await page.fill('#rmw-f-name', 'Caixa <b>Forte</b>');
     await page.fill('#rmw-f-pass', 'curta1');
     await page.click('#rmw-verify-confirm-btn');

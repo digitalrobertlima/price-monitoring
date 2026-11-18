@@ -63,6 +63,7 @@
     let activeFormMode = 'create-seed';
     let inspectingAccountId = null;
     let createSeedDraft = null;
+    let importLock = 'pin';
     const changeListeners = [];
 
     // =========================================================================
@@ -371,7 +372,9 @@
             encryptedSecrets = await encryptSecretsPayload(
                 {
                     masterSeedMap: state.unlockedSecrets.masterSeedMap || {},
-                    pkMap: state.unlockedSecrets.pkMap || {}
+                    pkMap: state.unlockedSecrets.pkMap || {},
+                    // senha extra (passphrase BIP39) de cada frase, quando a pessoa usa
+                    passphraseMap: state.unlockedSecrets.passphraseMap || {}
                 },
                 state.unlockedSecrets.password
             );
@@ -388,11 +391,14 @@
             }
         }
 
+        // Tipo de trava (não é segredo): "pin" mostra o teclado numérico para abrir
+        const lockType = encryptedSecrets ? (state.lockType || existing?.lockType || 'password') : undefined;
         const payload = {
             version: 3,
             accounts: state.accounts,
             activeAccountId: state.activeAccountId,
-            encryptedSecrets
+            encryptedSecrets,
+            lockType
         };
         const serialized = JSON.stringify(payload);
         localStorage.setItem(VAULT_STORAGE_KEY, serialized);
@@ -570,6 +576,7 @@
         const secrets = await decryptSecretsPayload(meta.encryptedSecrets, password);
         state.unlockedSecrets = {
             masterSeedMap: secrets.masterSeedMap || {},
+            passphraseMap: secrets.passphraseMap || {},
             pkMap: secrets.pkMap || {},
             password
         };
@@ -640,30 +647,38 @@
             await unlockVaultWithPassword(passwordIfNeeded);
             return state.unlockedSecrets;
         }
-        if (!passwordIfNeeded || passwordIfNeeded.length < MIN_PASSWORD_LENGTH) {
+        const pinOk = state.lockType === 'pin' && /^\d{6}$/.test(String(passwordIfNeeded || ''));
+        if (!pinOk && (!passwordIfNeeded || passwordIfNeeded.length < MIN_PASSWORD_LENGTH)) {
             throw new Error(`Defina uma senha de pelo menos ${MIN_PASSWORD_LENGTH} caracteres para proteger seu cofre.`);
         }
-        state.unlockedSecrets = { masterSeedMap: {}, pkMap: {}, password: passwordIfNeeded };
+        state.unlockedSecrets = { masterSeedMap: {}, pkMap: {}, passphraseMap: {}, password: passwordIfNeeded };
         state.isLocked = false;
         touchAutoLock();
         return state.unlockedSecrets;
     }
 
-    async function addAccountFromMnemonic({ mnemonic, name, hdIndex = 0, password, enableBio = false }) {
+    // Senha extra (passphrase BIP39, a "25ª palavra") da frase: muda TODAS as carteiras geradas
+    const passphraseOf = (seedGroupId) => state.unlockedSecrets?.passphraseMap?.[seedGroupId] || '';
+
+    async function addAccountFromMnemonic({ mnemonic, name, hdIndex = 0, password, enableBio = false, passphrase = '' }) {
         const cleanPhrase = String(mnemonic || '').trim().toLowerCase().replace(/\s+/g, ' ');
         if (!ethers.utils.isValidMnemonic(cleanPhrase)) {
             throw new Error('Frase-semente inválida. Verifique as 12 ou 24 palavras em inglês.');
         }
+        const extra = String(passphrase || ''); // exatamente como digitada (maiúsculas e espaços contam)
 
         const secrets = await ensureUnlockedSecrets(password);
+        secrets.passphraseMap = secrets.passphraseMap || {};
         const path = `m/44'/60'/0'/0/${Number(hdIndex) || 0}`;
-        const hdNode = ethers.utils.HDNode.fromMnemonic(cleanPhrase).derivePath(path);
+        const hdNode = ethers.utils.HDNode.fromMnemonic(cleanPhrase, extra || undefined).derivePath(path);
         const address = ethers.utils.getAddress(hdNode.address);
 
-        let seedGroupId = Object.keys(secrets.masterSeedMap).find((k) => secrets.masterSeedMap[k] === cleanPhrase);
+        // Mesma frase + senha extra diferente = outro cofre
+        let seedGroupId = Object.keys(secrets.masterSeedMap).find((k) => secrets.masterSeedMap[k] === cleanPhrase && (secrets.passphraseMap[k] || '') === extra);
         if (!seedGroupId) {
             seedGroupId = 'seed-' + Date.now();
             secrets.masterSeedMap[seedGroupId] = cleanPhrase;
+            if (extra) secrets.passphraseMap[seedGroupId] = extra;
         }
 
         const existing = state.accounts.find((a) => a.address.toLowerCase() === address.toLowerCase());
@@ -738,7 +753,7 @@
             if (acc.btcAddress) return;
             try {
                 if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) {
-                    acc.btcAddress = window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0).address;
+                    acc.btcAddress = window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0, passphraseOf(acc.seedGroupId)).address;
                     changed = true;
                 } else if (acc.type === 'pk' && state.unlockedSecrets.pkMap[acc.id]) {
                     acc.btcAddress = window.RdeskBitcoin.deriveFromPrivateKey(state.unlockedSecrets.pkMap[acc.id]).address;
@@ -760,7 +775,7 @@
         }
         touchAutoLock();
         const key = acc.type === 'seed'
-            ? window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0)
+            ? window.RdeskBitcoin.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0, passphraseOf(acc.seedGroupId))
             : window.RdeskBitcoin.deriveFromPrivateKey(state.unlockedSecrets.pkMap[acc.id]);
         if (acc.btcAddress && key.address !== acc.btcAddress) throw new Error('Erro interno: endereço Bitcoin não confere com a chave.');
         return key;
@@ -779,7 +794,8 @@
         await addAccountFromMnemonic({
             mnemonic: phrase,
             name: `Conta Seed #${nextIdx + 1}`,
-            hdIndex: nextIdx
+            hdIndex: nextIdx,
+            passphrase: passphraseOf(seedGroupId)
         });
     }
 
@@ -950,7 +966,7 @@
             delete state.unlockedSecrets.pkMap[accountId];
             // A frase só sai do cofre quando nenhuma outra conta deriva dela.
             if (target.seedGroupId && !state.accounts.some((a) => a.seedGroupId === target.seedGroupId)) {
-                delete state.unlockedSecrets.masterSeedMap[target.seedGroupId];
+                delete state.unlockedSecrets.masterSeedMap[target.seedGroupId]; if (state.unlockedSecrets.passphraseMap) delete state.unlockedSecrets.passphraseMap[target.seedGroupId];
             }
         }
         delete state.balancesCache[target.address.toLowerCase()];
@@ -981,7 +997,7 @@
             const phrase = state.unlockedSecrets.masterSeedMap[acc.seedGroupId];
             if (!phrase) throw new Error('Frase-semente não localizada.');
             const path = `m/44'/60'/0'/0/${Number(acc.hdIndex) || 0}`;
-            const node = ethers.utils.HDNode.fromMnemonic(phrase).derivePath(path);
+            const node = ethers.utils.HDNode.fromMnemonic(phrase, passphraseOf(acc.seedGroupId) || undefined).derivePath(path);
             return { privateKey: node.privateKey, mnemonic: phrase };
         }
         throw new Error('Tipo de conta desconhecido.');
@@ -1755,6 +1771,16 @@
             <button class="rmw-btn-danger" id="rmw-reset-vault-btn">🗑️ Apagar o cofre deste celular</button>
         `;
 
+        // Cofre com PIN: teclado numérico no lugar do campo de senha
+        if (readVaultMetaFromStorage()?.lockType === 'pin' && window.RdeskPinPad) {
+            const row = sheet.querySelector('#rmw-pass-input').parentElement;
+            row.style.display = 'none';
+            const lbl = sheet.querySelector('label[for="rmw-pass-input"]');
+            if (lbl) lbl.textContent = isBiometryRegistered() ? 'Ou com o PIN' : 'Seu PIN';
+            const host = document.createElement('div');
+            row.after(host);
+            window.RdeskPinPad.mount(host, { length: 6, onComplete: (pin) => { sheet.querySelector('#rmw-pass-input').value = pin; sheet.querySelector('#rmw-pass-unlock-btn').click(); } });
+        }
         const msgBox = sheet.querySelector('#rmw-unlock-msg');
         sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
         sheet.querySelector('#rmw-back-list')?.addEventListener('click', () => { currentView = 'list'; renderModal(); });
@@ -1932,10 +1958,11 @@
 
     // Chave dourada: cada dente é uma palavra (lit = quantos dentes acesos)
     function keySvg(lit = 12, total = 12) {
+        const step = 113 / total;
         const teeth = Array.from({ length: total }, (_, i) => {
             const hgt = [10, 16, 8, 14, 18, 9, 13, 17, 7, 15, 11, 16][i % 12];
-            const x = 96 + i * 9.4;
-            return `<rect class="kt ${i < lit ? 'on' : ''}" x="${x.toFixed(1)}" y="53" width="6.4" height="${hgt}" rx="1.6"/>`;
+            const x = 96 + i * step;
+            return `<rect class="kt ${i < lit ? 'on' : ''}" x="${x.toFixed(1)}" y="53" width="${(step * 0.68).toFixed(1)}" height="${hgt}" rx="1.6"/>`;
         }).join('');
         return `<svg class="key-svg" viewBox="0 0 220 90" aria-hidden="true">
             <defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe0a3"/><stop offset=".5" stop-color="#f7931a"/><stop offset="1" stop-color="#b45f00"/></linearGradient></defs>
@@ -1943,6 +1970,23 @@
             <text x="46" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="#f7931a">₿</text>
             <rect x="78" y="37" width="138" height="16" rx="5" fill="url(#kg)"/>${teeth}
         </svg>`;
+    }
+
+    // Criar um PIN no teclado (digita duas vezes). onSet(pin) quando confirmado.
+    function createPinFlow(host, onSet) {
+        let first = null;
+        const pad = window.RdeskPinPad.mount(host, {
+            length: 6, title: 'Crie um PIN de 6 números',
+            onComplete: (pin) => {
+                if (/^(\d)\1{5}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) { pad.error('Muito fácil de adivinhar. Escolha outro.'); return; }
+                if (!first) { first = pin; host.querySelector('.pp-title').textContent = 'Digite de novo para confirmar'; pad.reset(); return; }
+                if (pin !== first) { first = null; host.querySelector('.pp-title').textContent = 'Crie um PIN de 6 números'; pad.error('Os dois PINs não batem. Crie de novo.'); return; }
+                host.querySelector('.pp-title').textContent = '✓ PIN criado!';
+                host.classList.add('done');
+                onSet(pin);
+            }
+        });
+        return pad;
     }
 
     function renderCreateKeyStory(sheet, { needsPassword, isLockedExisting }) {
@@ -1982,9 +2026,13 @@
         if (d.step === 'show') {
             sheet.innerHTML = `${head()}
                 <div class="ks">
-                    <div class="ks-hero small">${keySvg(12)}</div>
+                    <div class="ks-hero small">${keySvg(words.length, words.length)}</div>
                     <h2 class="ks-title">Esta é a chave do seu cofre</h2>
-                    <p class="ks-sub">Copie as 12 palavras no papel, <b>na ordem</b>.</p>
+                    <div class="ks-seg" role="radiogroup" aria-label="Tamanho da chave">
+                        <button type="button" role="radio" data-wc="12" aria-checked="${words.length === 12}">12 palavras<small>padrão</small></button>
+                        <button type="button" role="radio" data-wc="24" aria-checked="${words.length === 24}">24 palavras<small>ainda mais forte</small></button>
+                    </div>
+                    <p class="ks-sub">Copie as ${words.length} palavras no papel, <b>na ordem</b>.</p>
                     <div class="ks-words ${d.revealed ? 'revealed' : ''}" id="ks-words">
                         <div class="rmw-words-grid">${words.map((w, i) => `<div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}</span>${esc(w)}</div>`).join('')}</div>
                         <button type="button" class="ks-veil" id="ks-reveal"><span class="ks-ico">👀</span><b>Toque para ver sua chave</b><small>Confira se ninguém está olhando</small></button>
@@ -1994,6 +2042,17 @@
                     <button class="rmw-btn-primary ks-cta" id="rmw-f-next-verify" ${d.revealed ? '' : 'disabled'}>Já escrevi no papel →</button>
                 </div>`;
             bindHead('intro');
+            sheet.querySelectorAll('[data-wc]').forEach((b) => {
+                b.onclick = () => {
+                    const n = Number(b.getAttribute('data-wc'));
+                    if (n === words.length) return;
+                    // Nova chave com 12 (128 bits) ou 24 palavras (256 bits)
+                    d.mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(n === 24 ? 32 : 16));
+                    d.wordCount = n;
+                    d.revealed = false;
+                    renderModal();
+                };
+            });
             sheet.querySelector('#ks-reveal').onclick = () => { d.revealed = true; sheet.querySelector('#ks-words').classList.add('revealed'); sheet.querySelector('#rmw-f-next-verify').disabled = false; };
             sheet.querySelector('#rmw-f-next-verify').onclick = () => {
                 // 3 perguntas: "qual é a palavra nº X?" com 3 opções tiradas da própria chave
@@ -2042,49 +2101,91 @@
             return;
         }
 
-        // 4. proteger: senha para abrir neste celular (+ digital)
-        const askPass = needsPassword || isLockedExisting;
+        // 4. proteger: como abrir o cofre neste celular (PIN, senha, digital) + senha extra opcional
+        const existingType = isLockedExisting ? (readVaultMetaFromStorage()?.lockType || 'password') : null;
+        d.lockType = d.lockType || 'pin';
+        const usePin = needsPassword ? d.lockType === 'pin' : existingType === 'pin';
+        const askSecret = needsPassword || isLockedExisting;
         sheet.innerHTML = `${head()}
             <div class="ks">
                 <div class="ks-hero small"><div class="ks-phone">📱<span>🔒</span></div></div>
-                <h2 class="ks-title">${askPass ? (needsPassword ? 'Uma senha para este celular' : 'Senha do seu cofre') : 'Quase pronto!'}</h2>
-                <p class="ks-sub">${needsPassword ? 'Ela abre o cofre só neste aparelho. Perdeu o celular? Suas 12 palavras recuperam tudo.' : askPass ? 'A mesma senha que você já usa para abrir o cofre.' : 'Dê um nome para o seu cofre.'}</p>
+                <h2 class="ks-title">${needsPassword ? 'Como você quer abrir o cofre?' : isLockedExisting ? 'Abra seu cofre para guardar a chave' : 'Quase pronto!'}</h2>
+                <p class="ks-sub">${needsPassword ? 'Vale só neste celular. Perdeu o celular? Suas palavras recuperam tudo.' : isLockedExisting ? (existingType === 'pin' ? 'Digite o seu PIN.' : 'Digite a sua senha.') : 'Dê um nome para o seu cofre.'}</p>
+                ${needsPassword ? `
+                <div class="ks-seg" role="radiogroup" aria-label="Tipo de trava">
+                    <button type="button" role="radio" data-lock="pin" aria-checked="${usePin}">🔢 PIN<small>6 números, como no banco</small></button>
+                    <button type="button" role="radio" data-lock="password" aria-checked="${!usePin}">🔤 Senha<small>letras e números, mais forte</small></button>
+                </div>` : ''}
+                ${askSecret && usePin ? `<div id="ks-pinpad"></div>` : ''}
+                ${askSecret && !usePin ? `
+                    <label class="rmw-label" for="rmw-f-pass">${needsPassword ? 'Crie uma senha' : 'Senha'}</label>
+                    <input type="password" class="rmw-input" id="rmw-f-pass" value="${esc(d.lockType === 'password' ? d.password : '')}" placeholder="${needsPassword ? 'Pelo menos 8 letras ou números' : 'Sua senha'}" autocomplete="${needsPassword ? 'new-password' : 'current-password'}">` : ''}
+                ${needsPassword ? `
+                    <label class="ks-bio"><input type="checkbox" id="rmw-f-bio" ${d.enableBio ? 'checked' : ''}><span class="ks-ico">👆</span><span><b>Também abrir com a digital</b><small>Ou rosto. O PIN/senha continua valendo</small></span></label>` : ''}
                 <label class="rmw-label" for="rmw-f-name">Nome do cofre</label>
                 <input type="text" class="rmw-input" id="rmw-f-name" value="${esc(d.name)}" placeholder="Meu cofre" maxlength="40">
-                ${askPass ? `
-                    <label class="rmw-label" for="rmw-f-pass">${needsPassword ? 'Crie uma senha' : 'Senha'}</label>
-                    <input type="password" class="rmw-input" id="rmw-f-pass" value="${esc(d.password)}" placeholder="${needsPassword ? 'Pelo menos 8 letras ou números' : 'Sua senha'}" autocomplete="${needsPassword ? 'new-password' : 'current-password'}">` : ''}
-                ${needsPassword ? `
-                    <label class="ks-bio"><input type="checkbox" id="rmw-f-bio" ${d.enableBio ? 'checked' : ''}><span class="ks-ico">👆</span><span><b>Abrir com a digital</b><small>Mais rápido e seguro no dia a dia</small></span></label>` : ''}
+                <details class="more-opts ks-extra" ${d.passphrase ? 'open' : ''}>
+                    <summary>Senha extra na chave (opcional, avançado)</summary>
+                    <div class="ks-card warn"><span class="ks-ico">🧩</span><b>A “25ª palavra”</b><small>Ela vira parte da chave: as palavras <u>com</u> esta senha abrem este cofre; <u>sem</u> ela, abrem outro cofre, vazio. Protege se alguém achar o seu papel. <b>Se esquecer, ninguém recupera.</b> Guarde em outro lugar.</small></div>
+                    <input type="password" class="rmw-input" id="ks-pp1" value="${esc(d.passphrase || '')}" placeholder="Senha extra (maiúsculas e espaços contam)" autocomplete="off">
+                    <input type="password" class="rmw-input" id="ks-pp2" value="${esc(d.passphrase || '')}" placeholder="Repita a senha extra" autocomplete="off">
+                </details>
                 <div id="rmw-form-msg"></div>
                 <button class="rmw-btn-primary ks-cta" id="rmw-verify-confirm-btn">🔐 Criar meu cofre</button>
             </div>`;
         bindHead('show');
+        const msgBox = sheet.querySelector('#rmw-form-msg');
+        const keep = () => { d.name = sheet.querySelector('#rmw-f-name').value.trim(); d.passphrase = sheet.querySelector('#ks-pp1').value; d.enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked); };
+        sheet.querySelectorAll('[data-lock]').forEach((b) => {
+            b.onclick = () => { keep(); const v = b.getAttribute('data-lock'); if (v !== d.lockType) { d.lockType = v; d.password = ''; d.pinOk = false; renderModal(); } };
+        });
+        // Teclado de PIN: criar (duas vezes) ou digitar o existente
+        let pinPad = null;
+        if (askSecret && usePin && window.RdeskPinPad) {
+            let first = null;
+            const host = sheet.querySelector('#ks-pinpad');
+            const start = () => {
+                pinPad = window.RdeskPinPad.mount(host, {
+                    length: 6,
+                    title: needsPassword ? (d.pinOk ? '✓ PIN criado (toque para trocar)' : 'Crie um PIN de 6 números') : 'Seu PIN',
+                    onComplete: (pin) => {
+                        if (!needsPassword) { d.password = pin; sheet.querySelector('#rmw-verify-confirm-btn').click(); return; }
+                        if (/^(\d)\1{5}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) { pinPad.error('Muito fácil de adivinhar. Escolha outro.'); return; }
+                        if (!first) { first = pin; host.querySelector('.pp-title').textContent = 'Digite de novo para confirmar'; pinPad.reset(); return; }
+                        if (pin !== first) { first = null; host.querySelector('.pp-title').textContent = 'Crie um PIN de 6 números'; pinPad.error('Os dois PINs não batem. Crie de novo.'); return; }
+                        d.password = pin; d.pinOk = true;
+                        host.querySelector('.pp-title').textContent = '✓ PIN criado!';
+                        host.classList.add('done');
+                    }
+                });
+            };
+            if (d.pinOk && needsPassword) { host.innerHTML = '<button type="button" class="pp-done" id="ks-pin-again">✓ PIN criado • trocar</button>'; host.querySelector('#ks-pin-again').onclick = () => { d.pinOk = false; d.password = ''; host.innerHTML = ''; start(); }; }
+            else start();
+        }
         sheet.querySelector('#rmw-verify-confirm-btn').onclick = async () => {
-            const msgBox = sheet.querySelector('#rmw-form-msg');
             const btn = sheet.querySelector('#rmw-verify-confirm-btn');
             msgBox.innerHTML = '';
-            const pwd = sheet.querySelector('#rmw-f-pass')?.value || '';
-            if (needsPassword && pwd.length < MIN_PASSWORD_LENGTH) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} letras ou números.</div>`;
-                return;
-            }
-            if (isLockedExisting && !pwd) { msgBox.innerHTML = '<div class="rmw-alert-err">Digite a senha do seu cofre.</div>'; return; }
-            d.name = sheet.querySelector('#rmw-f-name').value.trim();
-            d.password = pwd;
-            d.enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked);
+            keep();
+            const err = (text) => { msgBox.innerHTML = `<div class="rmw-alert-err">${esc(text)}</div>`; };
+            if (askSecret && !usePin) d.password = sheet.querySelector('#rmw-f-pass')?.value || '';
+            if (needsPassword && usePin && !(d.pinOk && /^\d{6}$/.test(d.password))) return err('Crie o seu PIN de 6 números no teclado acima.');
+            if (needsPassword && !usePin && d.password.length < MIN_PASSWORD_LENGTH) return err(`A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} letras ou números.`);
+            if (isLockedExisting && !d.password) return err(existingType === 'pin' ? 'Digite o seu PIN.' : 'Digite a senha do seu cofre.');
+            if (d.passphrase !== sheet.querySelector('#ks-pp2').value) return err('As duas senhas extras não batem.');
             btn.disabled = true;
             btn.textContent = 'Fechando o cofre…';
             try {
-                await addAccountFromMnemonic({ mnemonic: d.mnemonic, name: d.name || 'Meu cofre', hdIndex: 0, password: d.password, enableBio: d.enableBio });
+                if (needsPassword) state.lockType = usePin ? 'pin' : 'password';
+                await addAccountFromMnemonic({ mnemonic: d.mnemonic, name: d.name || 'Meu cofre', hdIndex: 0, password: d.password, enableBio: d.enableBio, passphrase: d.passphrase || '' });
                 const name = d.name || 'Meu cofre';
                 createSeedDraft = null;
                 closeWalletModal();
                 window.RdeskVaultDoor?.celebrate?.(name);
-            } catch (err) {
+            } catch (e) {
                 btn.disabled = false;
                 btn.textContent = '🔐 Criar meu cofre';
-                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
+                if (!needsPassword && usePin) pinPad?.error(/incorret|senha/i.test(e.message) ? 'PIN errado.' : '');
+                err(/incorret/i.test(e.message) ? (existingType === 'pin' ? 'PIN errado.' : 'Senha errada.') : e.message);
             }
         };
     }
@@ -2128,7 +2229,10 @@
             <input type="text" class="rmw-input" id="rmw-f-name" placeholder="${activeFormMode === 'watch-only' ? 'Ex.: Carteira da loja' : 'Meu cofre'}">
 
             ${activeFormMode === 'import-seed' ? `
-                <details class="more-opts"><summary>Avançado</summary>
+                <details class="more-opts"><summary>Avançado: senha extra, número da conta</summary>
+                    <label class="rmw-label" for="rmw-f-passphrase">Senha extra (passphrase), se a sua chave tiver</label>
+                    <input type="password" class="rmw-input" id="rmw-f-passphrase" placeholder="Deixe vazio se você não usa" autocomplete="off">
+                    <small class="muted-sm">Com senha extra errada, abre outro cofre (vazio). Maiúsculas e espaços contam.</small>
                     <label class="rmw-label">Número da conta (padrão 0)</label>
                     <input type="number" class="rmw-input" id="rmw-f-hd-index" value="0" min="0" max="50">
                 </details>
@@ -2150,9 +2254,17 @@
                 </div>
             ` : ''}
 
-            ${activeFormMode !== 'watch-only' && (needsPassword || isLockedExisting) ? `
-                <label class="rmw-label">${needsPassword ? 'Crie uma senha para este celular' : 'Senha do seu cofre'}</label>
-                <input type="password" class="rmw-input" id="rmw-f-pass" placeholder="${needsPassword ? 'Pelo menos 8 letras ou números' : 'Sua senha'}">
+            ${activeFormMode !== 'watch-only' && needsPassword ? `
+                <label class="rmw-label">Como você quer abrir o cofre neste celular?</label>
+                <div class="ks-seg" role="radiogroup" aria-label="Tipo de trava">
+                    <button type="button" role="radio" data-lock="pin" aria-checked="${importLock === 'pin'}">🔢 PIN<small>6 números</small></button>
+                    <button type="button" role="radio" data-lock="password" aria-checked="${importLock !== 'pin'}">🔤 Senha<small>mais forte</small></button>
+                </div>
+                ${importLock === 'pin' ? '<div id="rmw-f-pinpad"></div><input type="hidden" id="rmw-f-pass" value="">' : '<input type="password" class="rmw-input" id="rmw-f-pass" placeholder="Pelo menos 8 letras ou números">'}
+            ` : ''}
+            ${activeFormMode !== 'watch-only' && !needsPassword && isLockedExisting ? `
+                <label class="rmw-label">${readVaultMetaFromStorage()?.lockType === 'pin' ? 'PIN do seu cofre' : 'Senha do seu cofre'}</label>
+                <input type="password" class="rmw-input" id="rmw-f-pass" ${readVaultMetaFromStorage()?.lockType === 'pin' ? 'inputmode="numeric" maxlength="6" placeholder="••••••"' : 'placeholder="Sua senha"'}>
             ` : ''}
 
             ${activeFormMode !== 'watch-only' && needsPassword ? `
@@ -2165,19 +2277,33 @@
 
         sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
         sheet.querySelector('#rmw-form-back').onclick = () => { currentView = 'add'; renderModal(); };
+        sheet.querySelectorAll('[data-lock]').forEach((b) => {
+            b.onclick = () => {
+                const keepSeed = sheet.querySelector('#rmw-f-seed-input')?.value, keepName = sheet.querySelector('#rmw-f-name').value;
+                importLock = b.getAttribute('data-lock'); renderModal();
+                if (keepSeed && sheet.querySelector('#rmw-f-seed-input')) sheet.querySelector('#rmw-f-seed-input').value = keepSeed;
+                sheet.querySelector('#rmw-f-name').value = keepName;
+            };
+        });
+        const pinHost = sheet.querySelector('#rmw-f-pinpad');
+        if (pinHost && window.RdeskPinPad) createPinFlow(pinHost, (pin) => { sheet.querySelector('#rmw-f-pass').value = pin; });
 
         sheet.querySelector('#rmw-f-submit').onclick = async () => {
             const msgBox = sheet.querySelector('#rmw-form-msg');
             msgBox.innerHTML = '';
             const name = sheet.querySelector('#rmw-f-name').value;
             const password = sheet.querySelector('#rmw-f-pass')?.value || '';
+            if (needsPassword && activeFormMode !== 'watch-only') {
+                if (importLock === 'pin' && !/^\d{6}$/.test(password)) { msgBox.innerHTML = '<div class="rmw-alert-err">Crie o seu PIN de 6 números no teclado acima.</div>'; return; }
+                state.lockType = importLock === 'pin' ? 'pin' : 'password';
+            }
             const enableBio = Boolean(sheet.querySelector('#rmw-f-bio')?.checked);
 
             try {
                 if (activeFormMode === 'import-seed') {
                     const mnemonic = sheet.querySelector('#rmw-f-seed-input').value;
                     const hdIndex = parseInt(sheet.querySelector('#rmw-f-hd-index').value || '0', 10);
-                    await addAccountFromMnemonic({ mnemonic, name, hdIndex, password, enableBio });
+                    await addAccountFromMnemonic({ mnemonic, name, hdIndex, password, enableBio, passphrase: sheet.querySelector('#rmw-f-passphrase')?.value || '' });
                 } else if (activeFormMode === 'import-pk') {
                     const privateKey = sheet.querySelector('#rmw-f-pk-input').value;
                     await addAccountFromPrivateKey({ privateKey, name, password, enableBio });
@@ -2905,6 +3031,8 @@
         lockVault: lockVaultNow,
         unlockWithBiometrics: unlockWithBiometry,
         unlockWithPassword: (pwd) => unlockVaultWithPassword(pwd),
+        getLockType: () => readVaultMetaFromStorage()?.lockType || 'password',
+        setLockTypeForNewVault: (type) => { state.lockType = type === 'pin' ? 'pin' : 'password'; },
         isBiometryReady: () => { try { return isBiometryRegistered(); } catch (e) { return false; } },
         copyText: copyToClipboardSafe,
         shortAddress: (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '',
