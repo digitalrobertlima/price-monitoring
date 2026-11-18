@@ -60,7 +60,7 @@ try {
     const signedHex = await off.page.inputValue('#ag-signed-hex');
     const qrOk = await off.page.locator('#ag-qr img, #ag-qr canvas').count();
     const d = BTC.decodeTx(signedHex);
-    check('offline: assinou sem internet e gerou o QR da transação', qrOk > 0 && d.outputs[0].address === DEST && d.outputs[0].value === 120000 && d.outputs[1].address === OWN, JSON.stringify(d.outputs));
+    check('offline: assinou sem internet, troco num endereço novo, e gerou o QR da transação', qrOk > 0 && d.outputs[0].address === DEST && d.outputs[0].value === 120000 && d.outputs[1].address === BTC.deriveAtPath(TEST_MNEMONIC, "m/84'/0'/0'/1/0").address, JSON.stringify(d.outputs));
     await off.page.waitForTimeout(500);
     off.page.off('request', onReq);
     check('offline: nenhum pedido de rede saiu durante a assinatura', during.length === 0, during.slice(0, 3).join(' '));

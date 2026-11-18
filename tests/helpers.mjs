@@ -10,6 +10,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
 export const TEST_MNEMONIC = 'test test test test test test test test test test test junk'; // seed pública de testes
 export const TEST_PASSWORD = 'senha-de-teste-123';
+export const BTC_TEST_OWNER = 'bc1q4qw42stdzjqs59xvlrlxr8526e3nunw7mp73te'; // m/84'/0'/0'/0/0 da frase de testes
 export const POL_USD = 0.09;
 export const USD_BRL = 5.4;
 
@@ -142,11 +143,17 @@ export async function mockNetwork(page, chains, opts = {}) {
             const btc = opts.btc;
             if (!btc) return route.abort();
             if (/\/v1\/fees\/recommended/.test(u)) return json(btc.fees);
-            if (/\/address\/[^/]+\/utxo/.test(u)) return json(btc.utxos.map((x) => ({ txid: x.txid, vout: x.vout, value: x.value, status: { confirmed: x.confirmed !== false } })));
+            // As moedas são de um endereço só (o do dono; por padrão o 1º endereço da frase de testes).
+            // Cada utxo pode dizer o próprio endereço (x.addr) para simular moedas espalhadas.
+            const addrOf = (s) => decodeURIComponent(s.split('/address/')[1].split('/')[0]);
+            const owner = btc.owner || BTC_TEST_OWNER;
+            const mineAt = (a) => btc.utxos.filter((x) => (x.addr || owner) === a);
+            if (/\/address\/[^/]+\/utxo/.test(u)) return json(mineAt(addrOf(u)).map((x) => ({ txid: x.txid, vout: x.vout, value: x.value, status: { confirmed: x.confirmed !== false } })));
             if (/\/address\/[^/]+$/.test(u)) {
-                const conf = btc.utxos.filter((x) => x.confirmed !== false).reduce((n, x) => n + x.value, 0);
-                const pend = btc.utxos.filter((x) => x.confirmed === false).reduce((n, x) => n + x.value, 0);
-                return json({ chain_stats: { funded_txo_sum: conf, spent_txo_sum: 0 }, mempool_stats: { funded_txo_sum: pend, spent_txo_sum: 0 } });
+                const list = mineAt(addrOf(u));
+                const conf = list.filter((x) => x.confirmed !== false).reduce((n, x) => n + x.value, 0);
+                const pend = list.filter((x) => x.confirmed === false).reduce((n, x) => n + x.value, 0);
+                return json({ chain_stats: { funded_txo_sum: conf, spent_txo_sum: 0, tx_count: list.filter((x) => x.confirmed !== false).length }, mempool_stats: { funded_txo_sum: pend, spent_txo_sum: 0, tx_count: list.filter((x) => x.confirmed === false).length } });
             }
             if (/\/tx$/.test(u) && req.method() === 'POST') { btc.broadcasts.push(req.postData()); return text(btc.txid || 'f'.repeat(64)); }
             return route.abort();

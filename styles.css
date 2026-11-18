@@ -2901,3 +2901,14 @@ body.lipsync .av.talking .m-open ellipse:first-child { transform-box: fill-box; 
 .ag-qr img, .ag-qr canvas { display: block; }
 .ag-raw { font-family: 'JetBrains Mono', monospace; font-size: .72rem; min-height: 70px; }
 .ag-txid code { word-break: break-all; font-size: .8rem; }
+
+/* v39 — Privacidade máxima */
+.an-toggle { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 16px; border: 1px solid rgba(247,147,26,.35); background: rgba(247,147,26,.07); cursor: pointer; }
+.an-toggle input { width: 24px; height: 24px; accent-color: #f7931a; flex: none; }
+.an-toggle span { display: flex; flex-direction: column; } .an-toggle small { color: #94a3b8; }
+.an-list { margin: 4px 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; color: #cbd5e1; font-size: .92rem; }
+.an-chains { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.04); }
+.an-chains b { width: 100%; } .an-chains label { display: flex; gap: 6px; align-items: center; color: #cbd5e1; }
+.an-danger-t { margin: 14px 0 0; color: #fca5a5; font-size: 1.05rem; }
+.an-wipe { min-height: 50px; border-radius: 14px; border: 1px solid rgba(248,113,113,.6); background: rgba(248,113,113,.12); color: #fecaca; font: inherit; font-weight: 800; cursor: pointer; }
+.rec-fresh { display: block; margin-top: 6px; line-height: 1.35; }

@@ -308,6 +308,8 @@
 
         loadSavedSimPositions();
 
+        // Modo anônimo sem a Polygon: não pergunta pelas posições (o servidor veria o seu endereço)
+        if (addr && window.RdeskAnon && !window.RdeskAnon.chainAllowed(137)) { updateTopPoolStatusPill(spot); renderPositionsCards(); return; }
         if (!addr) {
             defiState.livePositions = [];
             window.RdeskWallet.setLpUsdTotal(0);
@@ -987,6 +989,10 @@
     const LIFI_BTC_CHAIN = '20000000000001';
     const chainOfValue = (v) => (v === 'btc' ? 'btc' : Number(v || 137));
     // Contrato oficial da LI.FI (mesmo endereço em todas as redes EVM que o app usa)
+    // Privacidade: enquanto a pessoa só olha o preço, a cotação vai com endereços neutros (queimado/inútil).
+    // O endereço de verdade só sai do aparelho quando ela confirma a troca (a cotação é refeita na hora).
+    const PREVIEW_EVM = '0x000000000000000000000000000000000000dEaD';
+    const PREVIEW_BTC = 'bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq9e75rs';
     const LIFI_DIAMOND = '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae';
     const lc = (s) => String(s || '').toLowerCase();
 
@@ -1279,7 +1285,7 @@
         setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Consultando rota entre redes…');
         try {
             const ZERO = '0x0000000000000000000000000000000000000000';
-            const userAddr = window.RdeskWallet.getAddress() || '0x000000000000000000000000000000000000dEaD';
+            const userAddr = PREVIEW_EVM;
             const params = new URLSearchParams({
                 fromChain: String(f.fromChain), toChain: String(f.toChain),
                 fromToken: fromMeta.isNative ? ZERO : fromMeta.address, toToken: toMeta.isNative ? ZERO : toMeta.address,
@@ -1295,7 +1301,7 @@
             const amountOut = parseFloat(ethers.utils.formatUnits(data.estimate.toAmount, toMeta.decimals));
             const tool = data.toolDetails?.name || 'LI.FI';
             const minutes = Math.max(1, Math.round((data.estimate.executionDuration || 60) / 60));
-            return publish({ ...base, type: 'LIFI', amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount), impact: impactOf(amountOut), lifiData: data,
+            return publish({ ...base, type: 'LIFI', preview: true, lifiParams: params.toString(), amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount), impact: impactOf(amountOut), lifiData: data,
                 routeLabel: `${tool} (LI.FI) • ~${minutes} min` }, `${f.fromChain === f.toChain ? 'Troca' : 'Ponte'} via ${tool} • ~${minutes} min`);
         } catch (err) {
             return fail('Rota indisponível para este par/rede agora.');
@@ -1304,17 +1310,22 @@
 
     async function quoteBitcoinRoute(f, base, fail, publish, seq) {
         const W = window.RdeskWallet;
-        const btcAddress = W.getBitcoinAddress();
+        // Saindo do Bitcoin: usa o endereço do cofre com mais Bitcoin; chegando no Bitcoin: um endereço novo
+        const fromBtcAddr = f.fromChain === 'btc';
+        const btcAddress = fromBtcAddr ? (W.getBitcoinSpendAddress?.() || W.getBitcoinAddress()) : W.getBitcoinAddress();
         const evmAddress = W.getAddress();
         if (!btcAddress) return fail('Esta carteira não tem endereço Bitcoin (só carteiras criadas ou importadas no app têm).');
         if (!evmAddress) return fail('Abra uma carteira para trocar.');
         const fromBtc = f.fromChain === 'btc';
+        // Saindo do Bitcoin o serviço precisa ver as suas moedas para montar a transação; nos outros casos, endereços neutros
+        const qFrom = fromBtc ? btcAddress : PREVIEW_EVM;
+        const qTo = fromBtc ? evmAddress : PREVIEW_BTC;
         const lifiChain = (c) => (c === 'btc' ? LIFI_BTC_CHAIN : String(c));
         const lifiToken = (c, meta) => (c === 'btc' ? 'bitcoin' : meta.isNative ? '0x0000000000000000000000000000000000000000' : meta.address);
         const params = new URLSearchParams({
             fromChain: lifiChain(f.fromChain), toChain: lifiChain(f.toChain),
             fromToken: lifiToken(f.fromChain, base.fromMeta), toToken: lifiToken(f.toChain, base.toMeta),
-            fromAmount: base.rawIn.toString(), fromAddress: fromBtc ? btcAddress : evmAddress, toAddress: f.toChain === 'btc' ? btcAddress : evmAddress,
+            fromAmount: base.rawIn.toString(), fromAddress: qFrom, toAddress: qTo,
             slippage: String(SWAP_SLIPPAGE_BPS / 10000), integrator: REG.creatorFee().lifiIntegrator
         });
         if (REG.creatorFee().active) params.set('fee', String(REG.creatorFee().rate));
@@ -1329,7 +1340,7 @@
         } catch (err) { return fail('Serviço de rotas indisponível agora. Tente de novo.'); }
         if (seq !== swapQuoteSeq) return null;
         try {
-            checkLifiQuote(data, { fromChain: f.fromChain, rawIn: base.rawIn, fromAddress: fromBtc ? btcAddress : evmAddress, toAddress: f.toChain === 'btc' ? btcAddress : evmAddress,
+            checkLifiQuote(data, { fromChain: f.fromChain, rawIn: base.rawIn, fromAddress: qFrom, toAddress: qTo,
                 fromNative: Boolean(base.fromMeta.isNative), amountUsd: base.amountIn * tokenUnitUsd(f.fromChain, base.fromMeta) });
         } catch (err) { return fail(err.message); }
         const prices = window.RdeskWallet.getPrices();
@@ -1365,7 +1376,7 @@
         }
         const amountsText = `taxas ≈ ${window.RdeskWallet.formatBRL(feesBrl)}`;
         return publish({
-            ...base, type: fromBtc ? 'BTC_OUT' : 'LIFI', amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount),
+            ...base, type: fromBtc ? 'BTC_OUT' : 'LIFI', preview: !fromBtc, lifiParams: params.toString(), amountOut, rawOut: ethers.BigNumber.from(data.estimate.toAmount),
             impact: (() => { const usdIn = base.amountIn * tokenUnitUsd(f.fromChain, base.fromMeta); const usdOut = amountOut * tokenUnitUsd(f.toChain, base.toMeta); return usdIn > 0 && usdOut > 0 ? 1 - usdOut / usdIn : null; })(),
             lifiData: data, btcPlan, btcAddress, tool, minutes, serviceBrl: serviceUsd * usdBrl, networkBrl: networkUsd * usdBrl,
             routeLabel: `${tool} • ~${minutes} min`
@@ -1416,7 +1427,7 @@
             if (q.type === 'BTC_OUT') {
                 // Sai do Bitcoin: assina a transação conferida e transmite
                 say('Assinando a transação Bitcoin…');
-                const key = window.RdeskWallet.getBitcoinKey();
+                const key = window.RdeskWallet.getBitcoinKeyFor(q.btcAddress);
                 if (key.address !== q.btcAddress) throw new Error('Erro interno: a chave não confere com o endereço Bitcoin.');
                 const signed = window.RdeskBitcoin.signTransaction(q.btcPlan, key.privateKey);
                 const txid = await window.RdeskBitcoin.broadcast(signed.hex);
@@ -1477,6 +1488,19 @@
                     }
                 }
             } else if (q.type === 'LIFI') {
+                if (q.preview) {
+                    // Agora sim, com o seu endereço: refaz a cotação e só segue se o preço não piorou
+                    say('Confirmando a rota com o seu endereço…');
+                    const p2 = new URLSearchParams(q.lifiParams);
+                    p2.set('fromAddress', owner);
+                    p2.set('toAddress', q.toChain === 'btc' ? window.RdeskWallet.getBitcoinAddress() : owner);
+                    const r2 = await withTimeout(fetch(`https://li.quest/v1/quote?${p2}`), 30000);
+                    const d2 = await r2.json();
+                    if (!r2.ok || !d2?.estimate?.toAmount) throw new Error('A rota não está mais disponível. Peça a cotação de novo.');
+                    if (ethers.BigNumber.from(d2.estimate.toAmount).lt(q.rawOut.mul(97).div(100))) throw new Error('O preço piorou desde a cotação. Revise a troca de novo.');
+                    q.lifiData = d2;
+                    q.preview = false;
+                }
                 const txReq = q.lifiData?.transactionRequest;
                 if (!txReq || !txReq.to || !txReq.data) throw new Error('A rota não devolveu uma transação válida. Peça a cotação de novo.');
                 checkLifiQuote(q.lifiData, { fromChain: q.fromChain, rawIn: q.rawIn, fromAddress: owner, toAddress: q.toChain === 'btc' ? window.RdeskWallet.getBitcoinAddress() : owner,

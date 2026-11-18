@@ -28,7 +28,7 @@
     <p class="lead">Para quem precisa de mais privacidade: o cofre funciona dentro do Tor Browser e também aberto direto de um pendrive com Tails, sem instalar nada.</p>
 
     <div class="card ok"><b>O que o Tor protege:</b> quem vê a sua internet não sabe que você usa o cofre, e os servidores que o cofre consulta não veem o seu endereço de internet (IP) verdadeiro.</div>
-    <div class="card bad"><b>O que o Tor NÃO protege:</b> a blockchain é pública. Quem souber o endereço da sua carteira vê o saldo e as transações, use você Tor ou não. Hoje o seu endereço Bitcoin no cofre é sempre o mesmo, então não divulgue ele.</div>
+    <div class="card bad"><b>O que o Tor NÃO protege:</b> a blockchain é pública. Quem souber o endereço da sua carteira vê o saldo e as transações, use você Tor ou não. O cofre já ajuda: o seu Bitcoin ganha um endereço novo a cada recebimento, e o troco também vai para um endereço novo.</div>
 
     <h2>Jeito 1 — pelo site, no Tor Browser</h2>
     <ol>
@@ -36,6 +36,7 @@
         <li>Deixe o nível de segurança em <b>Padrão</b> (escudo no canto → Configurações). Nos níveis mais altos o JavaScript desliga e o cofre não abre.</li>
         <li>Acesse <code>https://digitalrobertlima.github.io/price-monitoring/</code></li>
         <li>Importe a sua chave (as palavras). Lembre: no Tails tudo é apagado ao desligar, então você vai importar de novo na próxima vez.</li>
+        <li>No menu, abra <b>Privacidade máxima</b> e ligue o <b>modo anônimo</b>. Deixe marcado só o Bitcoin (e as redes que você realmente usa).</li>
     </ol>
 
     <h2>Jeito 2 — versão portátil no pendrive</h2>
@@ -54,10 +55,12 @@
             <li><b>Bitcoin na sua chave</b> é o único dinheiro do cofre que ninguém consegue congelar. Dólar e real digital (USDT, USDC, BRZ, BRLA) têm uma empresa que pode bloquear.</li>
             <li><b>Use cofres separados:</b> um para receber de desconhecidos, outro para guardar.</li>
             <li><b>Compra com CPF</b> (corretora, Pix numa empresa) liga o seu nome ao endereço que recebeu. Pense nisso antes.</li>
+            <li>Precisou sair às pressas? Menu → Privacidade máxima → <b>Apagar tudo deste aparelho</b>. As palavras recuperam tudo depois.</li>
+            <li>Para máxima segurança da chave: <b>Bitcoin sem internet</b> (menu). Assine num celular em modo avião e transmita por outro.</li>
             <li>Alguns servidores públicos das redes bloqueiam o Tor. Se um saldo não carregar, espere ou peça uma nova identidade no Tor Browser.</li>
         </ol>
     </div>
-    <p class="lead">O cofre não tem cadastro, não usa e-mail, não tem rastreador e não carrega nada do Google: as fontes vêm do próprio site.</p>
+    <p class="lead">O cofre não tem cadastro, não usa e-mail, não tem rastreador e não carrega nada do Google: as fontes vêm do próprio site. Nenhum servidor consultado fica sabendo que o pedido veio deste app, e a cotação de troca vai com endereço neutro até você confirmar.</p>
     <p><a href="./index.html">← Voltar ao cofre</a></p>
 </main>
 </body>

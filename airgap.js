@@ -89,7 +89,7 @@
         const acc = (() => { try { return W().getActiveAccount(); } catch (e) { return null; } })();
         const body = shell('1 · Preparar o envio', `
             <label class="rmw-label" for="ag-from">Endereço Bitcoin do cofre sem internet</label>
-            <div class="ag-row"><input class="rmw-input" id="ag-from" placeholder="bc1q…" autocomplete="off" spellcheck="false" value="${esc(acc?.btcAddress || '')}"><button type="button" class="rmw-icon-btn" id="ag-from-scan" aria-label="Ler QR">📷</button></div>
+            <div class="ag-row"><input class="rmw-input" id="ag-from" placeholder="bc1q…" autocomplete="off" spellcheck="false" value="${esc(W().getBitcoinSpendAddress?.() || acc?.btcAddress || '')}"><button type="button" class="rmw-icon-btn" id="ag-from-scan" aria-label="Ler QR">📷</button></div>
             <label class="rmw-label" for="ag-to">Para quem vai (endereço Bitcoin)</label>
             <div class="ag-row"><input class="rmw-input" id="ag-to" placeholder="bc1…" autocomplete="off" spellcheck="false"><button type="button" class="rmw-icon-btn" id="ag-to-scan" aria-label="Ler QR">📷</button></div>
             <label class="rmw-label" for="ag-amt">Quanto (em satoshis)</label>
@@ -141,11 +141,13 @@
             try {
                 req = decodeRequest(text);
                 if (W().isLocked?.()) { W().openModal('unlock'); throw new Error('Abra o cofre (PIN ou senha) e leia o QR de novo.'); }
-                key = W().getBitcoinKey();
-                if (key.address !== req.from) throw new Error('Este pedido é de outro cofre. Confira se abriu o cofre certo neste celular.');
-                plan = planFrom(req, key.address);
+                const mine = W().getBitcoinAddresses?.() || [];
+                if (!mine.includes(req.from)) throw new Error('Este pedido é de outro cofre. Confira se abriu o cofre certo neste celular.');
+                key = W().getBitcoinKeyFor(req.from);
+                // troco num endereço novo do cofre (privacidade)
+                plan = planFrom(req, W().getBitcoinChangeAddress?.() || key.address);
             } catch (e) { return msg(m, e.message); }
-            const changeOk = plan.outputs.every((o) => o.isMemo || o.address === req.to || o.address === key.address);
+            const changeOk = plan.outputs.every((o) => o.isMemo || o.address === req.to || (W().getBitcoinAddresses?.() || [key.address]).includes(o.address));
             const feeHigh = plan.fee > Math.max(30000, plan.amount * 0.05);
             if (!changeOk) return msg(m, 'O pedido mandaria dinheiro para um endereço que não é o destino nem o seu. Não assinado.');
             out.innerHTML = `
@@ -160,6 +162,7 @@
                 if (feeHigh && !$('#ag-feeok', out).checked) return msg(m, 'Marque que entendeu a taxa alta.');
                 try {
                     const signed = B().signTransaction(plan, key.privateKey);
+                    W().afterBitcoinSpend?.(plan);
                     const qrText = TX + B().hexToB64(signed.hex);
                     out.innerHTML = `<div class="ag-ok">✅ Assinada. Agora leve este QR para um celular com internet: Bitcoin sem internet → <b>3 · Transmitir</b>.</div>
                         <div class="ag-qr" id="ag-qr"></div><p class="ag-txid">Código da transação: <code>${esc(signed.txid)}</code></p><textarea class="rmw-textarea ag-raw" readonly id="ag-signed-hex">${esc(signed.hex)}</textarea>`;

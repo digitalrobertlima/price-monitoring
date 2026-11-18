@@ -15,6 +15,8 @@ const BTC = globalThis.RdeskBitcoin;
 const MOBILE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: 'block' };
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address;
 const OWNER_BTC = BTC.deriveFromMnemonic(TEST_MNEMONIC, 0).address;
+const FRESH_BTC = BTC.deriveAtPath(TEST_MNEMONIC, "m/84'/0'/0'/0/1").address;   // 1º endereço novo (o antigo já recebeu)
+const CHANGE_BTC = BTC.deriveAtPath(TEST_MNEMONIC, "m/84'/0'/0'/1/0").address;  // 1º endereço de troco
 const DEST = '0x000000000000000000000000000000000000dEaD';
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const GOLD = '0x1111111111111111111111111111111111111111';
@@ -185,8 +187,8 @@ try {
         (await page.innerText('#rmw-rec-address')) === OWNER && /somente pela rede Celo/.test(celoText) && /0x48065f…483D5e/.test(celoText) && /0xcebA93…32118C/.test(celoText), celoText.slice(-160));
     await page.click('#rdesk-mw-sheet .net-chip[data-net="btc"]');
     await page.waitForSelector('#rmw-rec-qr img[src]', { state: 'attached' });
-    check('rede Bitcoin: endereço bc1q derivado da mesma frase (BIP84) e aviso sobre Lightning',
-        (await page.innerText('#rmw-rec-address')) === OWNER_BTC && /não recebe por Lightning/.test(await page.innerText('#rmw-rec-warning')), await page.innerText('#rmw-rec-address'));
+    check('rede Bitcoin: endereço bc1q NOVO da mesma frase (BIP84, o antigo já recebeu) e aviso sobre Lightning',
+        (await page.innerText('#rmw-rec-address')) === FRESH_BTC && /não recebe por Lightning/.test(await page.innerText('#rmw-rec-warning')), await page.innerText('#rmw-rec-address'));
     await page.screenshot({ path: 'tests/artifacts-mc-receber-btc.png' });
     await ui(() => window.RdeskWallet.closeModal());
 
@@ -221,9 +223,9 @@ try {
     const spent = ins.reduce((n, i) => n + btc.utxos.find((u) => u.txid === i.txid).value, 0);
     const fee = spent - outs.reduce((n, x) => n + x.value, 0);
     const toHex = (u8) => Buffer.from(u8).toString('hex');
-    check('transação Bitcoin transmitida: 0,001 BTC ao destino, troco de volta para mim, só saldo confirmado',
+    check('transação Bitcoin transmitida: 0,001 BTC ao destino, troco num endereço de troco meu (novo), só saldo confirmado',
         btc.broadcasts.length === 1 && /enviado/i.test(btcMsg) && outs.length === 2 && outs[0].value === 100000 && outs[0].script === toHex(BTC.addressToScript(BTC_DEST).script) &&
-        outs[1].script === toHex(BTC.addressToScript(OWNER_BTC).script) && ins.every((i) => i.txid !== 'ef'.repeat(32)), `${ins.length} entrada(s), saídas ${outs.map((x) => x.value).join('+')}, taxa ${fee} sat | ${btcMsg}`);
+        outs[1].script === toHex(BTC.addressToScript(CHANGE_BTC).script) && ins.every((i) => i.txid !== 'ef'.repeat(32)), `${ins.length} entrada(s), saídas ${outs.map((x) => x.value).join('+')}, taxa ${fee} sat | ${btcMsg}`);
     check('taxa do Bitcoin segue a velocidade escolhida (8 sat/vB) e a conta fecha', fee === Math.ceil(BTC.estimateVsize(ins.length, ['p2wpkh', 'p2wpkh']) * 8), `taxa ${fee} sat`);
     check('link aponta para a transação no explorador de Bitcoin', (await page.getAttribute('#rmw-snd-msg a', 'href')) === `https://mempool.space/tx/${btc.txid}`);
     await ui(() => window.RdeskWallet.closeModal());

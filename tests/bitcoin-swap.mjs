@@ -13,6 +13,7 @@ const BTC = globalThis.RdeskBitcoin;
 
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address;
 const OWNER_BTC = BTC.deriveFromMnemonic(TEST_MNEMONIC, 0).address;
+const FRESH_BTC = BTC.deriveAtPath(TEST_MNEMONIC, "m/84'/0'/0'/0/1").address; // onde chega Bitcoin agora (endereço novo)
 const MY_SCRIPT = BTC.addressToScript(OWNER_BTC).script;
 const DEP = 'bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf';
 const FEE_ADDR = 'bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g';
@@ -139,15 +140,19 @@ try {
     check('rota que entregaria o BTC em outro endereço é recusada', /outro endereço/.test(qe2.info), qe2.info);
     lifiMode = 'ok';
     const q5 = await quote('137', 'USDT', 'btc', 'BTC', '100');
-    check('cotação USDT (Polygon) → BTC nativo, com o endereço bc1 como destino', /Relay/.test(q5.info) && parseFloat(q5.out.replace(',', '.')) > 0.001 && lifiCalls.at(-1).toAddress === OWNER_BTC && lifiCalls.at(-1).toToken === 'bitcoin', `${q5.out} | ${q5.info}`);
+    check('cotação USDT (Polygon) → BTC nativo sem mostrar seus endereços (só endereços neutros)', /Relay/.test(q5.info) && parseFloat(q5.out.replace(',', '.')) > 0.001 && lifiCalls.at(-1).toAddress !== OWNER_BTC && /^0x0+dEaD$/i.test(lifiCalls.at(-1).fromAddress) && lifiCalls.at(-1).toToken === 'bitcoin', `${q5.out} | ${q5.info} | ${lifiCalls.at(-1).fromAddress} → ${lifiCalls.at(-1).toAddress}`);
     await page.click('#btn-execute-swap');
     await waitFn(page, () => getComputedStyle(document.getElementById('modal-receipt')).display !== 'none', null, { timeout: 20000 });
     const rcp2 = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
     check('recibo da ida para o Bitcoin deixa claro que chega BTC nativo no endereço bc1', /Chega como BTC nativo \(rede Bitcoin\) no seu endereço bc1q/.test(rcp2), rcp2.slice(0, 500));
         check('recibo da ida para o Bitcoin: taxas em reais e aviso de custódia', rcp2.includes(brl(0.75 + 0.70)) && /≈ R\$ 0,11 em POL/.test(rcp2) && /fica com o Relay/.test(rcp2), rcp2.slice(0, 300));
+    const beforeConfirm = lifiCalls.length;
+    const realBefore = lifiCalls.some((c) => c.toAddress === FRESH_BTC || String(c.fromAddress).toLowerCase() === OWNER.toLowerCase());
     await page.click('#btn-rcp-confirm');
     await waitFn(page, () => /chega|rro/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 60000 });
     const lifiTx = (polygon.lifiCalls || []).at(-1);
+    const realAfter = lifiCalls.slice(beforeConfirm).filter((c) => c.toAddress === FRESH_BTC && String(c.fromAddress).toLowerCase() === OWNER.toLowerCase());
+    check('o endereço bc1 de verdade (um endereço NOVO) só vai ao serviço quando você confirma', !realBefore && realAfter.length === 1, `antes: ${realBefore} | depois: ${realAfter.length} | ${JSON.stringify(lifiCalls.slice(beforeConfirm)).slice(0, 200)}`);
     check('aprova o valor exato, envia para o contrato da LI.FI e avisa quando o BTC chega', Boolean(lifiTx) && polygon.balOf(ADDR.USDT0, OWNER) === 300000000n && /BTC chega na Bitcoin em cerca de 25 min/.test(await page.innerText('#swap-feedback')),
         `${await page.innerText('#swap-feedback')} | USDT ${polygon.balOf(ADDR.USDT0, OWNER)}`);
 

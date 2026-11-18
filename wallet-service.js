@@ -607,7 +607,7 @@
         if (!state.unlockedSecrets) return;
         autoLockTimer = setTimeout(() => {
             if (state.unlockedSecrets) lockVaultNow();
-        }, AUTO_LOCK_MS);
+        }, window.RdeskAnon?.autoLockMs?.() || AUTO_LOCK_MS); // modo anônimo: 2 min
     }
     ['pointerdown', 'keydown'].forEach((evt) => window.addEventListener(evt, touchAutoLock, { passive: true }));
 
@@ -754,6 +754,7 @@
         if (!state.unlockedSecrets || !window.RdeskBitcoin) return false;
         let changed = false;
         state.accounts.forEach((acc) => {
+            try { if (btcExtend(acc)) changed = true; } catch (e) {}
             if (acc.btcAddress) return;
             try {
                 if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) {
@@ -766,6 +767,136 @@
             } catch (e) {}
         });
         return changed;
+    }
+
+    // =========================================================================
+    // BITCOIN COM ENDEREÇO NOVO A CADA RECEBIMENTO (BIP84)
+    // Cofre 1 da frase: caminho padrão m/84'/0'/0' (recuperável em qualquer carteira Bitcoin).
+    // Cofres seguintes da mesma frase: conta BIP84 própria m/84'/0'/k'.
+    // Externo (/0/i) = endereços para receber; interno (/1/i) = troco. O endereço antigo continua
+    // sendo lido. Os endereços (não são segredo) ficam salvos; as chaves só existem com o cofre aberto.
+    // =========================================================================
+    const BTC_GAP = 4; // quantos endereços novos ficam sempre preparados (e vigiados) à frente
+    const btcHdOk = (acc) => acc && acc.type === 'seed';
+    const btcBase = (acc) => `m/84'/0'/${acc.hdIndex || 0}'`;
+    // No cofre 1, pula os índices que já são o endereço antigo de outro cofre da mesma frase
+    function btcSkip(acc) {
+        if ((acc.hdIndex || 0) !== 0) return new Set();
+        return new Set(state.accounts.filter((a) => a.type === 'seed' && a.seedGroupId === acc.seedGroupId && a.id !== acc.id).map((a) => a.hdIndex || 0).filter((k) => k > 0));
+    }
+    function btcDerive(acc, chain, i) {
+        const seed = state.unlockedSecrets?.masterSeedMap?.[acc.seedGroupId];
+        if (!seed) throw new Error('Cofre bloqueado. Desbloqueie para usar o Bitcoin.');
+        return window.RdeskBitcoin.deriveAtPath(seed, `${btcBase(acc)}/${chain}/${i}`, passphraseOf(acc.seedGroupId));
+    }
+    // Garante BTC_GAP endereços ainda não usados à frente, em cada lado (precisa do cofre aberto)
+    function btcExtend(acc) {
+        if (!btcHdOk(acc) || !state.unlockedSecrets) return false;
+        acc.btcHd = acc.btcHd || { ext: [], int: [], extNext: 0, intNext: 0 };
+        const hd = acc.btcHd, skip = btcSkip(acc);
+        let changed = false;
+        [['ext', 0, 'extNext'], ['int', 1, 'intNext']].forEach(([list, chain, nextKey]) => {
+            let i = hd[list].length ? hd[list][hd[list].length - 1].i + 1 : 0;
+            while (hd[list].filter((x) => x.i >= hd[nextKey]).length < BTC_GAP && i < 10000) {
+                if (!(chain === 0 && skip.has(i))) { hd[list].push({ i, a: btcDerive(acc, chain, i).address }); changed = true; }
+                i++;
+            }
+        });
+        return changed;
+    }
+    // Todos os endereços a vigiar (antigo + recebimento + troco)
+    function btcScanList(acc) {
+        const set = new Set();
+        if (acc?.btcAddress) set.add(acc.btcAddress);
+        (acc?.btcHd?.ext || []).forEach((x) => set.add(x.a));
+        (acc?.btcHd?.int || []).forEach((x) => set.add(x.a));
+        return [...set];
+    }
+    // Endereço para receber agora: o primeiro ainda não usado
+    function btcReceiveAddress(acc = getActiveAccount()) {
+        if (!acc) return '';
+        const hd = acc.btcHd;
+        const fresh = hd?.ext?.find((x) => x.i >= hd.extNext);
+        return fresh ? fresh.a : (acc.btcAddress || '');
+    }
+    function btcChangeAddress(acc = getActiveAccount()) {
+        const hd = acc?.btcHd;
+        const fresh = hd?.int?.find((x) => x.i >= hd.intNext);
+        return fresh ? fresh.a : (acc?.btcAddress || '');
+    }
+    // Saldos por endereço (memória) e marcação de uso: endereço que já recebeu não é mostrado de novo
+    state.btcPerAddr = state.btcPerAddr || {};
+    function btcMarkUsage(acc, perAddr) {
+        const hd = acc.btcHd;
+        if (!hd) return false;
+        let moved = false;
+        hd.ext.forEach((x) => { if (perAddr[x.a]?.txCount > 0 && x.i >= hd.extNext) { hd.extNext = x.i + 1; moved = true; } });
+        hd.int.forEach((x) => { if (perAddr[x.a]?.txCount > 0 && x.i >= hd.intNext) { hd.intNext = x.i + 1; moved = true; } });
+        if (moved && state.unlockedSecrets) btcExtend(acc);
+        return moved;
+    }
+    // Pular para um endereço novo sem esperar o atual ser usado (até um limite, para nada ficar fora da vigia)
+    async function btcNewReceiveAddress() {
+        const acc = getActiveAccount();
+        if (!btcHdOk(acc)) throw new Error('Só cofres criados com palavras têm endereços novos.');
+        if (state.isLocked || !state.unlockedSecrets) { openWalletModal('unlock'); throw new Error('Abra o cofre para gerar um endereço novo.'); }
+        btcExtend(acc);
+        const hd = acc.btcHd;
+        const used = Math.max(0, ...hd.ext.filter((x) => (state.btcPerAddr[x.a]?.txCount || 0) > 0).map((x) => x.i + 1));
+        if (hd.extNext - used >= 12) throw new Error('Já existem vários endereços novos sem uso. Use um deles antes de gerar outro.');
+        const cur = hd.ext.find((x) => x.i >= hd.extNext);
+        hd.extNext = (cur ? cur.i : hd.extNext) + 1;
+        btcExtend(acc);
+        await persistVaultToStorage();
+        notifyAccountChanged();
+        return btcReceiveAddress(acc);
+    }
+    // Moedas de todos os endereços do cofre, cada uma marcada com o endereço de onde veio
+    async function btcGatherUtxos() {
+        const acc = getActiveAccount();
+        const list = btcScanList(acc).filter((a) => !state.btcPerAddr[a] || state.btcPerAddr[a].totalSats > 0);
+        const all = await Promise.all(list.map((a) => window.RdeskBitcoin.fetchUtxos(a).then((us) => us.map((u) => ({ ...u, addr: a })))));
+        return all.flat();
+    }
+    // Chave de um endereço do cofre (procura no antigo, no recebimento e no troco)
+    function btcKeyFor(address, acc = getActiveAccount()) {
+        if (!acc) throw new Error('Nenhuma carteira ativa.');
+        if (state.isLocked || !state.unlockedSecrets) { openWalletModal('unlock'); throw new Error('Cofre bloqueado. Desbloqueie para assinar.'); }
+        if (address === acc.btcAddress) return getActiveBitcoinKey();
+        const hd = acc.btcHd;
+        const e = hd?.ext?.find((x) => x.a === address), n = hd?.int?.find((x) => x.a === address);
+        if (!e && !n) throw new Error('Este endereço não é deste cofre.');
+        const key = btcDerive(acc, e ? 0 : 1, (e || n).i);
+        if (key.address !== address) throw new Error('Erro interno: chave não confere com o endereço.');
+        touchAutoLock();
+        return key;
+    }
+    // Assina um plano cujas entradas vêm de vários endereços do cofre
+    function btcSignPlan(plan, utxos) {
+        const where = new Map(utxos.map((u) => [`${u.txid}:${u.vout}`, u.addr]));
+        const cache = {};
+        const inputs = plan.inputs.map((u) => {
+            const addr = where.get(`${u.txid}:${u.vout}`);
+            if (!addr) throw new Error('Uma das moedas não é deste cofre. Cancelado.');
+            cache[addr] = cache[addr] || btcKeyFor(addr);
+            return { ...u, privateKey: cache[addr].privateKey };
+        });
+        return window.RdeskBitcoin.signTransaction({ ...plan, inputs }, null);
+    }
+    // Endereço com mais Bitcoin confirmado (as trocas saem de um endereço só)
+    function btcRichestAddress(acc = getActiveAccount()) {
+        let best = acc?.btcAddress || '', max = -1;
+        btcScanList(acc).forEach((a) => { const c = state.btcPerAddr[a]?.confirmedSats || 0; if (c > max) { max = c; best = a; } });
+        return best;
+    }
+    // Depois de gastar, o troco foi para um endereço interno: passa para o próximo
+    async function btcAfterSpend(plan) {
+        const acc = getActiveAccount();
+        const hd = acc?.btcHd;
+        if (!hd) return;
+        const ch = plan.outputs.find((o) => o.isChange);
+        const x = ch && hd.int.find((y) => y.a === ch.address);
+        if (x && x.i >= hd.intNext) { hd.intNext = x.i + 1; btcExtend(acc); await persistVaultToStorage(); }
     }
 
     // Chave Bitcoin da conta ativa (só com o cofre aberto).
@@ -1147,6 +1278,8 @@
     async function refreshAllAccountsBalances() {
         if (!state.accounts.length) return getActiveAccountBalances();
         await refreshLiveMarketPrices();
+        // Modo anônimo sem a Polygon marcada: não pergunta o saldo (o servidor veria o seu endereço)
+        if (window.RdeskAnon && !window.RdeskAnon.chainAllowed(137)) return getActiveAccountBalances();
 
         try {
             const provider = await getHealthyProvider(137);
@@ -1636,6 +1769,12 @@
         getActiveAccount: () => getActiveAccount(),
         getSigner: (chainId) => getActiveSigner(chainId),
         getBitcoinKey: () => getActiveBitcoinKey(),
+        btcReceiveAddress: () => btcReceiveAddress(),
+        btcChangeAddress: () => btcChangeAddress(),
+        gatherBitcoinUtxos: () => btcGatherUtxos(),
+        signBitcoinPlan: (plan, utxos) => btcSignPlan(plan, utxos),
+        afterBitcoinSpend: (plan) => btcAfterSpend(plan),
+        newBitcoinAddress: () => btcNewReceiveAddress(),
         getHealthyProvider: (chainId) => getHealthyProvider(chainId),
         getBalances: () => getBalancesArray(),
         refreshBalances: () => refreshBalancesCompat(),
@@ -2734,6 +2873,7 @@
 
         Object.keys(CHAIN_TOKENS).forEach((cid) => {
             const chainId = Number(cid);
+            if (window.RdeskAnon && !window.RdeskAnon.chainAllowed(chainId)) return; // modo anônimo: só as redes escolhidas
             const provider = getReadProvider(chainId);
             CHAIN_TOKENS[chainId].forEach((tk) => {
                 jobs.push((async () => {
@@ -2754,14 +2894,20 @@
         });
 
         // Bitcoin nativo (endereço próprio, derivado da mesma frase)
-        if (acc.btcAddress && window.RdeskBitcoin) {
+        if (acc.btcAddress && window.RdeskBitcoin && (!window.RdeskAnon || window.RdeskAnon.chainAllowed('btc'))) {
             jobs.push((async () => {
-                try {
-                    const b = await window.RdeskBitcoin.fetchBalance(acc.btcAddress);
-                    return { chainId: 'btc', symbol: 'BTC', amount: b.totalSats / 1e8, pending: b.pendingSats / 1e8, ok: true };
-                } catch (e) {
-                    return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false };
-                }
+                // Lê todos os endereços do cofre (endereço novo a cada recebimento) e soma
+                const list = btcScanList(acc);
+                const got = await Promise.all(list.map((a) => window.RdeskBitcoin.fetchBalance(a).then((b) => [a, b]).catch(() => [a, null])));
+                const ok = got.filter(([, b]) => b);
+                if (!ok.length) return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false };
+                if (ok.length < got.length) return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false }; // parcial: mantém o último total
+                const per = {};
+                ok.forEach(([a, b]) => { per[a] = b; });
+                Object.assign(state.btcPerAddr, per);
+                if (btcMarkUsage(acc, per)) persistVaultToStorage().catch(() => {});
+                const total = ok.reduce((s, [, b]) => s + b.totalSats, 0), pend = ok.reduce((s, [, b]) => s + b.pendingSats, 0);
+                return { chainId: 'btc', symbol: 'BTC', amount: total / 1e8, pending: pend / 1e8, ok: true };
             })());
         }
 
@@ -3028,7 +3174,18 @@
         renderHome: () => renderHeroAndAssets(),
         renderQuoteStatus: () => renderQuoteStatus(),
         openView: (view, params) => { pendingViewParams = params || {}; openWalletModal(view); },
-        getBitcoinAddress: () => getActiveAccount()?.btcAddress || '',
+        // Endereço para RECEBER Bitcoin: um novo a cada recebimento
+        getBitcoinAddress: () => btcReceiveAddress(),
+        getBitcoinLegacyAddress: () => getActiveAccount()?.btcAddress || '',
+        getBitcoinAddresses: () => btcScanList(getActiveAccount()),
+        getBitcoinSpendAddress: () => btcRichestAddress(),
+        getBitcoinChangeAddress: () => btcChangeAddress(),
+        getBitcoinKeyFor: (a) => btcKeyFor(a),
+        newBitcoinAddress: () => btcNewReceiveAddress(),
+        gatherBitcoinUtxos: () => btcGatherUtxos(),
+        signBitcoinPlan: (plan, utxos) => btcSignPlan(plan, utxos),
+        afterBitcoinSpend: (plan) => btcAfterSpend(plan),
+        getBitcoinPerAddress: () => ({ ...state.btcPerAddr }),
         getBitcoinKey: () => getActiveBitcoinKey(),
         unitUsdFor,
         isBiometrySupported,

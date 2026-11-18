@@ -82,7 +82,8 @@
         if (!networks.some((n) => String(n) === String(chainId))) chainId = 137;
         const chain = REG.getChain(chainId);
         const isBtc = chainId === 'btc';
-        const address = isBtc ? (acc.btcAddress || '') : acc.address;
+        // Bitcoin: um endereço novo a cada recebimento (quem te paga não vê os seus outros pagamentos)
+        const address = isBtc ? (ctx.btcReceiveAddress?.() || acc.btcAddress || '') : acc.address;
 
         sheet.innerHTML = `
             ${header('↓ Receber')}
@@ -95,6 +96,7 @@
                 <div class="receive-net">${REG.chainBadge(chainId, true)} ${REG.maturityBadge(chainId)}</div>
                 <code class="receive-address" id="rmw-rec-address">${esc(address)}</code>
                 <button class="rmw-btn-primary" id="rmw-rec-copy">📋 Copiar endereço</button>
+                ${isBtc && acc.type === 'seed' ? '<button type="button" class="rmw-btn-secondary" id="rmw-rec-new">🔄 Gerar endereço novo</button><small class="muted-sm rec-fresh">🕵️ Este endereço muda sozinho depois que receber. Assim quem te paga não vê seus outros pagamentos nem o seu saldo.</small>' : ''}
             </div>
             <div class="rec-ask">
                 <label class="rmw-label" for="rmw-rec-brl">Quer pedir um valor? Digite em reais</label>
@@ -128,6 +130,11 @@
         sheet.querySelectorAll('[data-net]').forEach((b) => { b.onclick = () => ctx.navigate('receive', { chainId: b.getAttribute('data-net') }); });
         if (address) {
             ctx.drawQr(sheet.querySelector('#rmw-rec-qr'), address, 190);
+            const nb = sheet.querySelector('#rmw-rec-new');
+            if (nb) nb.onclick = async () => {
+                try { await ctx.newBitcoinAddress(); ctx.navigate('receive', { chainId: 'btc' }); }
+                catch (e) { nb.textContent = e.message; }
+            };
             sheet.querySelector('#rmw-rec-copy').onclick = async () => {
                 await ctx.copy(address);
                 sheet.querySelector('#rmw-rec-copy').textContent = '✓ Endereço copiado';
@@ -462,9 +469,9 @@
                 if (isBtc) {
                     const rate = Number($('#rmw-snd-fee').value);
                     if (!rate) throw new Error('Aguarde as taxas da rede carregarem.');
-                    const utxos = await BTC().fetchUtxos(acc.btcAddress);
+                    const utxos = await ctx.gatherBitcoinUtxos();
                     const dest = BTC().isValidAddress($('#rmw-snd-to').value.trim()) ? $('#rmw-snd-to').value.trim() : acc.btcAddress;
-                    const plan = BTC().planTransaction({ utxos, toAddress: dest, feeRate: rate, changeAddress: acc.btcAddress, sendMax: true });
+                    const plan = BTC().planTransaction({ utxos, toAddress: dest, feeRate: rate, changeAddress: ctx.btcChangeAddress(), sendMax: true });
                     $('#rmw-snd-amt').value = (plan.amount / 1e8).toFixed(8);
                 } else if (token.isNative) {
                     const provider = await ctx.getHealthyProvider(chainId);
@@ -509,16 +516,17 @@
                     const sats = Math.round(Number(amtStr) * 1e8);
                     btn.disabled = true;
                     showOk('Lendo saldo disponível…');
-                    const utxos = await BTC().fetchUtxos(acc.btcAddress);
+                    // Moedas de todos os endereços do cofre; o troco vai para um endereço novo (troco)
+                    const utxos = await ctx.gatherBitcoinUtxos();
                     const spendable = utxos.filter((u) => u.confirmed).reduce((n, u) => n + u.value, 0);
-                    const plan = BTC().planTransaction({ utxos, toAddress: to, amountSats: sats, feeRate: rate, changeAddress: acc.btcAddress, sendMax: sats >= spendable });
+                    const plan = BTC().planTransaction({ utxos, toAddress: to, amountSats: sats, feeRate: rate, changeAddress: ctx.btcChangeAddress(), sendMax: sats >= spendable });
                     const brl = (s) => ctx.formatBRL((s / 1e8) * ctx.prices().BTC * ctx.prices().usdBrl);
                     if (plan.fee > plan.amount * 0.2 && plan.fee > 5000) throw new Error(`A taxa (${plan.fee} sat) passaria de 20% do valor enviado. Escolha uma velocidade mais barata ou envie um valor maior.`);
                     if (!confirm(`Enviar ${(plan.amount / 1e8).toFixed(8)} BTC (${brl(plan.amount)}) pela rede Bitcoin para:\n\n${to}\n\nTaxa da rede: ${plan.fee} sat (${brl(plan.fee)})\nTotal: ${((plan.amount + plan.fee) / 1e8).toFixed(8)} BTC\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) { msgBox.replaceChildren(); return; }
-                    const key = ctx.getBitcoinKey();
-                    const signed = BTC().signTransaction(plan, key.privateKey);
+                    const signed = ctx.signBitcoinPlan(plan, utxos);
                     showOk('Transmitindo para a rede Bitcoin…');
                     const txid = await BTC().broadcast(signed.hex);
+                    ctx.afterBitcoinSpend(plan).catch(() => {});
                     global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Bitcoin enviado!' } }));
                     showOk(`✅ Bitcoin enviado! Aguarde a confirmação na rede. <a href="${esc(REG.explorerTxUrl('btc', txid))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
                     ctx.refreshBalances();
@@ -569,7 +577,7 @@
         if (!acc || !token) { ctx.back(); return; }
         const row = ctx.getBalances().find((b) => String(b.chainId) === String(chainId) && b.symbol === token.symbol);
         const amount = row ? row.amount : 0;
-        const address = chainId === 'btc' ? acc.btcAddress : acc.address;
+        const address = chainId === 'btc' ? (ctx.btcReceiveAddress?.() || acc.btcAddress) : acc.address;
 
         sheet.innerHTML = `
             ${header('Moeda')}

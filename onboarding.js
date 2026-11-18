@@ -260,6 +260,7 @@
                 <button type="button" data-m="learn"><span>🎓</span>Aprender com a Duda</button>
                 <button type="button" data-m="tutorial"><span>👋</span>Rever as boas-vindas</button>
                 <button type="button" data-m="security"><span>🛡️</span>Como sua carteira é protegida</button>
+                <button type="button" data-m="anon"><span>🕵️</span>Privacidade máxima${global.RdeskAnon?.isOn() ? ' (ligada)' : ''}</button>
                 <button type="button" data-m="airgap"><span>🛰️</span>Bitcoin sem internet (assinar offline)</button>
                 <a class="menu-link" href="./tails.html" data-m="tails"><span>🧅</span>Usar no Tails e no Tor</a>
                 <button type="button" data-m="render"><span>📈</span>Como o Render funciona</button>
@@ -280,6 +281,7 @@
                 else if (m === 'learn') document.querySelector('.nav-tab-btn[data-tab="learn"]')?.click();
                 else if (m === 'security' || m === 'render') explain(m);
                 else if (m === 'airgap') global.RdeskAirgap?.open();
+                else if (m === 'anon') global.RdeskAnon?.open();
                 else if (m === 'install') install?.click();
             };
         });

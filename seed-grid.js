@@ -42,6 +42,7 @@
         const sugg = box.querySelector('.sg-sugg');
         const status = box.querySelector('.sg-status');
         let focusIdx = -1;
+        let composing = false;
 
         const inputs = () => [...grid.querySelectorAll('input')];
         const sync = () => {
@@ -81,14 +82,21 @@
                 paint(inp);
                 inp.addEventListener('focus', () => { focusIdx = Number(inp.dataset.i); showSugg(inp); });
                 inp.addEventListener('blur', () => paint(inp));
-                inp.addEventListener('input', () => {
+                inp.addEventListener('input', (e) => {
+                    // Teclado do celular ainda montando a palavra (sugestões do Gboard etc.): não mexe no texto,
+                    // senão a tecla de apagar e a correção automática brigam com o app
+                    if (e.isComposing || composing) { paint(inp); showSugg(inp); sync(); return; }
                     if (/\s/.test(inp.value.trim())) { const v = inp.value; inp.value = ''; spread(Number(inp.dataset.i), v); return; }
-                    inp.value = inp.value.toLowerCase().replace(/[^a-z]/g, '');
+                    const fixed = inp.value.toLowerCase().replace(/[^a-z]/g, '');
+                    if (fixed !== inp.value) inp.value = fixed; // só reescreve se precisar
                     paint(inp); showSugg(inp); sync();
-                    // Palavra completa e única: já vai para a próxima caixa
+                    // Palavra completa e única: já vai para a próxima caixa (nunca ao apagar)
                     const w = inp.value;
+                    if (e.inputType && /^delete/.test(e.inputType)) return;
                     if (isWord(w) && words().filter((x) => x.startsWith(w)).length === 1) inputs()[Number(inp.dataset.i) + 1]?.focus();
                 });
+                inp.addEventListener('compositionstart', () => { composing = true; });
+                inp.addEventListener('compositionend', () => { composing = false; inp.dispatchEvent(new Event('input')); });
                 inp.addEventListener('keydown', (e) => {
                     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); inputs()[Number(inp.dataset.i) + 1]?.focus(); }
                     else if (e.key === 'Backspace' && !inp.value) { const prev = inputs()[Number(inp.dataset.i) - 1]; if (prev) { e.preventDefault(); prev.focus(); } }

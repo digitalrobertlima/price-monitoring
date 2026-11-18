@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Privacidade: nenhum servidor consultado fica sabendo de onde veio o pedido (nem que é este app) -->
+    <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#0c0f16">
     <!-- Só roda script deste próprio site; nada embutido, nada de terceiros -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
@@ -30,6 +32,7 @@
     <script src="pix.js" defer></script>
     <script src="qr-scanner.js" defer></script>
     <script src="pinpad.js" defer></script>
+    <script src="anon.js" defer></script>
     <script src="seed-grid.js" defer></script>
     <script src="wallet-service.js" defer></script>
     <script src="wallet-views.js" defer></script>
