@@ -151,8 +151,8 @@
         return segwitEncode('bc', 0, hash160(bytes(compressedPubKeyHex)));
     }
     // BIP84: m/84'/0'/0'/0/índice
-    function deriveFromMnemonic(mnemonic, index = 0) {
-        const node = E().utils.HDNode.fromMnemonic(mnemonic).derivePath(`m/84'/0'/0'/0/${index}`);
+    function deriveFromMnemonic(mnemonic, index = 0, passphrase = '') {
+        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined).derivePath(`m/84'/0'/0'/0/${index}`);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey) };
     }
     function deriveFromPrivateKey(privateKey) {

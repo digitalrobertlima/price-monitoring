@@ -19,6 +19,7 @@ const CORE_ASSETS = [
   './qr-scanner.js',
   './wallet-views.js',
   './onboarding.js',
+  './pinpad.js',
   './vault-door.js',
   './lessons.js',
   './learn.js',

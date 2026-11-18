@@ -58,6 +58,7 @@
                     <svg class="ic-bio" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 11v4"/><path d="M8.5 8.5a5 5 0 0 1 8.4 3.6c0 2.6-.4 4.9-1.3 6.9"/><path d="M6.2 12.2c0-1 .2-1.9.6-2.8"/><path d="M9.3 19.6c.6-1.9.9-4 .9-6.4a1.8 1.8 0 0 1 3.6 0c0 .8 0 1.6-.1 2.4"/><path d="M5 5.6A9 9 0 0 1 21 12c0 1.4-.1 2.7-.4 4"/><path d="M3.4 9a9 9 0 0 0-.4 2.7c0 1.5-.3 2.9-.8 4.2"/></svg>
                     <span id="vault-open-label">Abrir o cofre</span>
                 </button>
+                <div class="vd-pin" id="vault-pinpad" hidden></div>
                 <form class="vd-pass" id="vault-pass-form" hidden>
                     <input type="password" id="vault-pass-input" autocomplete="current-password" placeholder="Sua senha" aria-label="Senha do cofre">
                     <button type="submit" class="vd-pass-go" id="vault-pass-go" aria-label="Abrir com a senha">→</button>
@@ -82,7 +83,18 @@
         });
     }
 
+    const isPin = () => W()?.getLockType?.() === 'pin';
+    let pinPad = null;
     function showPassword() {
+        if (isPin() && global.RdeskPinPad) {
+            const host = screen.querySelector('#vault-pinpad');
+            host.hidden = false;
+            screen.querySelector('#vault-pass-btn').hidden = true;
+            screen.querySelector('#vault-open-btn').hidden = true;
+            screen.classList.add('pin-mode');
+            pinPad = global.RdeskPinPad.mount(host, { length: 6, title: 'Digite seu PIN', onComplete: (pin) => attempt(() => W().unlockWithPassword(pin)) });
+            return;
+        }
         const form = screen.querySelector('#vault-pass-form');
         form.hidden = false;
         screen.querySelector('#vault-pass-btn').hidden = true;
@@ -91,7 +103,8 @@
 
     function refreshLabels() {
         const bio = Boolean(W()?.isBiometryReady?.());
-        screen.querySelector('#vault-open-label').textContent = bio ? 'Abrir com a digital' : 'Abrir com a senha';
+        screen.querySelector('#vault-open-label').textContent = bio ? 'Abrir com a digital' : isPin() ? 'Abrir com o PIN' : 'Abrir com a senha';
+        screen.querySelector('#vault-pass-btn').textContent = isPin() ? 'Usar PIN' : 'Usar senha';
         screen.querySelector('.ic-bio').style.display = bio ? '' : 'none';
         screen.querySelector('.ic-key').style.display = bio ? 'none' : '';
         screen.querySelector('#vault-pass-btn').hidden = !bio || !screen.querySelector('#vault-pass-form').hidden;
@@ -113,8 +126,10 @@
             screen.classList.remove('trying');
             screen.classList.remove('shake'); void screen.offsetWidth; screen.classList.add('shake');
             buzz([40, 60, 40]);
-            msg.textContent = /incorret|senha/i.test(err?.message || '') ? 'Senha errada. Tente de novo.' : (err?.message || 'Não deu para abrir. Tente de novo.');
-            if (!/senha/i.test(err?.message || '')) showPassword();
+            const wrong = /incorret|senha/i.test(err?.message || '');
+            if (isPin() && pinPad) { pinPad.error(wrong ? 'PIN errado. Tente de novo.' : ''); msg.textContent = wrong ? '' : (err?.message || ''); }
+            else msg.textContent = wrong ? 'Senha errada. Tente de novo.' : (err?.message || 'Não deu para abrir. Tente de novo.');
+            if (!wrong && !pinPad) showPassword();
         } finally {
             busy = false;
         }
@@ -135,7 +150,11 @@
         screen.querySelector('#vault-msg').textContent = '';
         screen.querySelector('#vault-pass-input').value = '';
         screen.querySelector('#vault-pass-form').hidden = true;
-        screen.classList.remove('opening', 'opened', 'trying', 'shake', 'closing');
+        screen.querySelector('#vault-pinpad').hidden = true;
+        screen.querySelector('#vault-pinpad').innerHTML = '';
+        screen.querySelector('#vault-open-btn').hidden = false;
+        pinPad = null;
+        screen.classList.remove('opening', 'opened', 'trying', 'shake', 'closing', 'pin-mode');
         screen.hidden = false;
         hideApp(true);
         if (animated && !reduceMotion()) {

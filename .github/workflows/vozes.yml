@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches-ignore: [main]
-    paths: ['lessons.js', 'tools/vozes/**']
+    paths: ['lessons.js', 'tools/vozes/**', '.github/workflows/vozes.yml']
 permissions:
   contents: write
 concurrency:

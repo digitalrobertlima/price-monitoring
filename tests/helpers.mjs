@@ -292,6 +292,7 @@ export async function importWalletViaUi(page, { name = 'Principal', mnemonic = T
     await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Importar frase-semente' }).click();
     await page.fill('#rmw-f-name', name);
     await page.fill('#rmw-f-seed-input', mnemonic);
+    if (await page.locator('[data-lock="password"]').count()) await page.click('[data-lock="password"]');
     if (await page.locator('#rmw-f-pass').count()) await page.fill('#rmw-f-pass', password);
     await page.click('#rmw-f-submit');
     await waitFn(page, () => window.RdeskWallet.isConnected() && window.RdeskWallet.isUnlocked(), null, { timeout: 30000 });
