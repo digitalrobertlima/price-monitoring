@@ -2607,7 +2607,7 @@ body.learn-open { overflow: hidden; }
 .ls-cast { min-height: 0; align-items: flex-end; padding: 0 6px; margin-top: 0; }
 .ls-cast .av-duda { width: min(42vw, 170px); }
 .ls-cast .av-bit { width: min(30vw, 118px); margin-bottom: 8px; }
-.ls-bubble { align-self: stretch; flex: none; margin: 4px 0 14px; font-size: 1.18rem; }
+.ls-bubble { align-self: center; box-sizing: border-box; flex: none; margin: 4px 0 14px; font-size: 1.18rem; }
 .ls-bubble::after { left: 56px; bottom: -12px; border: 12px solid transparent; border-top-color: #fff; border-bottom: 0; }
 .ls-bubble.from-bit::after { left: auto; right: 40px; border: 12px solid transparent; border-top-color: #fff; border-bottom: 0; }
 .learn-path { overflow-x: clip; align-items: center; }
