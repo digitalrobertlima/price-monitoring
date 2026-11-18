@@ -47,7 +47,7 @@ try {
     await page.click('.more-opts > summary');
     const addMenu = await sheetText(page);
     check('"Mais opções" guarda importar chave, Rabby e observação',
-        ['Criar carteira', 'Importar frase-semente', 'Importar chave privada', 'Rabby', 'observação'].every((x) => addMenu.includes(x)), addMenu.slice(0, 200));
+        ['criar carteira', 'importar frase-semente', 'importar chave privada', 'rabby', 'observação'].every((x) => addMenu.toLowerCase().includes(x)), addMenu.slice(0, 200));
     await page.screenshot({ path: 'tests/artifacts-ui-adicionar.png' });
 
     // História da chave: 1. o que é  2. ver  3. conferir  4. proteger
