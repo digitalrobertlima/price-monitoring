@@ -2862,3 +2862,42 @@ body.lipsync .av.talking .m-open ellipse:first-child { transform-box: fill-box; 
 .st-toast small { color: #fcd9a8; }
 .sx-more { width: 100%; margin: 6px 0; padding: 12px; border-radius: 14px; border: 1px dashed rgba(255,255,255,.18); background: transparent; color: #cbd5e1; font: inherit; font-weight: 700; cursor: pointer; }
 .sx-foot-note { color: #64748b; font-size: .78rem; text-align: center; margin: 6px 8px 2px; }
+
+/* v38 — palavras da chave em quadradinhos numerados */
+.sg { margin: 4px 0 8px; }
+.sg-size { margin-bottom: 10px; }
+.sg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 520px) { .sg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.sg-cell { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 8px; min-height: 48px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.12); transition: border-color .15s, background .15s; }
+.sg-cell:focus-within { border-color: #f7931a; background: rgba(247,147,26,.08); }
+.sg-cell.ok { border-color: rgba(34,197,94,.55); }
+.sg-cell.bad { border-color: rgba(248,113,113,.7); background: rgba(248,113,113,.08); }
+.sg-n { flex: none; min-width: 1.6em; font-weight: 800; color: #f7931a; font-size: .9rem; text-align: right; }
+.sg-cell input { flex: 1; min-width: 0; width: 100%; border: 0; background: transparent; color: #f8fafc; font: inherit; font-size: 1.05rem; font-weight: 600; padding: 10px 0; outline: none; }
+.sg-sugg { display: flex; gap: 8px; flex-wrap: wrap; min-height: 8px; margin-top: 8px; }
+.sg-chip { border: 1px solid rgba(247,147,26,.45); background: rgba(247,147,26,.12); color: #ffcf94; border-radius: 99px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.sg-status { font-size: .86rem; color: #94a3b8; margin-top: 6px; }
+.sg-status.ok { color: #4ade80; } .sg-status.bad { color: #fda4af; }
+.sg-source { position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important; opacity: 0; pointer-events: none; overflow: hidden; padding: 0 !important; border: 0 !important; }
+
+/* v38 — Bitcoin sem internet */
+.ag-body { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.ag-lead { color: #cbd5e1; margin: 4px 0; }
+.ag-note { color: #94a3b8; font-size: .84rem; margin: 6px 0 0; }
+.ag-steps { display: flex; flex-direction: column; gap: 8px; }
+.ag-step { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; text-align: left; padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(247,147,26,.3); background: rgba(247,147,26,.07); color: inherit; font: inherit; cursor: pointer; }
+.ag-step span { grid-row: span 2; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #f7931a; color: #1a0f00; font-weight: 900; }
+.ag-step b { font-size: 1.02rem; } .ag-step small { color: #94a3b8; }
+.ag-row { display: flex; gap: 8px; align-items: center; } .ag-row .rmw-input { flex: 1; min-width: 0; }
+.ag-check { display: flex; gap: 8px; align-items: center; color: #cbd5e1; font-size: .92rem; }
+.ag-check.warn { color: #fde68a; }
+.ag-warn { padding: 10px 12px; border-radius: 12px; background: rgba(250,204,21,.08); border: 1px solid rgba(250,204,21,.3); color: #fde68a; }
+.ag-ok { padding: 10px 12px; border-radius: 12px; background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3); color: #bbf7d0; word-break: break-word; }
+.ag-sum { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.04); }
+.ag-sum > div { display: flex; flex-direction: column; } .ag-sum span { color: #94a3b8; font-size: .8rem; } .ag-sum small { color: #94a3b8; }
+.ag-sum.big b { font-size: 1.1rem; }
+.ag-addr { font-family: 'JetBrains Mono', monospace; word-break: break-all; font-size: .95rem; color: #ffcf94; }
+.ag-qr { display: flex; justify-content: center; padding: 12px; background: #fff; border-radius: 16px; align-self: center; }
+.ag-qr img, .ag-qr canvas { display: block; }
+.ag-raw { font-family: 'JetBrains Mono', monospace; font-size: .72rem; min-height: 70px; }
+.ag-txid code { word-break: break-all; font-size: .8rem; }

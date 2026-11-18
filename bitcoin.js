@@ -284,6 +284,54 @@
         return { hex: toHex(full), txid: toHex(dsha256(base).reverse()) };
     }
 
+    // ---------------------------------------------------------------- transação assinada (leitura)
+    // Lê uma transação pronta (hex) para mostrar antes de transmitir: txid, entradas e saídas.
+    function decodeTx(hex) {
+        const clean = String(hex || '').trim().toLowerCase();
+        if (!/^[0-9a-f]+$/.test(clean) || clean.length % 2) throw new Error('Isso não é uma transação Bitcoin.');
+        const b = bytes(clean);
+        let p = 0;
+        const need = (n) => { if (p + n > b.length) throw new Error('Transação incompleta (QR cortado?).'); };
+        const take = (n) => { need(n); const s = b.slice(p, p + n); p += n; return s; };
+        const u32 = () => { const s = take(4); return new DataView(s.buffer, s.byteOffset, 4).getUint32(0, true); };
+        const vi = () => {
+            const f = take(1)[0];
+            if (f < 0xfd) return f;
+            const s = take(f === 0xfd ? 2 : f === 0xfe ? 4 : 8);
+            let v = 0; for (let i = s.length - 1; i >= 0; i--) v = v * 256 + s[i];
+            return v;
+        };
+        const version = u32();
+        let segwit = false;
+        if (b[p] === 0x00 && b[p + 1] === 0x01) { segwit = true; p += 2; }
+        const startIns = p;
+        const nIn = vi();
+        if (!nIn || nIn > 500) throw new Error('Transação sem entradas válidas.');
+        const inputs = [];
+        for (let i = 0; i < nIn; i++) {
+            const prev = take(32), vout = u32(), sl = vi(); take(sl); u32();
+            inputs.push({ txid: toHex(prev.slice().reverse()), vout });
+        }
+        const nOut = vi();
+        if (!nOut || nOut > 500) throw new Error('Transação sem saídas válidas.');
+        const outputs = [];
+        for (let i = 0; i < nOut; i++) {
+            const v = take(8);
+            let value = 0; for (let k = 7; k >= 0; k--) value = value * 256 + v[k];
+            const script = take(vi());
+            outputs.push({ value, ...describeScript(script) });
+        }
+        const endOuts = p;
+        if (segwit) for (let i = 0; i < nIn; i++) { const items = vi(); for (let k = 0; k < items; k++) take(vi()); }
+        const locktime = u32();
+        if (p !== b.length) throw new Error('Transação com dados sobrando. Não transmita.');
+        const base = concat(u32le(version), b.slice(startIns, endOuts), u32le(locktime));
+        const weight = base.length * 3 + b.length;
+        return { txid: toHex(dsha256(base).reverse()), version, segwit, inputs, outputs, locktime, vsize: Math.ceil(weight / 4), size: b.length };
+    }
+    const hexToB64 = (hex) => { const b = bytes(hex); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); };
+    const b64ToHex = (b64) => { const s = atob(String(b64).trim().replace(/-/g, '+').replace(/_/g, '/')); let h = ''; for (let i = 0; i < s.length; i++) h += s.charCodeAt(i).toString(16).padStart(2, '0'); return h; };
+
     // ---------------------------------------------------------------- PSBT (BIP174) — só leitura
     // Os serviços de troca devolvem a transação montada em PSBT. O app lê as entradas e saídas,
     // confere tudo e assina com a própria chave (nunca assina algo que não conferiu).
@@ -424,7 +472,7 @@
         DUST_SATS,
         deriveFromMnemonic, deriveFromPrivateKey, publicKeyToAddress,
         isValidAddress, addressToScript,
-        planTransaction, signTransaction, estimateVsize, parsePsbt, describeScript, opReturnScript, checkSwapPsbt,
+        planTransaction, signTransaction, decodeTx, hexToB64, b64ToHex, estimateVsize, parsePsbt, describeScript, opReturnScript, checkSwapPsbt,
         fetchBalance, fetchUtxos, fetchFeeRates, broadcast,
         _internals: { bip143Sighash, derSignature, segwitEncode, segwitDecode, bech32Decode, hash160, bytes, toHex }
     };

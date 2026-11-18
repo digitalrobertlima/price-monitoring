@@ -2208,7 +2208,7 @@
         }
 
         const titles = {
-            'import-seed': '📜 Abrir com minhas 12 palavras',
+            'import-seed': '📜 Abrir com minhas palavras',
             'import-pk': '🗝️ Importar chave privada',
             'watch-only': '👁️ Só acompanhar um endereço'
         };
@@ -2224,7 +2224,7 @@
 
             ${activeFormMode === 'import-seed' ? `
                 <div class="ks-hero small">${keySvg(12)}</div>
-                <p class="ks-sub" style="margin:0 0 6px;">Digite as palavras do seu papel, <b>na ordem</b>, com espaço entre elas.</p>
+                <p class="ks-sub" style="margin:0 0 6px;">Escreva cada palavra no quadradinho com o <b>mesmo número</b> do seu papel.</p>
                 <textarea class="rmw-textarea" id="rmw-f-seed-input" placeholder="palavra1 palavra2 palavra3 …" autocapitalize="none" autocomplete="off" spellcheck="false" style="min-height:110px;font-size:1.05rem;"></textarea>
                 <button type="button" class="rmw-btn-secondary" data-scan-for="rmw-f-seed-input" data-scan-raw="1" style="margin-top:6px;padding:8px;">📷 Ler de um QR Code</button>
             ` : ''}
@@ -2285,10 +2285,11 @@
             b.onclick = () => {
                 const keepSeed = sheet.querySelector('#rmw-f-seed-input')?.value, keepName = sheet.querySelector('#rmw-f-name').value;
                 importLock = b.getAttribute('data-lock'); renderModal();
-                if (keepSeed && sheet.querySelector('#rmw-f-seed-input')) sheet.querySelector('#rmw-f-seed-input').value = keepSeed;
+                if (keepSeed && sheet.querySelector('#rmw-f-seed-input')) { const ta = sheet.querySelector('#rmw-f-seed-input'); ta.value = keepSeed; ta.dispatchEvent(new Event('input')); }
                 sheet.querySelector('#rmw-f-name').value = keepName;
             };
         });
+        if (window.RdeskSeedGrid) window.RdeskSeedGrid.mount(sheet.querySelector('#rmw-f-seed-input'));
         const pinHost = sheet.querySelector('#rmw-f-pinpad');
         if (pinHost && window.RdeskPinPad) createPinFlow(pinHost, (pin) => { sheet.querySelector('#rmw-f-pass').value = pin; });
 
