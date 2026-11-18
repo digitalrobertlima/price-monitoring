@@ -52,6 +52,7 @@
             ethUsd: 0,
             btcUsd: 0,
             celoUsd: 0,
+            bnbUsd: 0,
             custom: {},        // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
             usdBrlLive: false, // false = ainda usando valor de reserva
             polLive: false,
@@ -155,6 +156,7 @@
             ETH: Number(state.prices.ethUsd) || 0,
             BTC: Number(state.prices.btcUsd) || 0,
             CELO: Number(state.prices.celoUsd) || 0,
+            BNB: Number(state.prices.bnbUsd) || 0,
             live: Boolean(state.prices.usdBrlLive && state.prices.polLive),
             usdBrlLive: Boolean(state.prices.usdBrlLive),
             POL: polUsd,
@@ -202,7 +204,7 @@
             try {
                 const WPOL_KEY = 'polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
                 const customKeys = REG.loadCustomTokens().map((t) => `${REG.getChain(t.chainId).llama}:${t.address}`);
-                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', ...customKeys];
+                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', 'coingecko:binancecoin', ...customKeys];
                 const [fx, coinsRes] = await Promise.all([
                     fetchUsdBrl(),
                     fetchJson(`https://coins.llama.fi/prices/current/${keys.join(',')}`)
@@ -213,6 +215,7 @@
                 if (price('coingecko:ethereum')) state.prices.ethUsd = price('coingecko:ethereum');
                 if (price('coingecko:bitcoin')) state.prices.btcUsd = price('coingecko:bitcoin');
                 if (price('coingecko:celo')) state.prices.celoUsd = price('coingecko:celo');
+                if (price('coingecko:binancecoin')) state.prices.bnbUsd = price('coingecko:binancecoin');
                 if (price(WPOL_KEY)) {
                     state.prices.polUsd = price(WPOL_KEY);
                     state.prices.polLiveAt = Date.now();
@@ -586,6 +589,7 @@
         }
         touchAutoLock();
         notifyAccountChanged();
+        kickChainBalances();
     }
 
     function lockVaultNow() {
@@ -707,7 +711,7 @@
             await registerDeviceBiometry(secrets.password).catch(() => {});
         }
         notifyAccountChanged();
-        await refreshAllAccountsBalances();
+        await refreshAllAccountsBalances(); kickChainBalances();
     }
 
     // Cofre da versão anterior do app (uma única frase, chave 'rdesk_v22_encrypted_vault').
@@ -835,7 +839,7 @@
             await registerDeviceBiometry(secrets.password).catch(() => {});
         }
         notifyAccountChanged();
-        await refreshAllAccountsBalances();
+        await refreshAllAccountsBalances(); kickChainBalances();
     }
 
     async function addWatchOnlyAccount({ address, name }) {
@@ -858,7 +862,7 @@
         state.activeAccountId = acc.id;
         await persistVaultToStorage();
         notifyAccountChanged();
-        await refreshAllAccountsBalances();
+        await refreshAllAccountsBalances(); kickChainBalances();
     }
 
     async function upsertRabbyAccount(rawAddress, providerObj, makeActive = true) {
@@ -880,7 +884,7 @@
         }
         await persistVaultToStorage();
         notifyAccountChanged();
-        await refreshAllAccountsBalances();
+        await refreshAllAccountsBalances(); kickChainBalances();
     }
 
     function resolveInjectedWeb3Provider() {
@@ -951,7 +955,7 @@
         state.activeAccountId = target.id;
         await persistVaultToStorage();
         notifyAccountChanged();
-        await refreshAllAccountsBalances();
+        await refreshAllAccountsBalances(); kickChainBalances();
     }
 
     async function deleteSingleAccount(accountId) {
@@ -1006,7 +1010,7 @@
     // =========================================================================
     // 6. PROVIDER, SIGNER MULTI-CHAIN & LEITURA DE SALDOS REAIS
     // =========================================================================
-    const NETWORK_NAMES = { 137: 'matic', 42161: 'arbitrum', 8453: 'base', 10: 'optimism', 1: 'homestead', 42220: 'celo' };
+    const NETWORK_NAMES = { 137: 'matic', 42161: 'arbitrum', 8453: 'base', 10: 'optimism', 1: 'homestead', 42220: 'celo', 56: 'bnb' };
     const preferredRpcIndex = {};
 
     function buildProvider(chainId, rpcUrl) {
@@ -2712,6 +2716,14 @@
         return Object.assign(arr.filter(Boolean), getActiveAccountBalances());
     }
 
+    // Depois de criar, importar, abrir ou trocar de cofre: busca já os saldos de todas as redes (e do Bitcoin),
+    // sem esperar o ciclo de 30 s
+    let chainKick = null;
+    function kickChainBalances() {
+        if (chainKick) return chainKick;
+        chainKick = refreshChainBalancesForActive().then(() => notifyAccountChanged(true)).catch(() => {}).finally(() => { chainKick = null; });
+        return chainKick;
+    }
     async function refreshChainBalancesForActive() {
         const acc = getActiveAccount();
         if (!acc || typeof ethers === 'undefined') return;
@@ -2752,15 +2764,25 @@
             })());
         }
 
-        const results = await Promise.all(jobs);
-        const previous = state.chainBalances[addr.toLowerCase()] || [];
-
-        // Se uma consulta falhar (RPC fora do ar), mantém o último saldo conhecido em vez de zerar
-        state.chainBalances[addr.toLowerCase()] = results.map((r) => {
-            if (r.ok) return { chainId: r.chainId, symbol: r.symbol, amount: r.amount, pending: r.pending || 0 };
-            const old = previous.find((p) => p.chainId === r.chainId && p.symbol === r.symbol);
-            return { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0 };
-        });
+        // Cada saldo chega no seu tempo: um servidor lento não segura os outros (antes, um RPC travado
+        // atrasava até o Bitcoin). Se uma consulta falhar ou demorar demais, mantém o último saldo conhecido.
+        const key = addr.toLowerCase();
+        const previous = state.chainBalances[key] || [];
+        const cur = previous.map((p) => ({ ...p }));
+        const put = (r) => {
+            if (!r || r.chainId === undefined) return;
+            const i = cur.findIndex((p) => p.chainId === r.chainId && p.symbol === r.symbol);
+            const old = i >= 0 ? cur[i] : null;
+            const entry = r.ok ? { chainId: r.chainId, symbol: r.symbol, amount: r.amount, pending: r.pending || 0 } : { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0 };
+            if (i >= 0) cur[i] = entry; else cur.push(entry);
+        };
+        const LIMIT = 12000;
+        const capped = jobs.map((j) => Promise.race([j, new Promise((res) => setTimeout(() => res(null), LIMIT))]).then(put).catch(() => {}));
+        // Mostra o que já chegou depois de alguns segundos, sem esperar o mais lento
+        const early = setTimeout(() => { if (getActiveAccount()?.address === addr) { state.chainBalances[key] = cur.map((p) => ({ ...p })); notifyAccountChanged(true); } }, 2500);
+        await Promise.all(capped);
+        clearTimeout(early);
+        state.chainBalances[key] = cur;
     }
 
     async function refreshBalancesCompat() {
@@ -2796,7 +2818,7 @@
 
     // Nome que qualquer pessoa entende (o símbolo técnico aparece embaixo, menor)
     const FRIENDLY_NAMES = {
-        BTC: 'Bitcoin (nativo)', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
+        BTC: 'Bitcoin (nativo)', BNB: 'BNB', ETH: 'Ethereum', POL: 'Polygon (POL)', WPOL: 'POL embrulhado', CELO: 'Celo',
         USDT: 'Dólar digital (Tether)', USDC: 'Dólar digital (USD Coin)', BRZ: 'Real digital (BRZ)', BRLA: 'Real digital (BRLA)',
         WETH: 'Ether embrulhado', WBTC: 'Bitcoin pareado (token WBTC)', CBBTC: 'Bitcoin pareado (token da Coinbase)'
     };

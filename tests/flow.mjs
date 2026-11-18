@@ -273,7 +273,7 @@ try {
     // Outra rede: a lista de moedas acompanha a rede escolhida
     await page.selectOption('#swap-from-chain', '8453');
     const baseTokens = await page.$$eval('#swap-from-token option', (o) => o.map((x) => x.value));
-    check('trocar a rede muda a lista de moedas (Base: ETH, WETH, USDC)', baseTokens.join(',') === 'ETH,WETH,USDC', baseTokens.join(','));
+    check('trocar a rede muda a lista de moedas (Base: ETH, WETH, USDC, BRZ)', baseTokens.join(',') === 'ETH,WETH,USDC,BRZ', baseTokens.join(','));
     await page.selectOption('#swap-from-chain', '137');
 
     // Cotação velha nunca é executada: muda o valor e clica na hora

@@ -5,14 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0c0f16">
     <!-- Só roda script deste próprio site; nada embutido, nada de terceiros -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
     <meta name="description" content="RDESK — carteira de cripto em que só você tem a chave. Receba, envie, troque e faça suas moedas renderem.">
     <title>RDESK — sua carteira, suas moedas</title>
 
     <link rel="manifest" href="manifest.json">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="fonts/fonts.css">
     <link rel="stylesheet" href="styles.css">
 
     <!-- Bibliotecas servidas do próprio repositório, com hash de integridade (nenhum script de terceiros) -->
@@ -35,11 +33,13 @@
     <script src="wallet-service.js" defer></script>
     <script src="wallet-views.js" defer></script>
     <script src="defi-pix-service.js" defer></script>
+    <script src="swap-picker.js" defer></script>
     <script src="history.js" defer></script>
     <script src="onboarding.js" defer></script>
     <script src="vault-door.js" defer></script>
     <script src="lessons.js" defer></script>
     <script src="learn.js" defer></script>
+    <script src="sats-trail.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -272,41 +272,43 @@
                 <div class="section-head"><h1>Trocar moedas</h1></div>
                 <p class="muted-sm">Troque uma moeda por outra, ou leve para outra rede. Você vê quanto vai receber antes de confirmar.</p>
 
-                <div class="swap-box">
-                    <div class="swap-row-head">
-                        <span>Você dá</span>
-                        <span>Tem: <strong id="swap-from-bal" class="money">0.00</strong> <button type="button" id="btn-swap-max" class="btn-text small">Tudo</button></span>
-                    </div>
+                <div class="sx-quick" id="sx-quick" aria-label="Trocas rápidas"></div>
+                <div class="swap-box sx-box">
+                    <div class="sx-head"><span>Você envia</span><span class="sx-net" id="sx-from-net"></span></div>
                     <div class="swap-main">
-                        <input type="number" id="swap-amount-in" class="swap-amount" value="25" min="0" step="0.01" placeholder="0" inputmode="decimal" aria-label="Quantidade que você dá">
-                        <select id="swap-from-token" class="token-select" aria-label="Moeda que você dá"></select>
+                        <input type="number" id="swap-amount-in" class="swap-amount" value="25" min="0" step="0.01" placeholder="0" inputmode="decimal" aria-label="Quantidade que você envia">
+                        <button type="button" class="sx-pill" id="sx-from-pill" aria-label="Escolher a moeda que você envia"></button>
+                        <select id="swap-from-chain" class="sx-native" aria-label="Rede da moeda que você envia" tabindex="-1"></select>
+                        <select id="swap-from-token" class="sx-native" aria-label="Moeda que você envia" tabindex="-1"></select>
                     </div>
-                    <label class="brl-field small"><span>ou em R$</span><input type="text" id="swap-amount-brl" inputmode="decimal" placeholder="0,00" autocomplete="off" aria-label="Valor em reais que você dá"></label>
-                    <label class="swap-net">Rede <select id="swap-from-chain" class="net-select" aria-label="Rede da moeda que você dá"></select></label>
+                    <div class="sx-foot">
+                        <label class="sx-brl"><span>R$</span><input type="text" id="swap-amount-brl" inputmode="decimal" placeholder="0,00" autocomplete="off" aria-label="Valor em reais que você envia"></label>
+                        <span class="sx-bal">Tem <strong id="swap-from-bal" class="money">0</strong> <button type="button" id="btn-swap-max" class="sx-max">Tudo</button></span>
+                    </div>
                 </div>
 
                 <div class="swap-divider">
-                    <button type="button" id="btn-swap-flip" class="circle-flip-btn" aria-label="Inverter: dar o que ia receber">⇅</button>
+                    <button type="button" id="btn-swap-flip" class="circle-flip-btn" aria-label="Inverter: enviar o que ia receber"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3.5 7.5 7 4l3.5 3.5"/><path d="M17 20V4M13.5 16.5 17 20l3.5-3.5"/></svg></button>
                 </div>
 
-                <div class="swap-box">
-                    <div class="swap-row-head">
-                        <span>Você recebe (aprox.)</span>
-                        <span id="swap-quote-info">Cotação em tempo real</span>
-                    </div>
+                <div class="swap-box sx-box sx-to">
+                    <div class="sx-head"><span>Você recebe</span><span class="sx-net" id="sx-to-net"></span></div>
                     <div class="swap-main">
-                        <input type="text" id="swap-amount-out" class="swap-amount" readonly value="0.00" aria-label="Quantidade que você recebe">
-                        <select id="swap-to-token" class="token-select" aria-label="Moeda que você recebe"></select>
+                        <input type="text" id="swap-amount-out" class="swap-amount" readonly value="0" aria-label="Quantidade que você recebe">
+                        <button type="button" class="sx-pill" id="sx-to-pill" aria-label="Escolher a moeda que você recebe"></button>
+                        <select id="swap-to-chain" class="sx-native" aria-label="Rede da moeda que você recebe" tabindex="-1"></select>
+                        <select id="swap-to-token" class="sx-native" aria-label="Moeda que você recebe" tabindex="-1"></select>
                     </div>
-                    <label class="swap-net">Rede <select id="swap-to-chain" class="net-select" aria-label="Rede da moeda que você recebe"></select></label>
+                    <div class="sx-foot"><span class="sx-out-brl" id="sx-out-brl"></span><span id="swap-quote-info" class="sx-info">Cotação em tempo real</span></div>
                 </div>
+                <div class="sx-rate-row"><span class="sx-rate" id="sx-rate" hidden></span><span class="sx-fees">✓ Taxas incluídas na conta</span></div>
 
                 <details class="more-fold">
                     <summary>Conferir os contratos das moedas</summary>
                     <div id="swap-contracts" class="swap-contracts fold-content"></div>
                 </details>
 
-                <button type="button" id="btn-execute-swap" class="btn-primary">Revisar troca</button>
+                <button type="button" id="btn-execute-swap" class="btn-primary sx-go">Revisar troca</button>
                 <div id="swap-feedback" class="feedback-text" role="status"></div>
             </div>
         </section>

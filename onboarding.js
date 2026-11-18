@@ -260,6 +260,7 @@
                 <button type="button" data-m="learn"><span>🎓</span>Aprender com a Duda</button>
                 <button type="button" data-m="tutorial"><span>👋</span>Rever as boas-vindas</button>
                 <button type="button" data-m="security"><span>🛡️</span>Como sua carteira é protegida</button>
+                <a class="menu-link" href="./tails.html" data-m="tails"><span>🧅</span>Usar no Tails e no Tor</a>
                 <button type="button" data-m="render"><span>📈</span>Como o Render funciona</button>
                 ${canInstall ? '<button type="button" data-m="install"><span>📲</span>Instalar no celular</button>' : ''}
                 <p class="muted-sm">RDESK é um app aberto: o código está no GitHub e roda só no seu aparelho.</p>

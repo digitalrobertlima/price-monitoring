@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta name="referrer" content="no-referrer">
+    <title>Usar o cofre no Tails e no Tor</title>
+    <link rel="stylesheet" href="fonts/fonts.css">
+    <style>
+        body { margin: 0; background: #0b0f15; color: #e2e8f0; font: 17px/1.55 Inter, system-ui, sans-serif; }
+        main { max-width: 680px; margin: 0 auto; padding: 28px 20px 60px; }
+        h1 { font: 800 1.8rem/1.2 'Plus Jakarta Sans', Inter, sans-serif; margin: 0 0 6px; }
+        h2 { font: 800 1.2rem/1.3 'Plus Jakarta Sans', Inter, sans-serif; margin: 30px 0 8px; color: #ffb35c; }
+        .lead { color: #94a3b8; margin: 0 0 18px; }
+        ol { padding-left: 1.3em; } li { margin: 8px 0; }
+        .card { border-radius: 16px; padding: 14px 16px; margin: 14px 0; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+        .ok { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.07); }
+        .warn { border-color: rgba(250,204,21,.35); background: rgba(250,204,21,.06); }
+        .bad { border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.07); }
+        code { background: rgba(255,255,255,.08); padding: 2px 6px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: .9em; word-break: break-all; }
+        a { color: #ffb35c; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>🧅 Usar o cofre no Tails e no Tor</h1>
+    <p class="lead">Para quem precisa de mais privacidade: o cofre funciona dentro do Tor Browser e também aberto direto de um pendrive com Tails, sem instalar nada.</p>
+
+    <div class="card ok"><b>O que o Tor protege:</b> quem vê a sua internet não sabe que você usa o cofre, e os servidores que o cofre consulta não veem o seu endereço de internet (IP) verdadeiro.</div>
+    <div class="card bad"><b>O que o Tor NÃO protege:</b> a blockchain é pública. Quem souber o endereço da sua carteira vê o saldo e as transações, use você Tor ou não. Hoje o seu endereço Bitcoin no cofre é sempre o mesmo, então não divulgue ele.</div>
+
+    <h2>Jeito 1 — pelo site, no Tor Browser</h2>
+    <ol>
+        <li>Abra o Tor Browser (no Tails ele já vem pronto).</li>
+        <li>Deixe o nível de segurança em <b>Padrão</b> (escudo no canto → Configurações). Nos níveis mais altos o JavaScript desliga e o cofre não abre.</li>
+        <li>Acesse <code>https://digitalrobertlima.github.io/price-monitoring/</code></li>
+        <li>Importe a sua chave (as palavras). Lembre: no Tails tudo é apagado ao desligar, então você vai importar de novo na próxima vez.</li>
+    </ol>
+
+    <h2>Jeito 2 — versão portátil no pendrive</h2>
+    <ol>
+        <li>Baixe <code>cofre-portatil.zip</code> e <code>cofre-portatil.zip.sha256</code> na página de versões do projeto: <code>https://github.com/digitalrobertlima/price-monitoring/releases/latest</code></li>
+        <li>Confira se o arquivo não foi alterado. No terminal do Tails, na pasta do download: <code>sha256sum -c cofre-portatil.zip.sha256</code> → tem que aparecer <b>OK</b>.</li>
+        <li>Guarde o zip no <b>Armazenamento Persistente</b> do Tails (pasta <code>Persistent</code>) e descompacte lá.</li>
+        <li>No Tor Browser, abra o arquivo <code>index.html</code> da pasta (arraste para a janela, ou Ctrl+O).</li>
+        <li>A versão portátil não se atualiza sozinha: para atualizar, baixe o zip novo e confira de novo.</li>
+    </ol>
+
+    <h2>Passos seguros</h2>
+    <div class="card warn">
+        <ol>
+            <li><b>Suas palavras nunca vão para a internet.</b> Nem foto, nem nuvem, nem mensagem. No Tails, guarde em papel.</li>
+            <li><b>Bitcoin na sua chave</b> é o único dinheiro do cofre que ninguém consegue congelar. Dólar e real digital (USDT, USDC, BRZ, BRLA) têm uma empresa que pode bloquear.</li>
+            <li><b>Use cofres separados:</b> um para receber de desconhecidos, outro para guardar.</li>
+            <li><b>Compra com CPF</b> (corretora, Pix numa empresa) liga o seu nome ao endereço que recebeu. Pense nisso antes.</li>
+            <li>Alguns servidores públicos das redes bloqueiam o Tor. Se um saldo não carregar, espere ou peça uma nova identidade no Tor Browser.</li>
+        </ol>
+    </div>
+    <p class="lead">O cofre não tem cadastro, não usa e-mail, não tem rastreador e não carrega nada do Google: as fontes vêm do próprio site.</p>
+    <p><a href="./index.html">← Voltar ao cofre</a></p>
+</main>
+</body>
+</html>

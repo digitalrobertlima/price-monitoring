@@ -23,11 +23,14 @@ const CORE_ASSETS = [
   './vault-door.js',
   './lessons.js',
   './learn.js',
+  './sats-trail.js',
   './history.js',
   './wallet-service.js',
   './defi-pix-service.js',
+  './swap-picker.js',
   './app.js',
   './manifest.json',
+  './fonts/fonts.css',
   './vendor/ethers-5.7.2.umd.min.js',
   './vendor/qrcode-1.0.0.min.js',
   './vendor/jsqr-1.4.0.js',
@@ -37,7 +40,8 @@ const CORE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(CORE_ASSETS))
+      // Um arquivo faltando não pode derrubar o modo offline inteiro
+      .then((cache) => Promise.all(CORE_ASSETS.map((u) => cache.add(u).catch(() => null))))
       .then(() => self.skipWaiting())
   );
 });
@@ -65,9 +69,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   // Nunca faz cache de chamadas RPC blockchain, APIs de cotação, Blockscout, BCB ou LI.FI
-  const isStaticCdn =
-    url.hostname.includes('fonts.googleapis.com') ||
-    url.hostname.includes('fonts.gstatic.com');
+  const isStaticCdn = false; // fontes agora vêm do próprio site (fonts/), sem Google
 
   const isLocalAsset = url.origin === self.location.origin;
 

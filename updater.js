@@ -79,6 +79,7 @@
     }
 
     async function check() {
+        if (!global.location.protocol.startsWith('http')) return null; // versão portátil (arquivo): sem atualização automática
         try {
             const v = await latestVersion();
             if (v && v !== CURRENT) { pending = v; tryApply(); }

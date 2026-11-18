@@ -136,7 +136,7 @@
     }
 
     // ------------------------------------------------------------------ variação em 24 h
-    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo' };
+    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo', 56: 'bsc' };
     function llamaKeyFor(b) {
         const s = String(b.symbol || '').toUpperCase();
         if (s === 'POL' || s === 'WPOL') return `polygon:${WPOL}`;
@@ -147,6 +147,7 @@
         if (s === 'BRZ') return `polygon:${BRZ}`;
         if (s === 'BRLA') return `polygon:${BRLA}`;
         if (s === 'CELO') return 'coingecko:celo';
+        if (s === 'BNB') return 'coingecko:binancecoin';
         if (b.address && CHAIN_LLAMA[b.chainId]) return `${CHAIN_LLAMA[b.chainId]}:${String(b.address).toLowerCase()}`;
         return null;
     }

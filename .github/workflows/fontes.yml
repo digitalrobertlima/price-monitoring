@@ -1,0 +1,27 @@
+# Traz as fontes para dentro do site (sem chamar o Google a cada visita). Plano grátis do GitHub Actions.
+name: Fontes do site
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths: ['tools/fontes/**', '.github/workflows/fontes.yml']
+permissions:
+  contents: write
+jobs:
+  fontes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node tools/fontes/baixar.mjs
+      - name: Gravar na branch
+        run: |
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          git add fonts
+          if git diff --cached --quiet; then echo "Fontes iguais."; exit 0; fi
+          git commit -m "Fontes servidas pelo próprio site (sem Google)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01MQvxbaWD3asFxYF8JGxcgi"
+          git pull --rebase -q || true
+          git push

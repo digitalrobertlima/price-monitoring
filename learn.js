@@ -122,7 +122,10 @@
     // =====================================================================
     let audioIndex = null;      // Set de chaves com áudio gravado
     let audioEl = null, audioCtx = null, analyser = null, lipRaf = 0, speakingWho = null;
-    fetch('./audio/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).then((list) => { audioIndex = new Set(list); }).catch(() => { audioIndex = new Set(); });
+    // Aberto de um arquivo (versão portátil / Tails): não dá para ler a lista, então tenta o áudio direto
+    const FROM_FILE = global.location.protocol === 'file:';
+    if (FROM_FILE) audioIndex = { has: () => true };
+    else fetch('./audio/index.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).then((list) => { audioIndex = new Set(list); }).catch(() => { audioIndex = new Set(); });
 
     let voice = null;
     function pickVoice() {
@@ -153,7 +156,8 @@
         audioEl.preload = 'auto';
         try {
             const AC = global.AudioContext || global.webkitAudioContext;
-            if (AC) {
+            // Em arquivo local o navegador zera o som que passa pelo analisador: toca direto (sem mexer a boca pelo volume)
+            if (AC && !FROM_FILE) {
                 audioCtx = new AC();
                 const src = audioCtx.createMediaElementSource(audioEl);
                 analyser = audioCtx.createAnalyser();
@@ -266,6 +270,18 @@
         usd2: () => `<div class="art art-two"><div class="tw usdt"><b>USDT</b><small>Tether • 2014</small><em>o maior</em></div><div class="tw usdc"><b>USDC</b><small>Circle • 2018</small><em>regras dos EUA, relatório mensal</em></div></div>`,
         brl2: () => `<div class="art art-two"><div class="tw brz"><b>BRZ</b><small>Transfero • 2019</small><em>várias redes</em></div><div class="tw brla"><b>BRLA</b><small>Avenia</small><em>Polygon e Celo</em></div></div>`,
         brlnets: () => `<div class="art art-roads"><span class="road" style="--c:#35d07f;--i:0"><b>🟢</b><em>Celo</em><i class="car">🇧🇷</i></span><span class="road" style="--c:#8247e5;--i:1"><b>⬡</b><em>Polygon</em><i class="car">🇧🇷</i></span><span class="road" style="--c:#627eea;--i:2"><b>Ξ</b><em>Ethereum e outras</em><i class="car">🇧🇷</i></span><small>Onde o real digital mais circula</small></div>`,
+        // Linhas com ícone, nome, explicação e (opcional) barrinha de 1 a 5 — usadas em várias lições
+        rows: (sc) => `<div class="art art-rows">${(sc?.rows || []).map((r) => `<div class="ar ${r[3] || ''}"><span class="ar-i">${r[0]}</span><span class="ar-t"><b>${r[1]}</b><small>${r[2] || ''}</small></span>${r[4] != null ? `<span class="ar-m" aria-label="${r[4]} de 5"><i style="width:${r[4] * 20}%"></i></span>` : ''}</div>`).join('')}</div>`,
+        satslive: () => {
+            const v = live();
+            const steps = [1000, 10000, 100000];
+            const hour = 1621 / 220; // salário mínimo 2026 (R$ 1.621) em 220 horas por mês
+            return `<div class="art art-rows">${steps.map((s) => {
+                const r = v && v.btcUsd ? (s / 1e8) * v.btcUsd * v.usdBrl : null;
+                return `<div class="ar ok"><span class="ar-i">🪙</span><span class="ar-t"><b>${s.toLocaleString('pt-BR')} satoshis</b><small>${r ? `${brl(r)} • ${fmtHours(r / hour)} de trabalho` : 'cotação carregando…'}</small></span></div>`;
+            }).join('')}</div>`;
+        },
+        trail: () => `<div class="art art-trail">${['1 mil', '10 mil', '100 mil', '1 milhão', '10 milhões', '₿ 1'].map((m, i) => `<span class="tr-s" style="--i:${i}">${m}</span>`).join('<i>›</i>')}</div>`,
         drex: () => `<div class="art art-drex"><span class="dx">🏛️<small>Drex (Banco Central)</small></span><span class="no">⏸️</span><small>Desligado em 2025: não chegou às pessoas</small></div>`
     };
     // Cotação ao vivo (do próprio app)
@@ -277,6 +293,7 @@
             return usdBrl > 0 ? { usdBrl, btcUsd: btcUsd > 0 ? btcUsd : null } : null;
         } catch (e) { return null; }
     }
+    const fmtHours = (h) => (h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${h.toLocaleString('pt-BR', { maximumFractionDigits: h < 10 ? 1 : 0 })} h`);
     const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: v >= 1000 ? 0 : 2 });
     const usd = (v) => `US$ ${Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
     function animateArt(el) {
@@ -307,7 +324,8 @@
             'create-wallet': () => W()?.openModal('add'),
             receive: () => (hasWallet() ? W()?.openView('receive') : W()?.openModal('add')),
             'tab:earn': () => goTab('earn'),
-            'buy-pix': () => W()?.openView('buy-pix')
+            'buy-pix': () => W()?.openView('buy-pix'),
+            'sats-trail': () => global.RdeskSatsTrail?.open?.()
         }[a.kind];
         return run ? { label: a.label, run } : null;
     }
@@ -383,12 +401,13 @@
         function show() {
             const sc = scenes[i];
             stage.querySelector('#ls-bar').style.width = `${((i + 1) / scenes.length) * 100}%`;
-            if (sc.art !== lastArt) {
+            const artKey = sc.rows ? `${sc.art}:${JSON.stringify(sc.rows)}` : sc.art; // desenhos com dados próprios mudam a cada cena
+            if (artKey !== lastArt) {
                 const art = stage.querySelector('#ls-art');
-                art.innerHTML = (ART[sc.art] || ART.hello)();
+                art.innerHTML = (ART[sc.art] || ART.hello)(sc);
                 art.classList.remove('in'); void art.offsetWidth; art.classList.add('in');
                 animateArt(art);
-                lastArt = sc.art;
+                lastArt = artKey;
             }
             const bubble = stage.querySelector('#ls-bubble');
             bubble.innerHTML = `<span class="who">${sc.who === 'bit' ? 'Bit' : 'Duda'}</span>${esc(sc.say)}${sc.quiz ? `<b class="q">${esc(sc.quiz.q)}</b>` : ''}`;

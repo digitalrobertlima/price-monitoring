@@ -22,7 +22,9 @@
         { id: 10, key: 'optimism', name: 'Optimism', short: 'OP', color: '#ff0420', native: 'ETH', explorer: 'https://optimistic.etherscan.io', llama: 'optimism',
           rpcs: ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com'] },
         { id: 42220, key: 'celo', name: 'Celo', short: 'CELO', color: '#35d07f', native: 'CELO', explorer: 'https://celoscan.io', llama: 'celo',
-          rpcs: ['https://forno.celo.org', 'https://celo.drpc.org'] }
+          rpcs: ['https://forno.celo.org', 'https://celo.drpc.org'] },
+        { id: 56, key: 'bnb', name: 'BNB Chain', short: 'BNB', color: '#f0b90b', native: 'BNB', explorer: 'https://bscscan.com', llama: 'bsc',
+          rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-rpc.publicnode.com', 'https://bsc.drpc.org'] }
     ];
 
     // Rede Bitcoin (não é EVM: tratada pelo módulo bitcoin.js)
@@ -50,7 +52,8 @@
         8453: [
             { symbol: 'ETH', name: 'Ether (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
             { symbol: 'WETH', name: 'Ether embrulhado', address: '0x4200000000000000000000000000000000000006', decimals: 18, priceKey: 'ETH' },
-            { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, priceKey: 'USD' }
+            { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6, priceKey: 'USD' },
+            { symbol: 'BRZ', name: 'Brazilian Digital Token', address: '0xE9185Ee218cae427aF7B9764A011bb89FeA761B4', decimals: 18, priceKey: 'BRL' }
         ],
         42161: [
             { symbol: 'ETH', name: 'Ether (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'ETH' },
@@ -68,7 +71,13 @@
         42220: [
             { symbol: 'CELO', name: 'Celo (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'CELO' },
             { symbol: 'USDT', name: 'Tether USD', address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e', decimals: 6, priceKey: 'USD' },
-            { symbol: 'USDC', name: 'USD Coin', address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', decimals: 6, priceKey: 'USD' }
+            { symbol: 'USDC', name: 'USD Coin', address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', decimals: 6, priceKey: 'USD' },
+            { symbol: 'BRLA', name: 'BRLA Digital', address: '0xFECB3F7c54E2CAAE9dC6Ac9060A822D47E053760', decimals: 18, priceKey: 'BRL' }
+        ],
+        56: [
+            { symbol: 'BNB', name: 'BNB (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'BNB' },
+            { symbol: 'USDT', name: 'Tether USD', address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18, priceKey: 'USD' },
+            { symbol: 'USDC', name: 'USD Coin', address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18, priceKey: 'USD' }
         ]
     };
 
@@ -84,7 +93,8 @@
         USDC: { bg: '#2775ca', fg: '#ffffff', glyph: '$' },
         BRZ: { bg: '#0f7a3d', fg: '#ffe14d', glyph: 'R$' },
         BRLA: { bg: '#f4c20d', fg: '#0d3b1e', glyph: 'R$' },
-        CELO: { bg: '#fcff52', fg: '#1a1a05', glyph: 'C' }
+        CELO: { bg: '#fcff52', fg: '#1a1a05', glyph: 'C' },
+        BNB: { bg: '#f0b90b', fg: '#1a1405', glyph: 'B' }
     };
 
     function esc(value) {
@@ -218,7 +228,8 @@
         8453: { level: 'young', since: 2023, label: 'Rede jovem', note: 'Rede de 2023, controlada por uma empresa (Coinbase). Prática, mas ainda nova. Use para movimentar, não para guardar tudo.' },
         42161: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
         10: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
-        42220: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 com pouco uso e liquidez. Mais riscos que as redes grandes.' }
+        42220: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 com pouco uso e liquidez. Mais riscos que as redes grandes.' },
+        56: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 ligada à corretora Binance, com poucos validadores. Muito usada e barata, mas centralizada. Use para movimentar, não para guardar tudo.' }
     };
     const maturity = (chainId) => MATURITY[chainId === 'btc' || chainId === 'BTC' ? 'btc' : Number(chainId)] || { level: 'young', label: 'Rede jovem', note: 'Rede nova: mais riscos.' };
     function maturityBadge(chainId) {
