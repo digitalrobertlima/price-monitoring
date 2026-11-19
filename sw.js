@@ -62,7 +62,8 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) =>
         Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+          // só os caches deste app (o domínio é dividido com outros sites)
+          keys.filter((key) => key.startsWith('rdesk-') && key !== CACHE_NAME).map((key) => caches.delete(key))
         )
       )
       .then(() => self.clients.claim())
@@ -86,7 +87,7 @@ self.addEventListener('fetch', (event) => {
   // Network-First: baixa sempre a versão mais recente do GitHub Pages com fallback offline
   // version.js nunca vem de cache (é por ele que o app descobre a versão nova)
   if (isLocalAsset && url.pathname.endsWith('/version.js')) {
-    event.respondWith(fetch(req, { cache: 'no-store' }).catch(() => caches.match(req)));
+    event.respondWith(fetch(req, { cache: 'no-store' }).catch(() => caches.open(CACHE_NAME).then((c) => c.match(req))));
     return;
   }
   // Arquivos do app: sempre pergunta ao servidor se mudou (sem usar cache do navegador)
@@ -102,6 +103,6 @@ self.addEventListener('fetch', (event) => {
         }
         return networkRes;
       })
-      .catch(() => caches.match(req))
+      .catch(() => caches.open(CACHE_NAME).then((c) => c.match(req)))
   );
 });

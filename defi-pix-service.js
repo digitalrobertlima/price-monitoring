@@ -1012,6 +1012,10 @@
         const spender = data.estimate?.approvalAddress;
         if (!fromNative && lc(spender) !== LIFI_DIAMOND) throw new Error('A rota pede autorização para um contrato desconhecido. Cancelada.');
         if (tr.chainId && Number(tr.chainId) !== Number(fromChain)) throw new Error('A rota é de outra rede. Cancelada.');
+        const est = data.estimate || {};
+        if (est.toAmountMin && est.toAmount && ethers.BigNumber.from(est.toAmountMin).lt(ethers.BigNumber.from(est.toAmount).mul(95).div(100))) {
+            throw new Error('A rota aceitaria receber bem menos do que o prometido. Cancelada.');
+        }
         const value = ethers.BigNumber.from(tr.value || '0');
         if (fromNative) {
             if (value.gt(rawIn.mul(1005).div(1000))) throw new Error('A rota cobraria mais do que você digitou. Cancelada.');
@@ -1594,7 +1598,7 @@
         const usdBrl = prices.USD_BRL || 5.65;
 
         // 1. Comprar com PIX (R$ -> Cripto)
-        const buyBrl = parseFloat(document.getElementById('pix-buy-brl')?.value) || 0;
+        const buyBrl = REG.parseBRL(document.getElementById('pix-buy-brl')?.value) || 0;
         const buySym = document.getElementById('pix-buy-token')?.value || 'USDT';
         const buyContainer = document.getElementById('pix-buy-routes');
 
@@ -1631,7 +1635,7 @@
 
         // 2. Sacar para Banco via PIX (Cripto -> R$)
         const sellSym = document.getElementById('pix-sell-token')?.value || 'USDT';
-        const sellAmt = parseFloat(document.getElementById('pix-sell-amount')?.value) || 0;
+        const sellAmt = parseFloat(String(document.getElementById('pix-sell-amount')?.value || '').replace(',', '.')) || 0;
         const sellContainer = document.getElementById('pix-sell-routes');
 
         if (sellContainer) {

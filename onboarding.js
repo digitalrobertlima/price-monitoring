@@ -87,7 +87,7 @@
         {
             art: '<span class="paper">1 casa&nbsp;&nbsp;2 lua<br>3 rio&nbsp;&nbsp;&nbsp;4 pão<br>…&nbsp;&nbsp;12 sol</span>',
             title: 'Você é o dono. E o responsável.',
-            text: 'Sua carteira é protegida por <strong>12 palavras</strong>. Quem tem as palavras tem o dinheiro. Anote no papel e guarde bem: se perder, ninguém consegue recuperar.'
+            text: 'Sua carteira é protegida por <strong>12 palavras</strong> (ou 24, se você escolher). Quem tem as palavras tem o dinheiro. Anote no papel e guarde bem: se perder, ninguém consegue recuperar.'
         },
         {
             art: '<span class="coin c1 big">₿</span>',
@@ -234,10 +234,10 @@
         security: `
             <h2>Como sua carteira é protegida</h2>
             <ul class="explain-list">
-                <li>As 12 palavras ficam <strong>cifradas neste aparelho</strong> com a sua senha. Nada vai para servidor nenhum.</li>
+                <li>As suas palavras ficam <strong>cifradas neste aparelho</strong> com a sua senha. Nada vai para servidor nenhum.</li>
                 <li>A carteira se <strong>tranca sozinha</strong> depois de 10 minutos sem uso.</li>
                 <li>Antes de qualquer envio, troca ou render, o app mostra um <strong>recibo em reais</strong> para você conferir.</li>
-                <li>Se limpar os dados do navegador ou trocar de celular, você só entra de novo com as 12 palavras.</li>
+                <li>Se limpar os dados do navegador ou trocar de celular, você só entra de novo com as suas palavras.</li>
             </ul>`
     };
     function explain(id) {

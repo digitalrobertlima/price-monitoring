@@ -10,7 +10,7 @@ try {
     const { page, pageErrors, cspViolations } = await openApp(ctx, url, { 137: new MockChain({}) }, {});
     const open = async () => {
         await page.evaluate(() => window.RdeskWallet.openModal('add'));
-        await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Já tenho minhas 12 palavras' }).click();
+        await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Já tenho minhas palavras' }).click();
         await page.waitForSelector('.sg-cell input');
     };
     await open();

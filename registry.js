@@ -272,8 +272,9 @@
     // Valores em reais do jeito brasileiro: "1.234,56", "R$ 10", "0,5"
     function parseBRL(text) {
         let s = String(text || '').replace(/R\$|\s/g, '');
-        if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
-        return /^\d*\.?\d+$/.test(s) ? Number(s) : null;
+        if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');           // 1.234,56
+        else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');        // 1.234 = mil duzentos e trinta e quatro
+        return /^\d*\.?\d+$/.test(s) ? Number(s) : null;                          // 10.50 = dez e cinquenta
     }
     // Quantidade de moeda equivalente a um valor em reais (texto com ponto, sem zeros sobrando)
     function coinFromBrl(brl, unitUsd, usdBrl, decimals) {

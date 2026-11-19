@@ -100,7 +100,7 @@ try {
     // ---------------------------------------------------------------- importar com senha extra
     await page.waitForSelector('#vault-screen', { state: 'hidden', timeout: 10000 });
     await page.evaluate(() => window.RdeskWallet.openModal('add'));
-    await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Já tenho minhas 12 palavras' }).click();
+    await page.locator('#rdesk-mw-sheet .rmw-opt-btn', { hasText: 'Já tenho minhas palavras' }).click();
     const m12 = ethers.Wallet.createRandom().mnemonic.phrase;
     await page.fill('#rmw-f-seed-input', m12);
     await page.click('#rdesk-mw-sheet .more-opts > summary');
