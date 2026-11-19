@@ -217,8 +217,9 @@
                 const name = $('#rmw-pix-name').value.trim();
                 if (!name) throw new Error('Digite seu nome.');
                 const city = $('#rmw-pix-city').value.trim();
-                const amtTxt = $('#rmw-pix-amt').value.trim().replace(/\./g, '').replace(',', '.');
-                const amount = amtTxt ? Number(amtTxt) : undefined;
+                const amtTxt = $('#rmw-pix-amt').value.trim();
+                const amount = amtTxt ? REG.parseBRL(amtTxt) : undefined;
+                if (amtTxt && !(amount > 0)) throw new Error('Valor inválido. Exemplos: 25 ou 25,50');
                 const code = P.buildPayload({ key, name, city, amount, description: $('#rmw-pix-desc').value.trim() });
                 if ($('#rmw-pix-save').checked) localStorage.setItem(PIX_KEY, JSON.stringify({ type, raw, name, city }));
                 else localStorage.removeItem(PIX_KEY);
@@ -432,6 +433,15 @@
                 return;
             }
             if (p.kind === 'evm') {
+                // Cobrança de uma moeda específica: já escolhe essa moeda (se o app conhece o contrato)
+                if (p.tokenAddress) {
+                    const cid = p.chainId && REG.getChain(p.chainId) ? p.chainId : chainId;
+                    const tok = (REG.getTokens(cid) || []).find((t) => t.address && t.address.toLowerCase() === p.tokenAddress.toLowerCase());
+                    if (!tok) return showErr('Este QR pede uma moeda que o app não conhece nesta rede. Adicione a moeda antes ou confira com quem cobrou.');
+                    if (cid !== chainId || tok.symbol !== token.symbol) return ctx.navigate('send', { ...keep(), chainId: cid, symbol: tok.symbol, to: p.address });
+                    $('#rmw-snd-to').value = p.address;
+                    return;
+                }
                 if (isBtc) return ctx.navigate('send', { chainId: p.chainId && REG.getChain(p.chainId) ? p.chainId : 137, to: p.address });
                 if (p.chainId && p.chainId !== chainId && REG.getChain(p.chainId)) return ctx.navigate('send', { ...keep(), chainId: p.chainId, symbol: undefined, to: p.address });
                 $('#rmw-snd-to').value = p.address;
@@ -541,6 +551,8 @@
                 if (REG.getTokens(chainId).some((t) => t.address && t.address.toLowerCase() === dest.toLowerCase())) {
                     throw new Error('O destino é o contrato de uma moeda, não uma carteira. Envio bloqueado.');
                 }
+                const [, frac = ''] = amtStr.split('.');
+                if (frac.length > token.decimals) throw new Error(`${token.symbol} aceita no máximo ${token.decimals} casas depois da vírgula.`);
                 const amountWei = global.ethers.utils.parseUnits(amtStr, token.decimals);
                 const chainName = REG.getChain(chainId).name;
 

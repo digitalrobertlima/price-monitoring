@@ -174,6 +174,15 @@
         set: (hidden) => { try { localStorage.setItem(HIDE_KEY, hidden ? '1' : '0'); } catch (e) {} applyBalancePrivacy(Boolean(hidden)); }
     };
 
+    // Ninguém pode abrir o cofre dentro de uma moldura (iframe) e enganar o toque por cima dele.
+    // (O GitHub Pages não deixa mandar o cabeçalho que bloqueia isso; então o próprio app se recusa.)
+    let framed = false;
+    try { framed = window.top !== window.self; } catch (e) { framed = true; }
+    if (framed) {
+        document.documentElement.style.display = 'none';
+        try { window.top.location = window.location.href; } catch (e) { /* bloqueado: segue escondido */ }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         applyBalancePrivacy(readBalancePrivacy());
         document.getElementById('btn-toggle-balances')?.addEventListener('click', () => window.RdeskPrivacy.set(!window.RdeskPrivacy.isHidden()));

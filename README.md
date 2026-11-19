@@ -68,7 +68,10 @@ Só cobra onde o app agrega valor: trocas (sobre o valor trocado) e Render (só 
 - Sem o backup em papel das palavras, limpar os dados do navegador significa perder a carteira.
 - Use como **carteira operacional**, só com o valor que está nas pools.
 - O endereço `github.io` é compartilhado por todos os repositórios publicados da conta: outra página sua publicada ali consegue ler o armazenamento desta.
-- Nenhum script de terceiros é carregado (bibliotecas em `vendor/` com hash de integridade, política CSP `script-src 'self'`). As fontes vêm do Google Fonts.
+- Nenhum script de terceiros é carregado (bibliotecas em `vendor/` com hash de integridade, política CSP `script-src 'self'`). As fontes ficam no próprio site (`fonts/`).
+- PIN/senha: 5 tentativas livres; depois o app faz esperar (30 s, dobrando até 1 h), mesmo recarregando a página. Um PIN de 6 números protege de quem pega o celular; contra quem copia os arquivos do aparelho, uma senha longa é mais forte.
+- O cofre se recusa a funcionar dentro de moldura (iframe) de outro site, e "Apagar tudo" apaga só os dados deste app.
+- Revisão completa de segurança na v42; cada correção tem verificação em `tests/seguranca.mjs`.
 
 ## Arquivos
 

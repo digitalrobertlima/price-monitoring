@@ -114,14 +114,20 @@
     // A fonte de preços às vezes devolve um dia absurdo (pico de um dia só). Um dia que foge mais de 40%
     // dos DOIS vizinhos, para o mesmo lado, é erro da fonte: vale a média dos vizinhos. Sem isso o gráfico
     // mostrava um patrimônio que nunca existiu.
+    // Preço errado do serviço de histórico (às vezes vários dias seguidos): compara cada dia com a
+    // mediana da semana em volta (3 antes, 3 depois). Até 3 dias errados em sequência são corrigidos.
     function despike(byDay) {
         const keys = Object.keys(byDay).sort();
-        for (let i = 1; i < keys.length - 1; i++) {
-            const a = byDay[keys[i - 1]], b = byDay[keys[i]], c = byDay[keys[i + 1]];
-            if (!(a > 0 && b > 0 && c > 0)) continue;
-            const up = b > a * 1.4 && b > c * 1.4, down = b < a / 1.4 && b < c / 1.4;
-            if (up || down) byDay[keys[i]] = (a + c) / 2;
-        }
+        const vals = keys.map((k) => byDay[k]);
+        const median = (arr) => { const s = arr.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+        keys.forEach((k, i) => {
+            const v = vals[i];
+            if (!(v > 0)) return;
+            const win = vals.slice(Math.max(0, i - 3), i + 4).filter((x) => x > 0);
+            if (win.length < 5) return;
+            const med = median(win);
+            if (v > med * 1.4 || v < med / 1.4) byDay[k] = med;
+        });
         return byDay;
     }
     async function loadPriceSeries(fromUnix) {
@@ -917,13 +923,15 @@
     }
 
     function exportCsv() {
+        // Célula segura para planilha: aspas dobradas e nada que comece como fórmula (=, +, -, @)
+        const cell = (v) => { let t = String(v ?? '').replace(/[\r\n]+/g, ' '); if (/^[=+\-@\t]/.test(t)) t = "'" + t; return /[;"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
         const lines = [['data', 'hora', 'tipo', 'descricao', 'classificacao', 'valor_brl_na_data', `valor_${REFS[st.ref].unit}_na_data`, 'taxa_pol', 'hash'].join(';')];
         st.events.forEach((e) => {
             const v = valued(e);
             const usd = Math.max(v.inUsd, v.outUsd);
             const d = new Date(e.unix * 1000);
-            lines.push([v.key, d.toLocaleTimeString('pt-BR'), e.type, `"${e.title} ${e.items.map((i) => `${i.dir > 0 ? '+' : '-'}${i.amt} ${i.sym}`).join(' ')}"`, CLASS_LABEL[v.cls],
-                (usd * v.fx).toFixed(2).replace('.', ','), String(usd / v.refUsd).replace('.', ','), String(e.gasPol).replace('.', ','), e.hash].join(';'));
+            lines.push([v.key, d.toLocaleTimeString('pt-BR'), e.type, `${e.title} ${e.items.map((i) => `${i.dir > 0 ? '+' : '-'}${i.amt} ${i.sym}`).join(' ')}`, CLASS_LABEL[v.cls],
+                (usd * v.fx).toFixed(2).replace('.', ','), String(usd / v.refUsd).replace('.', ','), String(e.gasPol).replace('.', ','), e.hash].map(cell).join(';'));
         });
         const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');

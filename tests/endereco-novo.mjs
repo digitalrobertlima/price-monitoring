@@ -68,6 +68,16 @@ try {
     await page.reload({ waitUntil: 'load' });
     await unlockViaDoor(page);
     check('endereço de receber continua o novo depois de fechar e abrir o app', (await page.evaluate(() => window.RdeskWallet.getBitcoinAddress())) === EXT3);
+    // Pular endereços tem limite: quem restaurar as palavras em outro aparelho precisa enxergar todos
+    const gap = await page.evaluate(async () => {
+        const got = [];
+        for (let i = 0; i < 4; i++) { try { got.push(await window.RdeskWallet.newBitcoinAddress()); } catch (e) { got.push('ERRO: ' + e.message); } }
+        return got;
+    });
+    check('"endereço novo" para antes de sair da área que a restauração vigia', gap.slice(0, 2).every((a) => a.startsWith('bc1')) && gap[3].startsWith('ERRO') && /restaurar/.test(gap[3]), gap.join(' | '));
+    const lastOk = gap.filter((a) => a.startsWith('bc1')).at(-1);
+    const restoreWindow = [2, 3, 4, 5].map((i) => at(0, i)); // usado até o índice 1 -> restauração vigia 2..5
+    check('o último endereço novo ainda está dentro da área vigiada ao restaurar', restoreWindow.includes(lastOk), lastOk);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
 } catch (err) {
     check('execução do teste sem exceções', false, err.stack || String(err));

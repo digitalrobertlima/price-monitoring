@@ -34,15 +34,27 @@
     }
 
     // Apaga tudo o que o app guardou neste aparelho (só as palavras recuperam o cofre)
+    // Só o que é deste app: no mesmo endereço (digitalrobertlima.github.io) moram outros sites,
+    // e eles não podem perder os dados deles quando alguém apaga o cofre.
+    const OUR_DBS = ['rdesk_vault_backup'];
+    const scope = () => new URL('./', global.location.href).href;
     async function wipeAll() {
-        try { localStorage.clear(); } catch (e) {}
-        try { sessionStorage.clear(); } catch (e) {}
         try {
-            const dbs = indexedDB.databases ? await indexedDB.databases() : [{ name: 'rdesk_vault_backup' }];
-            await Promise.all(dbs.map((d) => d.name && new Promise((res) => { const r = indexedDB.deleteDatabase(d.name); r.onsuccess = r.onerror = r.onblocked = () => res(); })));
+            Object.keys(localStorage).filter((k) => /^rdesk/i.test(k)).forEach((k) => localStorage.removeItem(k));
         } catch (e) {}
-        try { if (global.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } } catch (e) {}
-        try { if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((r) => r.unregister())); } } catch (e) {}
+        try {
+            Object.keys(sessionStorage).filter((k) => /^rdesk/i.test(k)).forEach((k) => sessionStorage.removeItem(k));
+        } catch (e) {}
+        try {
+            await Promise.all(OUR_DBS.map((name) => new Promise((res) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = r.onerror = r.onblocked = () => res(); })));
+        } catch (e) {}
+        try { if (global.caches) { const ks = await caches.keys(); await Promise.all(ks.filter((k) => k.startsWith('rdesk-')).map((k) => caches.delete(k))); } } catch (e) {}
+        try {
+            if (navigator.serviceWorker) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.filter((r) => r.scope === scope()).map((r) => r.unregister()));
+            }
+        } catch (e) {}
     }
 
     function open() {

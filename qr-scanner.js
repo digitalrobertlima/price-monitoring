@@ -26,8 +26,21 @@
         }
 
         // ethereum:0xabc…@137  |  ethereum:pay-0xabc…  |  eip155:137:0xabc…
-        const evm = raw.match(/^(?:ethereum|polygon|arbitrum|base|optimism|celo):(?:pay-)?(0x[0-9a-fA-F]{40})(?:@(\d+))?/i);
-        if (evm) return { ...out, kind: 'evm', address: evm[1], chainId: evm[2] ? Number(evm[2]) : null };
+        // Cobrança de token (EIP-681): ethereum:0xCONTRATO@137/transfer?address=0xDESTINO&uint256=…
+        // Aí o primeiro endereço é o CONTRATO da moeda; quem recebe é o "address=". Mandar para o contrato queimaria o dinheiro.
+        const evm = raw.match(/^(?:ethereum|polygon|arbitrum|base|optimism|celo|bnb|bsc):(?:pay-)?(0x[0-9a-fA-F]{40})(?:@(\d+))?(\/[a-zA-Z]+)?(\?.*)?$/i);
+        if (evm) {
+            const chainId = evm[2] ? Number(evm[2]) : null;
+            const fn = (evm[3] || '').slice(1).toLowerCase();
+            const qs = new URLSearchParams((evm[4] || '').slice(1));
+            if (fn === 'transfer') {
+                const to = qs.get('address') || '';
+                if (!/^0x[0-9a-fA-F]{40}$/.test(to)) return { ...out, kind: 'text' }; // pedido de token sem destinatário: não adivinha
+                return { ...out, kind: 'evm', address: to, chainId, tokenAddress: evm[1] };
+            }
+            if (fn) return { ...out, kind: 'text' }; // outra função de contrato: não é um endereço para envio
+            return { ...out, kind: 'evm', address: evm[1], chainId };
+        }
         const caip = raw.match(/^eip155:(\d+):(0x[0-9a-fA-F]{40})$/i);
         if (caip) return { ...out, kind: 'evm', address: caip[2], chainId: Number(caip[1]) };
 

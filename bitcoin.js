@@ -464,13 +464,20 @@
         return list.map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, confirmed: Boolean(u.status?.confirmed) }));
     }
     // Taxa em sat/vB: { fast, normal, slow }
+    // Sempre inteiros entre 1 e o limite seguro, venha o que vier do servidor (a tela mostra estes números)
+    const cleanRate = (x, fallback) => { const n = Math.ceil(Number(x)); return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_FEE_RATE) : fallback; };
+    function cleanRates(fast, normal, slow) {
+        const s = cleanRate(slow, 1), n = Math.max(s, cleanRate(normal, s)), f = Math.max(n, cleanRate(fast, n));
+        return { fast: f, normal: n, slow: s };
+    }
     async function fetchFeeRates() {
         try {
             const r = JSON.parse(await (await fetch(`${API_HOSTS[0]}/v1/fees/recommended`, { cache: 'no-store' })).text());
-            return { fast: r.fastestFee, normal: r.halfHourFee, slow: Math.max(r.economyFee, r.minimumFee, 1) };
+            if (!(Number(r.halfHourFee) > 0)) throw new Error('sem taxas');
+            return cleanRates(r.fastestFee, r.halfHourFee, Math.max(Number(r.economyFee) || 0, Number(r.minimumFee) || 0, 1));
         } catch (e) {
             const r = JSON.parse(await api('/fee-estimates'));
-            return { fast: Math.ceil(r['1'] || 20), normal: Math.ceil(r['3'] || 10), slow: Math.ceil(r['144'] || 2) };
+            return cleanRates(r['1'] || 20, r['3'] || 10, r['144'] || 2);
         }
     }
     async function broadcast(hex) {

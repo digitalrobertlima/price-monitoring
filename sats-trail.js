@@ -117,7 +117,7 @@
         wrap.querySelector('.st-x').onclick = close;
         wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
         wrap.querySelector('#st-income').addEventListener('change', (e) => {
-            const v = Number(String(e.target.value).replace(/\./g, '').replace(',', '.'));
+            const v = global.RdeskRegistry?.parseBRL ? (global.RdeskRegistry.parseBRL(e.target.value) || 0) : Number(String(e.target.value).replace(/\./g, '').replace(',', '.'));
             const s = load(); const nv = v > 0 && v < 1e7 ? v : MIN_WAGE;
             if (nv === Number(s.monthly)) return;
             s.monthly = nv; save(s);

@@ -136,6 +136,7 @@ async function webhook(req, env) {
     const raw = orderId && await env.ORDERS.get(`order:${orderId}`);
     if (!raw) return json({ ok: true });
     const order = JSON.parse(raw);
+    if (order.paymentId && String(payment.id) !== String(order.paymentId)) return json({ ok: true }); // aviso de outro pagamento
     if (payment.status !== 'approved') {
         if (['cancelled', 'rejected', 'refunded', 'expired'].includes(payment.status)) {
             order.status = 'expired';
@@ -187,7 +188,8 @@ export default {
             if (req.method === 'POST' && url.pathname === '/pix/webhook') return webhook(req, env);
             return json({ error: 'não encontrado' }, 404, headers);
         } catch (err) {
-            return json({ error: 'Falha no servidor. Tente de novo.', detail: String(err.message || err).slice(0, 160) }, 502, headers);
+            console.error(err); // detalhes ficam no log do servidor, não vão para quem chamou
+            return json({ error: 'Falha no servidor. Tente de novo.' }, 502, headers);
         }
     }
 };

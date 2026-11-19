@@ -43,7 +43,7 @@ try {
 
     await page.click('#btn-wallet-trigger');
     const firstMenu = await sheetText(page);
-    check('primeira tela: duas escolhas grandes e simples', /Criar meu cofre/.test(firstMenu) && /Já tenho minhas 12 palavras/.test(firstMenu), firstMenu.slice(0, 160));
+    check('primeira tela: duas escolhas grandes e simples', /Criar meu cofre/.test(firstMenu) && /Já tenho minhas palavras/.test(firstMenu), firstMenu.slice(0, 160));
     await page.click('.more-opts > summary');
     const addMenu = await sheetText(page);
     check('"Mais opções" guarda importar chave, Rabby e observação',

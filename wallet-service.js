@@ -573,10 +573,34 @@
         return true;
     }
 
+    // Tentativas erradas seguidas: as 5 primeiras são livres; depois, espera que dobra (30 s, 1 min, 2 min… até 1 h).
+    // Fica gravado no aparelho, então recarregar a página não zera a contagem.
+    const FAIL_KEY = 'rdesk_unlock_fails_v1';
+    const FREE_TRIES = 5;
+    const readFails = () => { try { const f = JSON.parse(localStorage.getItem(FAIL_KEY) || 'null'); return f && Number.isFinite(f.n) ? f : { n: 0, until: 0 }; } catch (e) { return { n: 0, until: 0 }; } };
+    const writeFails = (f) => { try { if (f.n) localStorage.setItem(FAIL_KEY, JSON.stringify(f)); else localStorage.removeItem(FAIL_KEY); } catch (e) {} };
+    function waitText(ms) {
+        const s = Math.ceil(ms / 1000);
+        return s < 60 ? `${s} segundos` : `${Math.ceil(s / 60)} minuto${Math.ceil(s / 60) > 1 ? 's' : ''}`;
+    }
+    function unlockWaitMs() { return Math.max(0, readFails().until - Date.now()); }
+
     async function unlockVaultWithPassword(password) {
         const meta = readVaultMetaFromStorage();
         if (!meta || !meta.encryptedSecrets) throw new Error('Nenhum cofre local encontrado.');
-        const secrets = await decryptSecretsPayload(meta.encryptedSecrets, password);
+        const wait = unlockWaitMs();
+        if (wait > 0) throw new Error(`Muitas tentativas erradas. Espere ${waitText(wait)} para tentar de novo.`);
+        let secrets;
+        try {
+            secrets = await decryptSecretsPayload(meta.encryptedSecrets, password);
+        } catch (err) {
+            const f = readFails();
+            f.n += 1;
+            if (f.n >= FREE_TRIES) f.until = Date.now() + Math.min(60 * 60 * 1000, 30000 * 2 ** (f.n - FREE_TRIES));
+            writeFails(f);
+            throw err;
+        }
+        writeFails({ n: 0, until: 0 });
         state.unlockedSecrets = {
             masterSeedMap: secrets.masterSeedMap || {},
             passphraseMap: secrets.passphraseMap || {},
@@ -610,6 +634,14 @@
         }, window.RdeskAnon?.autoLockMs?.() || AUTO_LOCK_MS); // modo anônimo: 2 min
     }
     ['pointerdown', 'keydown'].forEach((evt) => window.addEventListener(evt, touchAutoLock, { passive: true }));
+    // Celular no bolso: o relógio do navegador pode pausar. Ao voltar, confere quanto tempo passou de verdade.
+    let hiddenAt = 0;
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { hiddenAt = Date.now(); return; }
+        const limit = window.RdeskAnon?.autoLockMs?.() || AUTO_LOCK_MS;
+        if (hiddenAt && state.unlockedSecrets && Date.now() - hiddenAt >= limit) lockVaultNow();
+        hiddenAt = 0;
+    });
 
     // =========================================================================
     // 5. OPERAÇÕES MULTI-CARTEIRA
@@ -845,7 +877,9 @@
         btcExtend(acc);
         const hd = acc.btcHd;
         const used = Math.max(0, ...hd.ext.filter((x) => (state.btcPerAddr[x.a]?.txCount || 0) > 0).map((x) => x.i + 1));
-        if (hd.extNext - used >= 12) throw new Error('Já existem vários endereços novos sem uso. Use um deles antes de gerar outro.');
+        // A restauração das palavras vigia BTC_GAP endereços à frente do último usado: não deixa pular além disso,
+        // senão um pagamento num endereço "pulado" ficaria invisível ao restaurar em outro aparelho.
+        if (hd.extNext - used >= BTC_GAP - 1) throw new Error('Você já tem endereços novos sem uso. Use um deles antes de gerar outro (assim nada fica invisível ao restaurar suas palavras).');
         const cur = hd.ext.find((x) => x.i >= hd.extNext);
         hd.extNext = (cur ? cur.i : hd.extNext) + 1;
         btcExtend(acc);
@@ -2005,7 +2039,7 @@
             <button class="rmw-opt-btn big-choice" data-mode="import-seed">
                 <div class="rmw-opt-ico big">📜</div>
                 <div>
-                    <div>Já tenho minhas 12 palavras</div>
+                    <div>Já tenho minhas palavras (12 ou 24)</div>
                     <div class="opt-sub">Importar frase-semente (Rabby, MetaMask…)</div>
                 </div>
             </button>
@@ -2081,7 +2115,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         };
     }
@@ -2160,7 +2194,7 @@
                     <div class="ks-hero">${keySvg(12)}<div class="ks-vault-mini">🔒</div></div>
                     <h2 class="ks-title">Seu cofre precisa de uma chave</h2>
                     <div class="ks-cards">
-                        <div class="ks-card"><span class="ks-ico">🔑</span><b>A chave são 12 palavras</b><small>O app cria pra você. Você <u>não escolhe</u> nada.</small></div>
+                        <div class="ks-card"><span class="ks-ico">🔑</span><b>A chave são 12 palavras (ou 24)</b><small>O app cria pra você. Você <u>não escolhe</u> nada.</small></div>
                         <div class="ks-card"><span class="ks-ico">✍️</span><b>Escreva num papel</b><small>Na ordem, de 1 a 12.</small></div>
                         <div class="ks-card warn"><span class="ks-ico">🙈</span><b>Só você pode ver</b><small>Quem tem as palavras abre o cofre. Nunca mande foto nem print.</small></div>
                     </div>
@@ -2463,7 +2497,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         };
     }
@@ -2572,7 +2606,7 @@
                 currentView = 'list';
                 renderModal();
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         });
 
@@ -2584,7 +2618,7 @@
                 await registerDeviceBiometry(state.unlockedSecrets.password);
                 msgBox.innerHTML = `<div class="rmw-alert-ok">✅ Biometria ativada com sucesso neste dispositivo!</div>`;
             } catch (err) {
-                msgBox.innerHTML = `<div class="rmw-alert-err">${err.message}</div>`;
+                msgBox.innerHTML = `<div class="rmw-alert-err">${esc(err.message)}</div>`;
             }
         });
 
@@ -2594,7 +2628,7 @@
         const showSecretValue = (kind) => {
             const { privateKey, mnemonic } = exportAccountSecrets(acc.id);
             const value = kind === 'seed' ? mnemonic : privateKey;
-            const title = kind === 'seed' ? 'Frase-Semente (12/24 palavras)' : 'Chave Privada (0x...)';
+            const title = kind === 'seed' ? `Suas ${String(value || '').split(' ').length} palavras` : 'Chave Privada (0x...)';
             secretArea.innerHTML = `
                 <div class="rmw-secret-box">
                     <div style="font-size:0.74rem;color:#94a3b8;margin-bottom:4px;">${title} — nunca compartilhe. Some da tela em 60 segundos.</div>
@@ -2620,6 +2654,8 @@
         };
 
         // Mesmo com o cofre aberto, ver a frase ou a chave exige digitar a senha de novo.
+        const isPinVault = () => readVaultMetaFromStorage()?.lockType === 'pin';
+        let revealFails = 0;
         const revealSecret = (kind) => {
             if (!state.unlockedSecrets) {
                 msgBox.innerHTML = `<div class="rmw-alert-err">Cofre bloqueado. Desbloqueie primeiro.</div>`;
@@ -2628,17 +2664,24 @@
             msgBox.replaceChildren();
             secretArea.innerHTML = `
                 <div class="rmw-secret-box">
-                    <div style="font-size:0.8rem;color:#e2e8f0;margin-bottom:6px;">Digite a senha do cofre para ver ${kind === 'seed' ? 'a frase-semente' : 'a chave privada'}:</div>
-                    <input type="password" class="rmw-input" id="rmw-reveal-pass" placeholder="Senha do cofre" autocomplete="off">
+                    <div style="font-size:0.8rem;color:#e2e8f0;margin-bottom:6px;">Digite ${isPinVault() ? 'o PIN' : 'a senha'} do cofre para ver ${kind === 'seed' ? 'as palavras' : 'a chave privada'}:</div>
+                    <input type="password" class="rmw-input" id="rmw-reveal-pass" placeholder="${isPinVault() ? 'PIN de 6 números' : 'Senha do cofre'}" ${isPinVault() ? 'inputmode="numeric" maxlength="6"' : ''} autocomplete="off">
                     <button class="rmw-btn-primary" id="rmw-reveal-confirm" style="margin-top:8px;">Mostrar</button>
                 </div>
             `;
             const confirmReveal = () => {
                 const typed = secretArea.querySelector('#rmw-reveal-pass')?.value || '';
                 if (typed !== state.unlockedSecrets?.password) {
-                    msgBox.innerHTML = `<div class="rmw-alert-err">Senha incorreta.</div>`;
+                    revealFails += 1;
+                    if (revealFails >= 3) {
+                        revealFails = 0;
+                        lockVaultNow(); // 3 erros com o cofre aberto: tranca (quem pegou o celular aberto não fica chutando)
+                        return;
+                    }
+                    msgBox.innerHTML = `<div class="rmw-alert-err">${isPinVault() ? 'PIN errado.' : 'Senha incorreta.'} Mais ${3 - revealFails} tentativa${3 - revealFails > 1 ? 's' : ''} e o cofre tranca.</div>`;
                     return;
                 }
+                revealFails = 0;
                 try {
                     msgBox.replaceChildren();
                     showSecretValue(kind);
@@ -3217,6 +3260,7 @@
         unlockWithBiometrics: unlockWithBiometry,
         unlockWithPassword: (pwd) => unlockVaultWithPassword(pwd),
         getLockType: () => readVaultMetaFromStorage()?.lockType || 'password',
+        unlockWaitMs,
         setLockTypeForNewVault: (type) => { state.lockType = type === 'pin' ? 'pin' : 'password'; },
         isBiometryReady: () => { try { return isBiometryRegistered(); } catch (e) { return false; } },
         copyText: copyToClipboardSafe,

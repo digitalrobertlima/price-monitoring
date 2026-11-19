@@ -33,6 +33,9 @@
             return { txid, vout, value, confirmed: true };
         });
         const feeRate = Number(o.r);
+        if (!Number.isInteger(feeRate) || feeRate < 1 || feeRate > 500) throw new Error('Pedido com taxa estranha. Não assine.');
+        if (o.a !== 'max' && !(Number.isInteger(o.a) && o.a >= B().DUST_SATS)) throw new Error('Pedido com valor estranho. Não assine.');
+        if (new Set(utxos.map((u) => `${u.txid}:${u.vout}`)).size !== utxos.length) throw new Error('Pedido com moeda repetida. Não assine.');
         return { from: o.f, to: o.t, max: o.a === 'max', amount: o.a === 'max' ? 0 : Number(o.a), feeRate, utxos };
     }
     // Refaz o plano a partir do pedido (o aparelho que assina nunca confia num plano pronto)
