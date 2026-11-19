@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fundo de ponta a ponta (o Android recorta em círculo/quadrado); tudo importante fica no círculo seguro de 40% -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#1b2232"/><stop offset="1" stop-color="#0c0f16"/></radialGradient>
+    <linearGradient id="door" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#e2780c"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="168" fill="#2a1a05"/>
+  <circle cx="256" cy="256" r="160" fill="url(#door)"/>
+  <circle cx="256" cy="256" r="128" fill="none" stroke="#7a3f02" stroke-width="10" stroke-dasharray="20 14"/>
+  <g fill="#ffe2b8" opacity=".9">
+    <circle cx="256" cy="104" r="9"/><circle cx="256" cy="408" r="9"/><circle cx="104" cy="256" r="9"/><circle cx="408" cy="256" r="9"/>
+  </g>
+  <!-- ₿ desenhado (sem depender de fonte) -->
+  <g fill="#1a0f00">
+    <rect x="224" y="146" width="18" height="40" rx="4"/><rect x="262" y="146" width="18" height="40" rx="4"/>
+    <rect x="224" y="346" width="18" height="40" rx="4"/><rect x="262" y="346" width="18" height="40" rx="4"/>
+    <path fill-rule="evenodd" d="M192 172H292C330 172 350 190 350 219C350 239 339 253 321 258C345 263 359 280 359 304C359 336 335 356 292 356H192V330H212V198H192ZM250 198V252H286C304 252 313 243 313 225C313 207 304 198 286 198ZM250 278V330H292C311 330 321 321 321 304C321 287 311 278 292 278Z"/>
+  </g>
+</svg>

@@ -222,5 +222,22 @@
                 }
             } catch (e) {}
         }, 30000);
+
+        // Atalhos do ícone instalado (segurar o ícone no Android): ?aba=learn, ?acao=receber.
+        // Só valores conhecidos; depois limpa a URL para não repetir ao recarregar.
+        try {
+            const qs = new URLSearchParams(location.search);
+            const aba = qs.get('aba'), acao = qs.get('acao');
+            if (aba || acao) {
+                history.replaceState(null, '', location.pathname);
+                setTimeout(() => {
+                    if (['wallet', 'learn', 'pixswap', 'earn', 'audit'].includes(aba)) document.querySelector(`.nav-tab-btn[data-tab="${aba}"]`)?.click();
+                    if (acao === 'receber' && window.RdeskWallet) {
+                        if (window.RdeskWallet.isConnected()) window.RdeskWallet.openView('receive', { chainId: 'btc' });
+                        else window.RdeskWallet.openModal('add');
+                    }
+                }, 900);
+            }
+        } catch (e) {}
     });
 })();
