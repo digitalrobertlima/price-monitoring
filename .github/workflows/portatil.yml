@@ -20,7 +20,7 @@ jobs:
           echo "VER=$VER" >> "$GITHUB_ENV"
           mkdir -p dist/cofre
           cp index.html tails.html manifest.json sw.js version.js LICENSE *.js *.css dist/cofre/ 2>/dev/null || true
-          cp -r vendor audio fonts dist/cofre/ 2>/dev/null || true
+          cp -r vendor audio fonts icons dist/cofre/ 2>/dev/null || true
           rm -f dist/cofre/package*.json
           cd dist && zip -qr cofre-portatil.zip cofre && sha256sum cofre-portatil.zip > cofre-portatil.zip.sha256 && cat cofre-portatil.zip.sha256
       - name: Publicar na página de versões
