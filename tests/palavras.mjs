@@ -64,6 +64,10 @@ try {
     await waitFn(page, () => window.RdeskWallet.isConnected(), null, { timeout: 30000 });
     const acc = await page.evaluate(() => window.RdeskWallet.getActiveAccount());
     check('importa o cofre certo das 24 palavras', acc.address === ethers.utils.HDNode.fromMnemonic(m24).derivePath("m/44'/60'/0'/0/0").address);
+    await page.evaluate(() => window.RdeskWallet.openModal());
+    await page.waitForSelector('#rdesk-mw-sheet');
+    const badge = await page.locator('#rdesk-mw-sheet').innerText();
+    check('o selo da carteira de 24 palavras diz 24 (não 12)', /24 palavras/i.test(badge) && !/12 palavras/i.test(badge), badge.slice(0, 120));
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
 } catch (err) {
     check('execução do teste sem exceções', false, err.stack || String(err));

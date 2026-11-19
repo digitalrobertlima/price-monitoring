@@ -691,6 +691,7 @@
             existing.type = 'seed';
             existing.seedGroupId = seedGroupId;
             existing.hdIndex = Number(hdIndex) || 0;
+            existing.words = cleanPhrase.split(' ').length;
             state.activeAccountId = existing.id;
         } else {
             const acc = {
@@ -700,6 +701,7 @@
                 type: 'seed',
                 seedGroupId,
                 hdIndex: Number(hdIndex) || 0,
+                words: cleanPhrase.split(' ').length,
                 pinned: state.accounts.length === 0
             };
             state.accounts.push(acc);
@@ -1807,8 +1809,11 @@
             const isAct = activeAcc && activeAcc.id === acc.id;
             const bal = state.balancesCache[acc.address.toLowerCase()];
             const badgeClass = acc.type === 'seed' ? 'seed' : (acc.type === 'pk' ? 'pk' : (acc.type === 'rabby' ? 'rabby' : ''));
+            const seedWords = acc.type === 'seed'
+                ? (acc.words || (state.unlockedSecrets?.masterSeedMap?.[acc.seedGroupId] || '').split(' ').filter(Boolean).length || 12)
+                : 12;
             const badgeText = acc.type === 'seed'
-                ? `12 palavras${state.accounts.filter((a) => a.type === 'seed').length > 1 ? ` • nº ${(acc.hdIndex || 0) + 1}` : ''}`
+                ? `${seedWords} palavras${state.accounts.filter((a) => a.type === 'seed').length > 1 ? ` • nº ${(acc.hdIndex || 0) + 1}` : ''}`
                 : (acc.type === 'pk' ? 'Chave privada' : (acc.type === 'rabby' ? 'Rabby' : 'Só ver'));
 
             return `
@@ -1909,7 +1914,7 @@
 
             <div id="rmw-unlock-msg"></div>
 
-            <div class="ks-card" style="margin-top:14px;"><span class="ks-ico">📜</span><b>Esqueceu a senha?</b><small>Suas 12 palavras abrem tudo de novo: apague o cofre deste celular e entre com elas.</small></div>
+            <div class="ks-card" style="margin-top:14px;"><span class="ks-ico">📜</span><b>Esqueceu a senha?</b><small>Suas palavras abrem tudo de novo: apague o cofre deste celular e entre com elas.</small></div>
             <button class="rmw-btn-secondary" id="rmw-goto-add-from-unlock">＋ Adicionar outra carteira</button>
             <button class="rmw-btn-danger" id="rmw-reset-vault-btn">🗑️ Apagar o cofre deste celular</button>
         `;
