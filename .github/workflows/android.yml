@@ -148,6 +148,7 @@ jobs:
           ls android/app/build/outputs/apk/release/
           pip install --quiet --break-system-packages apksigcopier==1.1.1 || pip install --quiet apksigcopier==1.1.1
           cd "$GITHUB_WORKSPACE"
+          export PATH="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1):$PATH"
           OK=1
           for abi in universal arm64-v8a armeabi-v7a; do
             case $abi in universal) mine="dist/rdesk-$VER.apk";; arm64-v8a) mine="dist/rdesk-$VER-arm64.apk";; armeabi-v7a) mine="dist/rdesk-$VER-arm32.apk";; esac
