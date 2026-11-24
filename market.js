@@ -90,9 +90,11 @@
     async function top10() {
         return cached('top10', 60000, async () => {
             try {
-                const j = await getJson(`${CG}/coins/markets?vs_currency=brl&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h`);
+                const j0 = await getJson(`${CG}/coins/markets?vs_currency=brl&order=market_cap_desc&per_page=25&page=1&sparkline=false&price_change_percentage=24h`);
+                // Só moedas de verdade: fora versões "embrulhadas", de staking e títulos tokenizados (ex.: FIGR_HELOC)
+                const j = Array.isArray(j0) ? j0.filter((c) => !/heloc|wrapped|staked|steth|bridged|figure|tokenized|bond|treasur/i.test(`${c.id} ${c.symbol} ${c.name}`)).slice(0, 10) : null;
                 if (Array.isArray(j) && j.length >= 5) {
-                    return j.map((c) => ({ id: c.id, symbol: String(c.symbol || '').toUpperCase(), name: c.name, price: Number(c.current_price), change: Number(c.price_change_percentage_24h), mcap: Number(c.market_cap), rank: c.market_cap_rank, high: Number(c.high_24h), low: Number(c.low_24h), ath: Number(c.ath), athDate: c.ath_date, supply: Number(c.circulating_supply), max: Number(c.max_supply) }));
+                    return j.map((c, i) => ({ id: c.id, symbol: String(c.symbol || '').toUpperCase(), name: c.name, price: Number(c.current_price), change: Number(c.price_change_percentage_24h), mcap: Number(c.market_cap), rank: i + 1, high: Number(c.high_24h), low: Number(c.low_24h), ath: Number(c.ath), athDate: c.ath_date, supply: Number(c.circulating_supply), max: Number(c.max_supply) }));
                 }
             } catch (e) {}
             // Reserva: preços da DefiLlama (dólar) convertidos
