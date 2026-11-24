@@ -558,6 +558,14 @@
         const observed = global.RdeskLedger?.dayTotals?.() || {};
         let native = 0;
         const pool = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
+        // Âncoras do "cesto" do render, para não depender de detalhes que às vezes não chegam:
+        //  (1) saída seguida de um depósito novo em até 30 min = rebalanceamento: a posição antiga saiu INTEIRA;
+        //  (2) se hoje não há posição aberta (lido na rede), depois da última saída o cesto é zero.
+        const renders = st.events.filter((e) => e.type.startsWith('RENDER'));
+        const nextDeposit = new Map();
+        renders.forEach((e, i) => { const n = renders[i + 1]; if (n && n.unix - e.unix <= 1800 && n.items.some((it) => it.dir < 0)) nextDeposit.set(e.hash, true); });
+        const lastRenderOut = [...renders].reverse().find((e) => e.items.some((it) => it.dir > 0));
+        const noLpNow = Boolean(global.RdeskDefi?.positionsKnownFor?.(st.wallet)) && (global.RdeskDefi.getLivePositionsUsd() || 0) < 1;
         const byDay = new Map();
         st.events.forEach((e) => { const k = dayKey(e.unix); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
         const first = new Date(`${dayKey(st.events[0].unix)}T00:00:00Z`).getTime();
@@ -581,8 +589,10 @@
                     e.items.filter((i) => i.dir < 0).forEach((i) => { pool[i.kind] += i.amt; });
                     const backUsd = e.items.filter((i) => i.dir > 0).reduce((s, i) => s + i.amt * priceNow(i.kind), 0);
                     if (backUsd > 0 && basketUsd > 0) {
-                        const frac = backUsd / basketUsd >= 0.8 ? 1 : backUsd / basketUsd;
+                        const full = backUsd / basketUsd >= 0.8 || nextDeposit.get(e.hash) || (noLpNow && lastRenderOut && e.hash === lastRenderOut.hash);
+                        const frac = full ? 1 : backUsd / basketUsd;
                         Object.keys(pool).forEach((k) => { pool[k] *= (1 - frac); });
+                        // o depósito novo do rebalanceamento entra depois de esvaziar
                     }
                 }
                 const v = valued(e);
@@ -1089,6 +1099,7 @@
         document.getElementById('btn-ref-picker')?.addEventListener('click', openRefPicker);
         document.querySelectorAll('[data-open-ref]').forEach((b) => b.addEventListener('click', openRefPicker));
         document.getElementById('btn-open-extrato')?.addEventListener('click', () => document.querySelector('.nav-tab-btn[data-tab="audit"]')?.click());
+        global.addEventListener('rdesk:positionsRead', () => { if (st.events.length) renderAll(); });
         document.getElementById('btn-audit-refresh')?.addEventListener('click', () => { load(true); global.RdeskLedger?.refreshBitcoin?.(true); });
         document.getElementById('btn-export-audit-csv')?.addEventListener('click', exportCsv);
         document.getElementById('extrato-more')?.addEventListener('click', () => { st.shown += PAGE_SIZE; renderExtrato(); });

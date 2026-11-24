@@ -149,14 +149,7 @@
                 if (vol24 > 0) defiState.poolVol24hUsd = vol24;
             }
             // Liquidez e preço do fundo direto da rede (para a calculadora)
-            // (só lê a liquidez: não mexe no preço que as operações em andamento usam)
-            if (!(defiState.poolLiquidity > 0) && !defiState.liqTried && (!window.RdeskAnon || window.RdeskAnon.chainAllowed(137))) {
-                defiState.liqTried = true;
-                window.RdeskWallet.getReadProvider(POLYGON_ID)
-                    .then((pr) => new ethers.Contract(POOL_POL_USDT, ['function liquidity() view returns (uint128)'], pr).liquidity())
-                    .then((l) => { defiState.poolLiquidity = Number(l.toString()); renderEarnCalc(); })
-                    .catch(() => { defiState.liqTried = false; });
-            }
+            ensurePoolLiquidity();
 
             if (klinesRes && klinesRes.ok) {
                 const raw = await klinesRes.json();
@@ -350,7 +343,19 @@
         };
         return { spot, vol, sigma, inRange, poolDayUsd, usdPerDay, needUsd, min: spot * (1 - widthPct / 2), max: spot * (1 + widthPct / 2) };
     }
+    // Liquidez do fundo (só leitura: não mexe no preço que as operações em andamento usam)
+    function ensurePoolLiquidity() {
+        if (defiState.poolLiquidity > 0 || defiState.liqBusy || (defiState.liqAt && Date.now() - defiState.liqAt < 30000)) return;
+        if (window.RdeskAnon && !window.RdeskAnon.chainAllowed(137)) return;
+        defiState.liqBusy = true; defiState.liqAt = Date.now();
+        Promise.resolve(window.RdeskWallet.getReadProvider(POLYGON_ID))
+            .then((pr) => new ethers.Contract(POOL_POL_USDT, ['function liquidity() view returns (uint128)'], pr).liquidity())
+            .then((l) => { defiState.poolLiquidity = Number(l.toString()); renderEarnCalc(); })
+            .catch((e) => { defiState.liqError = String(e?.message || e).slice(0, 120); })
+            .finally(() => { defiState.liqBusy = false; });
+    }
     function renderEarnCalc() {
+        ensurePoolLiquidity();
         const box = document.getElementById('earn-calc-out');
         if (!box) return;
         const prices = window.RdeskWallet.getPrices();
@@ -521,6 +526,8 @@
             }
 
             defiState.livePositions = loaded;
+            defiState.positionsReadFor = String(addr).toLowerCase();
+            window.dispatchEvent(new CustomEvent('rdesk:positionsRead'));
             window.RdeskWallet.setLpUsdTotal(totalLpUsd);
             updateTopPoolStatusPill(spot);
             renderPositionsCards();
@@ -2037,6 +2044,8 @@
         },
         runAudit: (force = false) => runAuditSafely(force),
         getLivePositionsUsd: () => defiState.livePositions.reduce((s, p) => s + (p.totalUsd || 0), 0),
+        // Já leu as posições da carteira atual na rede? (antes disso, "zero posições" não quer dizer nada)
+        positionsKnownFor: (addr) => Boolean(defiState.positionsReadFor) && defiState.positionsReadFor === String(addr || '').toLowerCase(),
         isBusy: () => Boolean(defiState.busy),
         refreshSwapQuote: () => refreshSwapQuote(),
         getSwapQuote: () => defiState.swapQuote ? { type: defiState.swapQuote.type, amountOut: defiState.swapQuote.amountOut, routeLabel: defiState.swapQuote.routeLabel, impact: defiState.swapQuote.impact, hops: defiState.swapQuote.hops || null } : null,

@@ -223,7 +223,7 @@ try {
         while (Date.now() - t0 < 25000) { const s = window.RdeskDefi._earn.state(); if (s.poolLiquidity > 0 && s.poolVol24hUsd > 0) break; await new Promise((r) => setTimeout(r, 500)); }
         const s = window.RdeskDefi._earn.state();
         const m = window.RdeskDefi._earn.earnModel(0.08);
-        out.calc = { L: s.poolLiquidity, vol: Math.round(s.poolVol24hUsd), spot: s.poolPrice, perDay1000: m.usdPerDay(1000), need1day: m.needUsd(1), poolDay: m.poolDayUsd };
+        out.calc = { L: s.poolLiquidity || 0, liqError: s.liqError || "", vol: Math.round(s.poolVol24hUsd), spot: s.poolPrice, perDay1000: m.usdPerDay(1000), need1day: m.needUsd(1), poolDay: m.poolDayUsd };
         return out;
     });
     console.log('   v44:', JSON.stringify(v44));
