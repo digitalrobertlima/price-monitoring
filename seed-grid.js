@@ -145,7 +145,8 @@
             sync();
         });
         build();
-        setTimeout(() => inputs()[0]?.focus(), 60);
+        // Só põe o cursor na 1ª caixa se a pessoa ainda não estiver digitando em outro campo (ex.: o nome)
+        setTimeout(() => { const a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) inputs()[0]?.focus(); }, 60);
     }
 
     global.RdeskSeedGrid = { mount, isWord };

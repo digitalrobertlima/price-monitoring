@@ -156,13 +156,14 @@
     }
 
     // ------------------------------------------------------------------ variação em 24 h
-    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo', 56: 'bsc' };
+    const CHAIN_LLAMA = { 137: 'polygon', 1: 'ethereum', 8453: 'base', 42161: 'arbitrum', 10: 'optimism', 42220: 'celo', 56: 'bsc', 999: 'hyperliquid' };
     function llamaKeyFor(b) {
         const s = String(b.symbol || '').toUpperCase();
         if (s === 'POL' || s === 'WPOL') return `polygon:${WPOL}`;
         if (s === 'ETH' || s === 'WETH') return 'coingecko:ethereum';
         if (s === 'BTC' || s === 'WBTC' || s === 'CBBTC') return 'coingecko:bitcoin';
         if (s === 'DASH') return 'coingecko:dash';
+        if (s === 'HYPE') return 'coingecko:hyperliquid';
         if (s === 'USDT' || s === 'USDT0') return 'coingecko:tether';
         if (s === 'USDC' || s === 'USDC.E') return 'coingecko:usd-coin';
         if (s === 'BRZ') return `polygon:${BRZ}`;

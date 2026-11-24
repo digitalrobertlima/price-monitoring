@@ -54,6 +54,8 @@
     <script src="history.js" defer></script>
     <script src="ledger.js" defer></script>
     <script src="market.js" defer></script>
+    <script src="pools.js" defer></script>
+    <script src="relayer.js" defer></script>
     <script src="onboarding.js" defer></script>
     <script src="vault-door.js" defer></script>
     <script src="lessons.js" defer></script>
@@ -254,6 +256,12 @@
                         <input type="number" id="earn-target-brl-min" class="field-input" placeholder="ex.: 0,05" step="0.001" min="0">
                     </div>
                 </details>
+            </div>
+
+            <div class="section-card pools-card">
+                <div class="section-head stack"><h2>Fundos em qualquer rede</h2></div>
+                <p class="muted-sm">Qualquer par de moedas, em Polygon, Ethereum, Base, Arbitrum, Optimism, BNB Chain ou Celo. Abra, colha e tire tudo daqui mesmo, sem abrir outro site. Dá até para criar um fundo que ainda não existe.</p>
+                <div class="two-btn-row"><button type="button" class="btn-primary" id="btn-pools-open">Meus fundos</button><button type="button" class="btn-soft" id="btn-pools-new">＋ Nova posição</button></div>
             </div>
 
             <div class="section-card" id="earn-calc">

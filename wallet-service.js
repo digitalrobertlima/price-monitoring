@@ -54,6 +54,7 @@
             dashUsd: 0,
             celoUsd: 0,
             bnbUsd: 0,
+            hypeUsd: 0,
             custom: {}, confidence: {},      // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
             usdBrlLive: false, // false = ainda usando valor de reserva
             polLive: false,
@@ -160,6 +161,7 @@
             DASH: Number(state.prices.dashUsd) || 0,
             CELO: Number(state.prices.celoUsd) || 0,
             BNB: Number(state.prices.bnbUsd) || 0,
+            HYPE: Number(state.prices.hypeUsd) || 0,
             live: Boolean(state.prices.usdBrlLive && state.prices.polLive),
             usdBrlLive: Boolean(state.prices.usdBrlLive),
             POL: polUsd,
@@ -207,7 +209,7 @@
             try {
                 const WPOL_KEY = 'polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
                 const customKeys = REG.loadCustomTokens().map((t) => `${REG.getChain(t.chainId).llama}:${t.address}`);
-                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', 'coingecko:binancecoin', 'coingecko:dash', ...customKeys];
+                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', 'coingecko:binancecoin', 'coingecko:dash', 'coingecko:hyperliquid', ...customKeys];
                 const [fx, coinsRes] = await Promise.all([
                     fetchUsdBrl(),
                     fetchJson(`https://coins.llama.fi/prices/current/${keys.join(',')}`)
@@ -220,6 +222,7 @@
                 if (price('coingecko:celo')) state.prices.celoUsd = price('coingecko:celo');
                 if (price('coingecko:binancecoin')) state.prices.bnbUsd = price('coingecko:binancecoin');
                 if (price('coingecko:dash')) state.prices.dashUsd = price('coingecko:dash');
+                if (price('coingecko:hyperliquid')) state.prices.hypeUsd = price('coingecko:hyperliquid');
                 if (price(WPOL_KEY)) {
                     state.prices.polUsd = price(WPOL_KEY);
                     state.prices.polLiveAt = Date.now();

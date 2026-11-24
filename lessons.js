@@ -208,6 +208,14 @@
             ]
         },
         {
+            id: 'app-fundos', icon: '🏪', title: 'Fundos em qualquer rede', scenes: [
+                { who: 'duda', art: 'feira', say: 'Além do Render de sempre, você pode colocar qualquer par de moedas para trabalhar, em várias redes, sem sair do app.' },
+                { who: 'bit', art: 'rows', rows: [['🔎', 'O app procura o fundo', 'na rede que você escolher', 'ok'], ['🆕', 'Não existe?', 'você pode criar', 'mid']], say: 'Se o fundo ainda não existe, você pode criar um. Mas cuidado com o preço inicial: se estiver errado, alguém compra barato de você na hora.' },
+                { who: 'duda', art: 'rows', rows: [['🌾', 'Colher', 'tira só os ganhos', 'ok'], ['🚪', 'Tirar tudo', 'volta tudo pra carteira', 'ok']], say: 'Na lista das suas posições você colhe os ganhos ou tira tudo, com um toque e um recibo pra conferir antes.' },
+                { who: 'bit', art: 'rows', rows: [['🆕', 'Fundo novo', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Ao criar um fundo novo, o mais importante é…', options: [['🎯 Acertar o preço inicial', true], ['🎨 Escolher a cor', false], ['⏰ Criar de madrugada', false]] }, action: { kind: 'pools', label: '🏪 Ver meus fundos' } }
+            ]
+        },
+        {
             id: 'app-extrato', icon: '🧾', title: 'O extrato e o lucro', scenes: [
                 { who: 'duda', art: 'rows', rows: [['🧾', 'Extrato', 'tudo que entrou e saiu', 'ok'], ['🌐', 'Todas as redes', 'Bitcoin, Polygon, BNB…', 'ok']], say: 'No Extrato aparece tudo que entrou e saiu, em todas as redes. Cada linha mostra a rede e o valor em reais no dia.' },
                 { who: 'bit', art: 'rows', rows: [['➕', 'Entrada', 'dinheiro seu que chegou', 'ok'], ['🔁', 'Movimento', 'troca entre suas moedas', 'ok']], say: 'Toque numa linha pra dizer o que ela foi: dinheiro que você colocou, que você tirou, ou só troca entre suas moedas. Assim a conta do lucro fica certa.' },

@@ -61,7 +61,7 @@ try {
     check('depois de abrir a carteira com saldo: 2 de 4 (carteira e primeira moeda)', /2 de 4/.test(steps1), steps1.slice(0, 120));
 
     const header = await page.innerText('#btn-wallet-trigger');
-    check('cabeçalho mostra o nome da carteira, sem endereço 0x', /Principal/.test(header) && !/0x/i.test(header), header + ' :: ' + await page.innerHTML('#btn-wallet-trigger'));
+    check('cabeçalho mostra o nome da carteira, sem endereço 0x', /Principal/.test(header) && !/0x/i.test(header), header + ' :: ' + JSON.stringify(await page.evaluate(() => (window.RdeskWallet.getAccounts() || []).map((a) => [a.name, a.type, a.hdIndex]))));
     const homeText = await visibleText(page, '#tab-panel-wallet');
     check('tela inicial não mostra endereço técnico nem jargão (0x, cofre, pool, gás)', !/0x[0-9a-f]{3}|cofre|pool|gás/i.test(homeText), homeText.slice(0, 200));
     check('tela inicial tem só 3 ações principais: Receber, Enviar, Trocar',

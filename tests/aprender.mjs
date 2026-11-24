@@ -95,8 +95,8 @@ try {
     await page.click('.nav-tab-btn[data-tab="learn"]');
     await page.waitForSelector('#learn-path .lp-node');
     const nodes = await page.$$eval('#learn-path .lp-node', (els) => els.map((e) => e.className));
-    check('aba Aprender mostra a trilha: 26 lições, 4 feitas, próxima destacada (Satoshi)', nodes.length === 26 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[3]), nodes.join(' | '));
-    check('progresso visível: "4 de 26" e estrelas', /4 de 26/.test(await page.innerText('#learn-progress')));
+    check('aba Aprender mostra a trilha: 27 lições, 4 feitas, próxima destacada (Satoshi)', nodes.length === 27 && nodes.filter((c) => /done/.test(c)).length === 4 && /next/.test(nodes[3]), nodes.join(' | '));
+    check('progresso visível: "4 de 27" e estrelas', /4 de 27/.test(await page.innerText('#learn-progress')));
     const o = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
     check('trilha não empurra a tela para o lado no celular', o.sw <= o.iw + 1, `${o.sw} em ${o.iw}`);
     await page.screenshot({ path: 'tests/artifacts-aprender-aba.png', fullPage: true });

@@ -96,7 +96,7 @@ try {
     const verified = audit.filter((a) => a.symbol && !a.error);
     console.log('   contratos:', audit.map((a) => a.unreachable ? `${a.chain}: SEM RPC (${a.unreachable})` : `${a.symbol}@${a.chain}=${a.onchain || a.error}(${a.dec || '-'})`).join(' | '));
     check('contratos das moedas conferem com símbolo e casas decimais lidos na rede', bad.length === 0 && verified.length >= 15, `${verified.length} conferidos; problemas: ${JSON.stringify(bad)}`);
-    check('todas as 7 redes responderam', audit.every((a) => !a.unreachable), audit.filter((a) => a.unreachable).map((a) => a.chain).join(','));
+    check('todas as 8 redes responderam', audit.every((a) => !a.unreachable), audit.filter((a) => a.unreachable).map((a) => a.chain).join(','));
 
     // ---- Bitcoin: API pública responde ----
     const btcNet = await page.evaluate(async () => {
@@ -229,6 +229,28 @@ try {
     console.log('   v44:', JSON.stringify(v44));
     check('Dash: serviço público de saldo responde', v44.dash.ok, JSON.stringify(v44.dash));
     check('calculadora com dados reais: US$ 1.000 numa faixa média rende um valor plausível por dia', v44.calc.L > 0 && v44.calc.perDay1000 > 0.0001 && v44.calc.perDay1000 < 100, JSON.stringify(v44.calc));
+
+    // ---- v45: contratos oficiais da Uniswap em cada rede (fábrica e gerenciador de posições batem) ----
+    const v45 = await page.evaluate(async () => {
+        const P = window.RdeskPools, E = window.ethers, out = {};
+        const usdc = { 1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 56: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 42220: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' };
+        await Promise.all(Object.keys(P.UNI).map(async (c) => {
+            const id = Number(c);
+            try {
+                const pr = window.RdeskWallet.getReadProvider(id);
+                const nf = new E.Contract(P.UNI[id].nfpm, ['function factory() view returns (address)'], pr);
+                const f = await nf.factory();
+                let found = 0;
+                for (const fee of [500, 3000, 100, 10000]) { const pi = await P.poolInfo(id, P.WRAPPED[id].address, usdc[id], fee).catch(() => null); if (pi?.exists) found++; }
+                out[id] = { factoryOk: f.toLowerCase() === P.UNI[id].factory.toLowerCase(), pools: found };
+            } catch (e) { out[id] = { err: String(e.message || e).slice(0, 80) }; }
+        }));
+        try { out.mine = (await P.listPositions('0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3')).length; } catch (e) { out.mine = 'erro ' + e.message; }
+        return out;
+    });
+    console.log('   v45:', JSON.stringify(v45));
+    check('fundos: contratos oficiais da Uniswap conferidos nas 7 redes (fábrica certa e fundos achados)', Object.keys(v45).filter((k) => k !== 'mine').every((k) => v45[k].factoryOk && v45[k].pools > 0), JSON.stringify(v45));
+    check('fundos: posições do cofre lidas direto da rede', typeof v45.mine === 'number' && v45.mine > 0, String(v45.mine));
 
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));
