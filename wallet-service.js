@@ -53,7 +53,7 @@
             btcUsd: 0,
             celoUsd: 0,
             bnbUsd: 0,
-            custom: {},        // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
+            custom: {}, confidence: {},      // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
             usdBrlLive: false, // false = ainda usando valor de reserva
             polLive: false,
             updatedAt: 0
@@ -65,6 +65,7 @@
     let inspectingAccountId = null;
     let createSeedDraft = null;
     let importLock = 'pin';
+    let importName = ''; // nome digitado no formulário (sobrevive a qualquer redesenho do formulário)
     const changeListeners = [];
 
     // =========================================================================
@@ -221,9 +222,15 @@
                     state.prices.polLiveAt = Date.now();
                     state.prices.polLive = true;
                 }
+                // Moeda adicionada: só entra no total com cotação confiável (moeda-lixo com preço inventado inflaria a carteira)
                 REG.loadCustomTokens().forEach((t) => {
-                    const v = price(`${REG.getChain(t.chainId).llama}:${t.address}`);
-                    if (v) state.prices.custom[`${t.chainId}:${t.address.toLowerCase()}`] = v;
+                    const key = `${REG.getChain(t.chainId).llama}:${t.address}`;
+                    const v = price(key);
+                    const conf = Number(coinsRes?.coins?.[key]?.confidence);
+                    const id = `${t.chainId}:${t.address.toLowerCase()}`;
+                    state.prices.confidence[id] = Number.isFinite(conf) ? conf : (v ? 1 : 0);
+                    if (v && (!Number.isFinite(conf) || conf >= 0.9)) state.prices.custom[id] = v;
+                    else delete state.prices.custom[id];
                 });
 
                 // Reserva para ETH/BTC quando a fonte principal falha
@@ -1814,6 +1821,8 @@
         getHealthyProvider: (chainId) => getHealthyProvider(chainId),
         getBalances: () => getBalancesArray(),
         refreshBalances: () => refreshBalancesCompat(),
+        refreshPrices: () => refreshLiveMarketPrices(),
+        getPriceConfidence: (chainId, address) => state.prices.confidence[`${chainId}:${String(address || '').toLowerCase()}`],
         prices: () => getNormalizedPricesObject(),
         formatBRL: (v) => formatBRL(v),
         isLocked: () => state.isLocked
@@ -2087,7 +2096,7 @@
 
         sheet.querySelectorAll('[data-mode]').forEach((btn) => {
             btn.onclick = () => {
-                activeFormMode = btn.getAttribute('data-mode');
+                activeFormMode = btn.getAttribute('data-mode'); importName = '';
                 if (activeFormMode === 'create-seed') {
                     createSeedDraft = newSeedDraft();
                 }
@@ -2216,7 +2225,7 @@
                     </div>
                     <p class="ks-sub">Copie as ${words.length} palavras no papel, <b>na ordem</b>.</p>
                     <div class="ks-words ${d.revealed ? 'revealed' : ''}" id="ks-words">
-                        <div class="rmw-words-grid">${words.map((w, i) => `<div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}</span>${esc(w)}</div>`).join('')}</div>
+                        <div class="rmw-words-grid">${words.map((w, i) => `<div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}</span><span class="rmw-word-txt">${esc(w)}</span></div>`).join('')}</div>
                         <button type="button" class="ks-veil" id="ks-reveal"><span class="ks-ico">👀</span><b>Toque para ver sua chave</b><small>Confira se ninguém está olhando</small></button>
                     </div>
                     <div class="ks-rules"><span>✍️ No papel</span><span>🔢 Na ordem</span><span>🚫📸 Sem foto</span></div>
@@ -2408,7 +2417,7 @@
             ` : ''}
 
             <label class="rmw-label">Nome ${activeFormMode === 'watch-only' ? '' : 'do cofre'}</label>
-            <input type="text" class="rmw-input" id="rmw-f-name" placeholder="${activeFormMode === 'watch-only' ? 'Ex.: Carteira da loja' : 'Meu cofre'}">
+            <input type="text" class="rmw-input" id="rmw-f-name" value="${esc(importName)}" placeholder="${activeFormMode === 'watch-only' ? 'Ex.: Carteira da loja' : 'Meu cofre'}">
 
             ${activeFormMode === 'import-seed' ? `
                 <details class="more-opts"><summary>Avançado: senha extra, número da conta</summary>
@@ -2458,7 +2467,8 @@
         `;
 
         sheet.querySelector('#rmw-close-btn').onclick = closeWalletModal;
-        sheet.querySelector('#rmw-form-back').onclick = () => { currentView = 'add'; renderModal(); };
+        sheet.querySelector('#rmw-f-name')?.addEventListener('input', (e) => { importName = e.target.value; });
+        sheet.querySelector('#rmw-form-back').onclick = () => { currentView = 'add'; importName = ''; renderModal(); };
         sheet.querySelectorAll('[data-lock]').forEach((b) => {
             b.onclick = () => {
                 const keepSeed = sheet.querySelector('#rmw-f-seed-input')?.value, keepName = sheet.querySelector('#rmw-f-name').value;
@@ -3098,7 +3108,7 @@
                             <span class="asset-names">
                                 <strong>${esc(friendlyTokenName(b))}</strong>
                                 <span class="asset-meta money">${esc(formatAmount(b.amount, b.symbol))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
-                                ${REG.maturity(b.chainId).level === 'solid' ? REG.maturityBadge(b.chainId) : ''}
+                                ${window.RdeskAssetInfo ? window.RdeskAssetInfo.tag(b) : ''}
                             </span>
                         </span>
                         <span class="asset-right money">
@@ -3106,6 +3116,7 @@
                             ${changeChip(b)}
                         </span>
                     </button>`).join('');
+                window.RdeskAssetInfo?.warm(rows, () => renderHeroAndAssets());
                 listEl.querySelectorAll('[data-asset-chain]').forEach((row) => {
                     row.onclick = () => {
                         const raw = row.getAttribute('data-asset-chain');
@@ -3206,6 +3217,7 @@
         getState: getPublicWalletState,
         getPrices: getPricesSyncOrRefresh,
         refreshPrices: refreshLiveMarketPrices,
+        getPriceConfidence: (chainId, address) => state.prices.confidence[`${chainId}:${String(address || '').toLowerCase()}`],
         getBalances: getBalancesArray,
         getBalance: getSingleTokenBalance,
         getTokenBalance: getSingleTokenBalance,

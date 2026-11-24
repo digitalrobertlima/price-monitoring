@@ -199,6 +199,21 @@ try {
     if (btcSwap.skip) console.log('   (informativo: serviço sem rota agora)');
     else check('PSBT real da troca de Bitcoin passa pela conferência do app', btcSwap.ok === true, JSON.stringify(btcSwap));
 
+    // ---- v43: mercado em reais, data dos contratos e histórico do Bitcoin (fontes reais, dentro da página) ----
+    const v43 = await page.evaluate(async () => {
+        const out = {};
+        try { const t = await window.RdeskMarket.top10(); out.top = t ? t.map((c) => `${c.symbol}:${Math.round(c.price)}`).join(' ') : null; } catch (e) { out.top = 'erro ' + e.message; }
+        try { const s = await window.RdeskMarket.series({ cg: 'bitcoin' }, '1'); out.btc = s ? { n: s.pts.length, last: Math.round(s.pts[s.pts.length - 1].v), src: s.src } : null; } catch (e) { out.btc = 'erro ' + e.message; }
+        try { const c = await window.RdeskAssetInfo.contractInfo(1, '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'); out.aave = c; } catch (e) { out.aave = 'erro ' + e.message; }
+        try { const txs = await window.RdeskBitcoin.fetchAddressTxs('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', 1); out.btcTxs = txs.length; } catch (e) { out.btcTxs = 'erro ' + e.message; }
+        return out;
+    });
+    console.log('   v43:', JSON.stringify(v43).slice(0, 600));
+    check('mercado: as maiores moedas com preço em reais', typeof v43.top === 'string' && v43.top.split(' ').length >= 8 && /BTC:\d{5,}/.test(v43.top), String(v43.top));
+    check('gráfico do Bitcoin em reais com dados reais (24 h)', v43.btc && v43.btc.n > 10 && v43.btc.last > 100000, JSON.stringify(v43.btc));
+    check('data real do contrato da AAVE na Ethereum (2020), não 2015', v43.aave && v43.aave.created && new Date(v43.aave.created * 1000).getUTCFullYear() === 2020, JSON.stringify(v43.aave));
+    check('histórico de um endereço Bitcoin lido (para o extrato)', typeof v43.btcTxs === 'number' && v43.btcTxs > 0, String(v43.btcTxs));
+
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));
     await context.close();

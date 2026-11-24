@@ -89,7 +89,7 @@ try {
                 if (n.nodeType === 3) {
                     const cs = getComputedStyle(n.parentElement);
                     if (cs.visibility !== 'hidden' && cs.color !== 'rgba(0, 0, 0, 0)' && n.parentElement.offsetParent !== null) out.push(n.textContent);
-                } else if (n.nodeType === 1) walk(n);
+                } else if (n.nodeType === 1 && !n.hasAttribute('data-public')) walk(n); // preço de mercado não é dado seu
             }
         };
         walk(document.querySelector('.tab-panel.active') || document.body);

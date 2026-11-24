@@ -38,7 +38,7 @@
         ETH: { id: 'ETH', name: 'Ether', unit: 'ETH', llama: 'coingecko:ethereum', hint: 'Mostra se você ficou mais rico ou mais pobre em ether.' }
     };
     const REF_KEY = 'rdesk_ref_currency_v1';
-    const CACHE_PREFIX = 'rdesk_history_v4_'; // v3: inclui o POL devolvido pelos contratos
+    const CACHE_PREFIX = 'rdesk_history_v5_'; // v5: descarta dados antigos que podiam inflar o gráfico
     const PAGE_SIZE = 40;
 
     const W = () => global.RdeskWallet;
@@ -502,12 +502,22 @@
         return free + lp;
     }
 
+    const ledgerRows = () => (global.RdeskLedger?.getEntries?.() || []);
     function computeResult() {
         let inUsdRef = 0, outUsdRef = 0, inBrl = 0, outBrl = 0;
         st.events.forEach((e) => {
             const v = valued(e);
             if (v.cls === 'IN') { const u = v.inUsd || v.outUsd; inUsdRef += u / v.refUsd; inBrl += u * v.fx; }
             else if (v.cls === 'OUT') { const u = v.outUsd || v.inUsd; outUsdRef += u / v.refUsd; outBrl += u * v.fx; }
+        });
+        // Outras redes, moedas adicionadas e Bitcoin (livro-caixa)
+        ledgerRows().forEach((x) => {
+            const cls = st.overrides[x.id] || x.auto;
+            const fx = fxOn(dayKey(x.unix));
+            const u = x.usd || (x.brl / fx) || 0;
+            const refU = refUsdOn(dayKey(x.unix)) || 1;
+            if (cls === 'IN') { inUsdRef += u / refU; inBrl += x.brl || u * fx; }
+            else if (cls === 'OUT') { outUsdRef += u / refU; outBrl += x.brl || u * fx; }
         });
         const eqUsd = liveEquityUsd();
         const usdBrl = W()?.getPrices().USD_BRL || 5.4;
@@ -523,6 +533,11 @@
     function computeSeries() {
         if (!st.events.length) return [];
         const hold = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 }; // POL aqui = WPOL (o nativo fica em 'native')
+        // Teto de bom senso: você não pode ter mais moedas do que tudo que já entrou na carteira
+        // (avaliado no preço do dia, com folga). Um dia acima disso é erro de leitura, não patrimônio.
+        const received = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
+        st.capped = 0;
+        const observed = global.RdeskLedger?.dayTotals?.() || {};
         let native = 0;
         const pool = { POL: 0, USD: 0, BRL: 0, ETH: 0, BTC: 0 };
         const byDay = new Map();
@@ -535,7 +550,10 @@
             let flowIn = 0, flowOut = 0;
             (byDay.get(key) || []).forEach((e) => {
                 native -= e.gasPol;
-                e.items.forEach((i) => { if (i.sym === 'POL') native += i.dir * i.amt; else hold[i.kind] += i.dir * i.amt; });
+                e.items.forEach((i) => {
+                    if (i.sym === 'POL') native += i.dir * i.amt; else hold[i.kind] += i.dir * i.amt;
+                    if (i.dir > 0 || (i.sym === 'POL' && e.to === WPOL)) received[i.kind] += i.amt; // embrulhar POL também gera WPOL
+                });
                 if (e.type.startsWith('RENDER')) {
                     // Dentro do render as moedas se convertem umas nas outras (POL vira USDT e vice-versa).
                     // Por isso o que volta tira do "cesto" uma FRAÇÃO do valor, e não as mesmas moedas;
@@ -554,9 +572,15 @@
                 if (v.cls === 'OUT') flowOut += (v.outUsd || v.inUsd) / v.refUsd;
             });
             if (Number.isFinite(st.nativeEnd[key])) native = st.nativeEnd[key]; // saldo real lido da rede
-            let usd = Math.max(0, native) * usdOn('POL', key);
-            Object.keys(hold).forEach((k) => { usd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
-            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut });
+            let tokensUsd = 0;
+            Object.keys(hold).forEach((k) => { tokensUsd += (Math.max(0, hold[k]) + pool[k]) * usdOn(k, key); });
+            const cap = Object.keys(received).reduce((s2, k) => s2 + received[k] * usdOn(k, key), 0) * 1.5 + 2;
+            let est = false;
+            if (tokensUsd > cap) { tokensUsd = cap; est = true; st.capped += 1; }
+            let usd = Math.max(0, native) * usdOn('POL', key) + tokensUsd;
+            // Dia em que o app viu o valor REAL de todas as redes: vale o observado
+            if (observed[key] && key < today) { usd = observed[key].usd; est = false; }
+            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut, est });
             if (key >= today) break;
             if (pts.length > 2000) break;
         }
@@ -665,6 +689,18 @@
         const status = document.getElementById('home-chart-status');
         const unit = document.getElementById('home-chart-unit');
         if (unit) unit.textContent = `em ${REFS[st.ref].unit === 'US$' ? 'dólares' : REFS[st.ref].unit}`;
+        if (st.range === 'day') {
+            const day = global.RdeskMarket?.portfolioDay?.(st.ref);
+            if (day && day.pts.length > 1) {
+                chart.set(day.pts, st.ref);
+                if (status) status.textContent = 'Hoje: como as moedas que você tem agora variaram nas últimas 24 horas.';
+            } else {
+                chart.set([], null);
+                if (status) status.textContent = day?.error || 'Buscando os preços das últimas 24 horas…';
+                global.RdeskMarket?.loadPortfolioDay?.().then(() => { if (st.range === 'day') renderHomeChart(); });
+            }
+            return;
+        }
         let pts = computeSeries();
         if (!pts.length) {
             chart.set([], null);
@@ -674,7 +710,8 @@
         if (st.range !== 'all') pts = pts.slice(-Number(st.range) - 1);
         const others = (W()?.getBalances() || []).some((b) => b.chainId !== 137 && b.usdValue > 0.5);
         const partial = st.nativeMissing > 0 ? `Alguns dias são estimativa (${st.nativeMissing} sem conferência na rede). Toque em Atualizar no Extrato para conferir. ` : '';
-        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (partial + (others ? 'O histórico é da rede Polygon; as outras redes entram a partir de hoje.' : '')));
+        const capped = st.capped > 0 ? `${st.capped} dia${st.capped > 1 ? 's' : ''} com leitura impossível (acima de tudo que já entrou) ${st.capped > 1 ? 'foram limitados' : 'foi limitado'}. ` : '';
+        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (partial + capped + (others ? 'Antes de hoje o gráfico mostra a Polygon; a partir de agora, o valor real de todas as redes.' : '')));
         chart.set(pts, st.ref);
     }
 
@@ -697,7 +734,9 @@
                     const r = canvas.getBoundingClientRect();
                     const x = ev.clientX - r.left;
                     const i = Math.round(((x - 8) / Math.max(1, r.width - 16)) * (data.length - 1));
-                    hover = Math.max(0, Math.min(data.length - 1, i));
+                    const nh = Math.max(0, Math.min(data.length - 1, i));
+                    if (nh !== hover && global.RdeskFeel?.get().haptic && navigator.vibrate) { try { navigator.vibrate(4); } catch (e) {} }
+                    hover = nh;
                     draw();
                 };
                 canvas.addEventListener('pointerdown', (ev) => { try { canvas.setPointerCapture(ev.pointerId); } catch (e) {} pick(ev); });
@@ -758,7 +797,7 @@
             ctx.beginPath(); ctx.arc(X(li), Y(data[li].ref), 9, 0, Math.PI * 2); ctx.fill();
             // datas nas pontas
             ctx.fillStyle = '#7a8498'; ctx.font = '11px Inter, system-ui, sans-serif'; ctx.textBaseline = 'alphabetic';
-            const lab = (p) => (p.live ? 'agora' : new Date(p.t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }));
+            const lab = (p) => (p.live ? 'agora' : p.intraday ? new Date(p.t * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : new Date(p.t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }));
             ctx.textAlign = 'left'; ctx.fillText(lab(data[0]), pad.l, h - 3);
             ctx.textAlign = 'right'; ctx.fillText(lab(data[li]), w - pad.r, h - 3);
             // mira do toque
@@ -767,11 +806,11 @@
                 ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
                 ctx.beginPath(); ctx.moveTo(X(hover), pad.t); ctx.lineTo(X(hover), h - pad.b); ctx.stroke(); ctx.setLineDash([]);
                 ctx.fillStyle = '#f4f6fb'; ctx.beginPath(); ctx.arc(X(hover), Y(p.ref), 4, 0, Math.PI * 2); ctx.fill();
-                const when = p.live ? 'Agora' : new Date(p.t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+                const when = (p.live ? 'Agora' : p.intraday ? new Date(p.t * 1000).toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : new Date(p.t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })) + (p.est ? ' (estimativa)' : '');
                 const flows = [p.flowIn > 0 ? `entrou ${fmtRef(p.flowIn, ref)}` : '', p.flowOut > 0 ? `saiu ${fmtRef(p.flowOut, ref)}` : ''].filter(Boolean).join(' • ');
                 const usdBrl = W()?.getPrices().USD_BRL || 5.4;
                 tip.hidden = false;
-                tip.innerHTML = `<strong>${esc(when)}</strong><span class="money">${esc(fmtRef(p.ref, ref))} • ${esc(fmtBRL(p.usd * (p.live ? usdBrl : fxOn(p.key))))}</span>${flows ? `<small class="money">${esc(flows)}</small>` : ''}`;
+                tip.innerHTML = `<strong>${esc(when)}</strong><span class="money">${esc(fmtRef(p.ref, ref))} • ${esc(fmtBRL(p.usd * (p.live || p.intraday ? usdBrl : fxOn(p.key))))}</span>${flows ? `<small class="money">${esc(flows)}</small>` : ''}`;
             } else tip.hidden = true;
             // Ganho do período SEM contar dinheiro que entrou ou saiu (saque não é prejuízo)
             const flowsNet = data.slice(1).reduce((s, p) => s + p.flowIn - p.flowOut, 0);
@@ -823,7 +862,9 @@
         const has = Boolean(W()?.getAddress());
         const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
         const status = document.getElementById('audit-status-text');
-        if (status) status.textContent = !has ? 'Abra uma carteira para ver o extrato.' : st.loading ? (st.progress || 'Lendo…') : st.error || (st.events.length ? `${st.events.length} transações na rede Polygon desde ${dayTitle(dayKey(st.events[0].unix)).toLowerCase()}.` : 'Nenhuma transação ainda.');
+        const lrows = ledgerRows();
+        const total = st.events.length + lrows.length;
+        if (status) status.textContent = !has ? 'Abra uma carteira para ver o extrato.' : st.loading ? (st.progress || 'Lendo…') : st.error || (total ? `${total} movimentos: Polygon${lrows.some((x) => x.chainId === 'btc') ? ', Bitcoin' : ''}${lrows.some((x) => x.chainId !== 'btc') ? ' e outras redes' : ''}.` : 'Nenhuma transação ainda.');
         const prog = document.getElementById('audit-progress-wrap');
         if (prog) prog.style.display = st.loading ? 'block' : 'none';
         set('audit-ref-name', REFS[st.ref].name);
@@ -843,15 +884,32 @@
         }
 
         if (!has) { box.innerHTML = '<div class="empty-state">Abra uma carteira para ver o extrato.</div>'; return; }
-        if (!st.events.length) {
+        if (!st.events.length && !lrows.length) {
             box.innerHTML = st.loading ? '<div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>' : `<div class="empty-state">${esc(st.error || 'Nenhuma transação na rede Polygon ainda.')}</div>`;
             return;
         }
         const usdBrl = W()?.getPrices().USD_BRL || 5.4;
-        const rows = st.events.slice().reverse().map((e) => ({ e, v: valued(e) })).filter(({ e, v }) => matchesFilter(e, v.cls));
+        const polyRows = st.events.map((e) => ({ e, v: valued(e), unix: e.unix }));
+        const ledRows = lrows.map((x) => ({ x, unix: x.unix, cls: st.overrides[x.id] || x.auto }));
+        const rows = [...polyRows, ...ledRows].sort((a, b) => b.unix - a.unix)
+            .filter((r) => (r.e ? matchesFilter(r.e, r.v.cls) : (st.filter === 'ALL' || st.filter === r.cls)));
         const page = rows.slice(0, st.shown);
         let html = '', lastDay = '';
-        page.forEach(({ e, v }) => {
+        page.forEach((r) => {
+            if (r.x) {
+                const x = r.x, k = dayKey(x.unix);
+                if (k !== lastDay) { html += `<h3 class="extrato-day">${esc(dayTitle(k))}</h3>`; lastDay = k; }
+                const tone = r.cls === 'IN' ? 'in' : r.cls === 'OUT' ? 'out' : 'neutral';
+                const time = new Date(x.unix * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const val = x.brl > 0 ? `${r.cls === 'IN' ? '+' : r.cls === 'OUT' ? '−' : ''}${fmtBRL(x.brl)}` : '';
+                html += `<button type="button" class="extrato-row" data-lid="${esc(x.id)}">
+                    <span class="ex-ico ${tone}" aria-hidden="true">${r.cls === 'OUT' ? '↑' : '↓'}</span>
+                    <span class="ex-main"><strong>${esc(x.title)}</strong><small>${esc(time)} · <span class="ex-chain">${esc(x.chainName)}</span> · <span class="money">${x.amt > 0 ? '+' : '−'}${esc(fmtAmt(x.amt, x.sym))} ${esc(x.sym)}</span>${x.approx ? ' · <em>hora aproximada</em>' : ''}${x.confirmed === false ? ' · <em>aguardando confirmação</em>' : ''}</small></span>
+                    <span class="ex-val money ${r.cls === 'IN' ? 'up' : r.cls === 'OUT' ? 'down' : ''}">${esc(val)}</span>
+                </button>`;
+                return;
+            }
+            const { e, v } = r;
             if (v.key !== lastDay) { html += `<h3 class="extrato-day">${esc(dayTitle(v.key))}</h3>`; lastDay = v.key; }
             const [ico, tone] = TYPE_ICON[e.type] || TYPE_ICON.OTHER;
             const amounts = e.items.map((i) => `${i.dir > 0 ? '+' : '−'}${fmtAmt(i.amt, i.sym)} ${i.sym}`).join(' · ');
@@ -863,13 +921,14 @@
             else value = `taxa ${fmtBRL(v.gasUsd * v.fx)}`;
             html += `<button type="button" class="extrato-row" data-hash="${esc(e.hash)}">
                 <span class="ex-ico ${tone}" aria-hidden="true">${ico}</span>
-                <span class="ex-main"><strong>${esc(e.title)}</strong><small>${esc(time)}${amounts ? ` · <span class="money">${esc(amounts)}</span>` : ''}${v.cls !== e.auto ? ' · <em>ajustado</em>' : ''}</small></span>
+                <span class="ex-main"><strong>${esc(e.title)}</strong><small>${esc(time)} · <span class="ex-chain">Polygon</span>${amounts ? ` · <span class="money">${esc(amounts)}</span>` : ''}${v.cls !== e.auto ? ' · <em>ajustado</em>' : ''}</small></span>
                 <span class="ex-val money ${vTone}">${esc(value)}</span>
             </button>`;
         });
         if (!page.length) html = '<div class="empty-state">Nada neste filtro.</div>';
         box.innerHTML = html;
-        box.querySelectorAll('.extrato-row').forEach((b) => { b.onclick = () => openDetail(b.getAttribute('data-hash')); });
+        box.querySelectorAll('.extrato-row[data-hash]').forEach((b) => { b.onclick = () => openDetail(b.getAttribute('data-hash')); });
+        box.querySelectorAll('.extrato-row[data-lid]').forEach((b) => { b.onclick = () => openLedgerDetail(b.getAttribute('data-lid')); });
         const more = document.getElementById('extrato-more');
         if (more) { more.hidden = rows.length <= st.shown; more.textContent = `Ver mais (${rows.length - st.shown} restantes)`; }
         void usdBrl;
@@ -922,6 +981,36 @@
         el.querySelector('[data-close]').onclick = () => document.getElementById('ob-root').replaceChildren();
     }
 
+    function openLedgerDetail(id) {
+        const x = ledgerRows().find((r) => r.id === id);
+        if (!x) return;
+        const cls = st.overrides[x.id] || x.auto;
+        const when = new Date(x.unix * 1000).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
+        const link = x.hash ? `https://mempool.space/tx/${x.hash}` : '';
+        const el = sheet(`
+            <div class="ex-detail">
+                <h2>${esc(x.title)}</h2>
+                <p class="muted-sm">${esc(when)}${x.approx ? ' (hora em que o app percebeu a mudança de saldo)' : ''} · ${esc(x.chainName)}</p>
+                <ul class="ex-items">
+                    <li><span>${x.amt > 0 ? 'Entrou' : 'Saiu'}</span><strong class="money">${x.amt > 0 ? '+' : '−'}${esc(fmtAmt(x.amt, x.sym))} ${esc(x.sym)}</strong></li>
+                    <li><span>Valor na data</span><strong class="money">${esc(fmtBRL(x.brl || 0))}</strong></li>
+                    ${x.fee ? `<li><span>Taxa da rede</span><strong class="money">${(x.fee / 1e8).toLocaleString('pt-BR', { minimumFractionDigits: 8 })} BTC</strong></li>` : ''}
+                </ul>
+                ${x.approx ? '<p class="muted-sm">Nesta rede o app não tem um explorador gratuito para ler cada transação: ele registra quando o saldo muda. "Saldo encontrado" é a primeira vez que o app viu essa moeda na sua carteira.</p>' : ''}
+                <h3>Como entra na conta do lucro</h3>
+                <div class="chip-group ex-class" role="radiogroup" aria-label="Classificação">
+                    ${['IN', 'OUT', 'DEFI', 'IGNORE'].map((c) => `<button type="button" class="chip ${cls === c ? 'active' : ''}" role="radio" aria-checked="${cls === c}" data-cls="${c}">${CLASS_LABEL[c]}</button>`).join('')}
+                </div>
+                ${link ? `<a class="btn-soft ex-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Ver no explorador do Bitcoin ↗</a>` : ''}
+                <button type="button" class="btn-primary" data-close>Fechar</button>
+            </div>`);
+        if (!el) return;
+        el.querySelectorAll('[data-cls]').forEach((b) => {
+            b.onclick = () => { st.overrides[x.id] = b.getAttribute('data-cls'); if (st.overrides[x.id] === x.auto) delete st.overrides[x.id]; saveOverrides(); openLedgerDetail(id); renderAll(); };
+        });
+        el.querySelector('[data-close]').onclick = () => document.getElementById('ob-root').replaceChildren();
+    }
+
     function exportCsv() {
         // Célula segura para planilha: aspas dobradas e nada que comece como fórmula (=, +, -, @)
         const cell = (v) => { let t = String(v ?? '').replace(/[\r\n]+/g, ' '); if (/^[=+\-@\t]/.test(t)) t = "'" + t; return /[;"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
@@ -932,6 +1021,12 @@
             const d = new Date(e.unix * 1000);
             lines.push([v.key, d.toLocaleTimeString('pt-BR'), e.type, `${e.title} ${e.items.map((i) => `${i.dir > 0 ? '+' : '-'}${i.amt} ${i.sym}`).join(' ')}`, CLASS_LABEL[v.cls],
                 (usd * v.fx).toFixed(2).replace('.', ','), String(usd / v.refUsd).replace('.', ','), String(e.gasPol).replace('.', ','), e.hash].map(cell).join(';'));
+        });
+        ledgerRows().forEach((x) => {
+            const d = new Date(x.unix * 1000);
+            const cls = st.overrides[x.id] || x.auto;
+            lines.push([dayKey(x.unix), d.toLocaleTimeString('pt-BR'), x.src === 'btc' ? 'BITCOIN' : 'SALDO', `${x.title} (${x.chainName}) ${x.amt > 0 ? '+' : '-'}${Math.abs(x.amt)} ${x.sym}`, CLASS_LABEL[cls],
+                (x.brl || 0).toFixed(2).replace('.', ','), '', '', x.hash || ''].map(cell).join(';'));
         });
         const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
@@ -970,7 +1065,7 @@
         document.getElementById('btn-ref-picker')?.addEventListener('click', openRefPicker);
         document.querySelectorAll('[data-open-ref]').forEach((b) => b.addEventListener('click', openRefPicker));
         document.getElementById('btn-open-extrato')?.addEventListener('click', () => document.querySelector('.nav-tab-btn[data-tab="audit"]')?.click());
-        document.getElementById('btn-audit-refresh')?.addEventListener('click', () => load(true));
+        document.getElementById('btn-audit-refresh')?.addEventListener('click', () => { load(true); global.RdeskLedger?.refreshBitcoin?.(true); });
         document.getElementById('btn-export-audit-csv')?.addEventListener('click', exportCsv);
         document.getElementById('extrato-more')?.addEventListener('click', () => { st.shown += PAGE_SIZE; renderExtrato(); });
         document.querySelectorAll('#extrato-filters [data-xf]').forEach((b) => b.addEventListener('click', () => {
@@ -981,7 +1076,7 @@
             document.querySelectorAll('#home-chart-range [data-range]').forEach((x) => x.classList.toggle('active', x === b));
             st.range = b.getAttribute('data-range'); renderHomeChart();
         }));
-        document.querySelector('.nav-tab-btn[data-tab="audit"]')?.addEventListener('click', () => load(false));
+        document.querySelector('.nav-tab-btn[data-tab="audit"]')?.addEventListener('click', () => { load(false); global.RdeskLedger?.refreshBitcoin?.(false); });
 
         global.addEventListener('rdesk:walletChanged', () => { setTimeout(() => { load(false); refreshChange24(true); }, 300); });
         global.addEventListener('rdesk:success', () => setTimeout(() => load(true), 8000));
@@ -1000,7 +1095,7 @@
         _despike: despike,
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
-        getResult: computeResult, getSeries: computeSeries,
+        getResult: computeResult, getSeries: computeSeries, renderAll,
         getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24

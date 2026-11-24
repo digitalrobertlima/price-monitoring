@@ -47,7 +47,11 @@
     <script src="wallet-views.js" defer></script>
     <script src="defi-pix-service.js" defer></script>
     <script src="swap-picker.js" defer></script>
+    <script src="feel.js" defer></script>
+    <script src="asset-info.js" defer></script>
     <script src="history.js" defer></script>
+    <script src="ledger.js" defer></script>
+    <script src="market.js" defer></script>
     <script src="onboarding.js" defer></script>
     <script src="vault-door.js" defer></script>
     <script src="lessons.js" defer></script>
@@ -134,6 +138,15 @@
             </div>
 
             <!-- Patrimônio no tempo: entradas, saídas e o valor ao vivo -->
+            <div id="btc-live-card" class="section-card btc-live-card" data-public>
+                <div class="section-head">
+                    <div><h2>Bitcoin agora</h2><strong id="btc-live-price" class="btc-live-price">…</strong> <span id="btc-live-chg" class="chg"></span></div>
+                    <button type="button" id="btn-open-market" class="btn-soft small">Mercado →</button>
+                </div>
+                <div id="btc-live-chart" class="mk-box compact"></div>
+                <small id="btc-live-src" class="muted-sm"></small>
+            </div>
+
             <div id="home-chart-card" class="section-card chart-card" hidden>
                 <div class="section-head">
                     <div>
@@ -141,6 +154,7 @@
                         <span id="home-chart-summary" class="chg"></span>
                     </div>
                     <div class="chip-group" id="home-chart-range" role="group" aria-label="Período">
+                        <button type="button" class="chip" data-range="day">Hoje</button>
                         <button type="button" class="chip" data-range="7">7 dias</button>
                         <button type="button" class="chip" data-range="30">30 dias</button>
                         <button type="button" class="chip active" data-range="all">Tudo</button>
