@@ -529,7 +529,7 @@
                 msg.innerHTML = `✅ Posição aberta! <a href="${esc(REG().explorerTxUrl(chainId, hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`;
                 global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Posição aberta: seu dinheiro já está trabalhando!' } }));
                 W().refreshBalances?.();
-                setTimeout(() => open(), 1800);
+                setTimeout(() => { if (msg.isConnected) open(); }, 1800); // só volta para a lista se a pessoa ainda estiver nesta tela
             } catch (e) { msg.textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 220); $('#pl-go').disabled = false; }
         };
         loadPool();

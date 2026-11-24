@@ -12,7 +12,7 @@
     // Ordem = ordem de exibição
     const CHAINS = [
         { id: 137, key: 'polygon', name: 'Polygon', short: 'POL', color: '#8247e5', native: 'POL', explorer: 'https://polygonscan.com', llama: 'polygon', minTipGwei: 30,
-          rpcs: ['https://polygon-bor-rpc.publicnode.com', 'https://1rpc.io/matic', 'https://polygon.drpc.org'] },
+          rpcs: ['https://polygon.drpc.org', 'https://polygon-rpc.com', 'https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com', 'https://1rpc.io/matic'] },
         { id: 1, key: 'ethereum', name: 'Ethereum', short: 'ETH', color: '#627eea', native: 'ETH', explorer: 'https://etherscan.io', llama: 'ethereum',
           rpcs: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'] },
         { id: 8453, key: 'base', name: 'Base', short: 'BASE', color: '#0052ff', native: 'ETH', explorer: 'https://basescan.org', llama: 'base',
