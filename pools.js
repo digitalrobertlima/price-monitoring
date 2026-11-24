@@ -107,6 +107,7 @@
         let last;
         try { return await fn(provider(chainId)); } catch (e) { last = e; }
         for (const url of (REG().getChain(chainId)?.rpcs || [])) {
+            await new Promise((r) => setTimeout(r, 250));
             try { return await fn(new (E().providers.StaticJsonRpcProvider)(url, Number(chainId))); } catch (e) { last = e; }
         }
         throw last;
