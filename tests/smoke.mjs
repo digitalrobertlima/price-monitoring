@@ -116,7 +116,7 @@ try {
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
-    console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 600); }));
+    console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 3000); }));
     const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
     console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}`);
     // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela

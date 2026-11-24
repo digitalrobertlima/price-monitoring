@@ -581,7 +581,8 @@
             let usd = Math.max(0, native) * usdOn('POL', key) + tokensUsd;
             // Dia em que o app viu o valor REAL de todas as redes: vale o observado
             if (observed[key] && key < today) { usd = observed[key].usd; est = false; }
-            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut, est });
+            pts.push({ key, t: t / 1000 + 43200, ref: usd / refUsdOn(key), usd, flowIn, flowOut, est,
+                dbg: { native: +Math.max(0, native).toFixed(4), hold: Object.fromEntries(Object.entries(hold).map(([k, v]) => [k, +v.toFixed(6)])), pool: Object.fromEntries(Object.entries(pool).map(([k, v]) => [k, +v.toFixed(6)])), px: Object.fromEntries(Object.keys(hold).map((k) => [k, +usdOn(k, key).toFixed(6)])), cap: +cap.toFixed(2), obs: Boolean(observed[key]) } });
             if (key >= today) break;
             if (pts.length > 2000) break;
         }

@@ -148,6 +148,10 @@
                 const vol24 = parseFloat(gJson?.data?.attributes?.volume_usd?.h24);
                 if (vol24 > 0) defiState.poolVol24hUsd = vol24;
             }
+            // Liquidez e preço do fundo direto da rede (para a calculadora)
+            if (!(defiState.poolLiquidity > 0) && (!window.RdeskAnon || window.RdeskAnon.chainAllowed(137))) {
+                window.RdeskWallet.getReadProvider(POLYGON_ID).then((pr) => readPoolPrice(pr)).catch(() => {});
+            }
 
             if (klinesRes && klinesRes.ok) {
                 const raw = await klinesRes.json();
