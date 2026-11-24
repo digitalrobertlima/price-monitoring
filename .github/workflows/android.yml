@@ -59,6 +59,14 @@ jobs:
             echo "::warning::Sem a chave do projeto nos Secrets: o APK sai com chave de teste e NÃO é publicado."
           fi
 
+      - name: Plataforma Android 37 (exigida pelo Tor embutido)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --list 2>/dev/null | grep -oE "platforms;android-3[6-9][^ ]*" | sort -u
+          "$SDKM" "platforms;android-37" || "$SDKM" "platforms;android-37.0"
+          ls "$ANDROID_HOME/platforms"
+
       - name: Compilar
         run: gradle -p android --no-daemon --stacktrace assembleRelease assembleReleaseAndroidTest
 
