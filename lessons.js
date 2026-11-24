@@ -174,6 +174,69 @@
                 { who: 'duda', art: 'feira', say: 'Ganho não é garantido. Use só uma parte do dinheiro, e guarde a reserva no Bitcoin.', action: { kind: 'tab:earn', label: '📈 Conhecer o Render' } }
             ]
         },
+        // ---------------- O APP POR DENTRO: uma lição para cada parte ----------------
+        {
+            id: 'app-inicio', icon: '🏠', title: 'A tela inicial', scenes: [
+                { who: 'duda', art: 'rows', rows: [['💰', 'Seu saldo', 'tudo somado, em reais', 'ok'], ['👁️', 'O olho', 'esconde os valores', 'ok'], ['📊', 'O gráfico', 'quanto seu cofre valeu', 'ok']], say: 'No topo fica o seu saldo, sempre em reais. Tocando no olho, os valores somem da tela. Bom pra usar na rua.' },
+                { who: 'bit', art: 'rows', rows: [['₿', 'Bitcoin agora', 'preço ao vivo em reais', 'ok'], ['🗓️', 'Hoje, 7 dias, 30 dias', 'escolha o período', 'ok']], say: 'Logo abaixo tem o meu preço ao vivo, em reais, e o gráfico do seu patrimônio. Arrasta o dedo no gráfico pra ver o valor de cada dia.' },
+                { who: 'duda', art: 'rows', rows: [['🪙', 'Suas moedas', 'toque numa para ver a ficha', 'ok'], ['🛡', 'Selos', 'toque para entender', 'ok']], say: 'Cada moeda da lista é clicável: abre o gráfico, a ficha com a idade dela e quem pode congelar. Os selos também explicam o que significam.' },
+                { who: 'bit', art: 'rows', rows: [['📈', 'Mercado', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Quer ver as 10 maiores moedas do mundo em reais. Onde toca?', options: [['📈 No botão Mercado', true], ['🔒 No cadeado', false], ['🧾 No extrato', false]] }, action: { kind: 'market', label: '📈 Abrir o mercado' } }
+            ]
+        },
+        {
+            id: 'app-enviar', icon: '📤', title: 'Mandar e receber', scenes: [
+                { who: 'duda', art: 'rows', rows: [['📥', 'Receber', 'mostra seu endereço e QR', 'ok'], ['📤', 'Enviar', 'cola ou lê o QR de quem recebe', 'ok']], say: 'Pra receber, toque em Receber e mostre o QR. Pra mandar, toque em Enviar e leia o QR de quem vai receber.' },
+                { who: 'bit', art: 'rows', rows: [['🌐', 'Mesma rede', 'Bitcoin com Bitcoin', 'ok'], ['⚠️', 'Rede errada', 'o dinheiro pode sumir', 'bad']], say: 'Regra de ouro: a rede tem que ser a mesma dos dois lados. Bitcoin vai pra endereço de Bitcoin. Real digital na Polygon vai pra Polygon.' },
+                { who: 'duda', art: 'rows', rows: [['🔍', 'Confira', 'começo e fim do endereço', 'ok']], say: 'Antes de confirmar, confira o começo e o fim do endereço. Golpistas criam endereços parecidos.' },
+                { who: 'bit', art: 'rows', rows: [['🌐', 'Rede', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Vai mandar Bitcoin. O endereço de quem recebe tem que ser…', options: [['₿ Da rede Bitcoin', true], ['🟣 Da Polygon', false], ['🤷 Tanto faz', false]] }, action: { kind: 'receive', label: '📥 Ver meu endereço' } }
+            ]
+        },
+        {
+            id: 'app-trocar', icon: '🔄', title: 'Trocar uma moeda por outra', scenes: [
+                { who: 'duda', art: 'rows', rows: [['🔄', 'Trocar', 'de uma moeda para outra', 'ok'], ['🧾', 'Antes de confirmar', 'o app mostra tudo em reais', 'ok']], say: 'Na aba Trocar você escolhe o que sai e o que entra. Antes de confirmar, o app mostra quanto chega, as taxas e o mínimo garantido, tudo em reais.' },
+                { who: 'bit', art: 'rows', rows: [['₿', 'Bitcoin', '→ USDC', 'ok'], ['💵', 'USDC', '→ real digital', 'ok']], say: 'Quando ninguém troca Bitcoin por real digital direto, o app faz em duas etapas, passando pelo dólar digital. Ele te avisa quando a primeira terminar.' },
+                { who: 'duda', art: 'rows', rows: [['🕵️', 'Privacidade', 'cotação sem seu endereço', 'ok']], say: 'E enquanto você só olha o preço, o app não manda o seu endereço pra ninguém. Ele só sai quando você confirma.' },
+                { who: 'bit', art: 'rows', rows: [['🧾', 'Confirmar', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Antes de confirmar uma troca, o que você confere?', options: [['🧾 Quanto chega e as taxas', true], ['🎨 A cor do botão', false], ['⏰ A hora', false]] }, action: { kind: 'tab:pixswap', label: '🔄 Ir para Trocar' } }
+            ]
+        },
+        {
+            id: 'app-calculadora', icon: '🧮', title: 'Quanto preciso para ganhar?', scenes: [
+                { who: 'duda', art: 'feira', say: 'No Render tem uma calculadora. Você diz quanto quer ganhar por minuto, hora, dia ou mês, e ela mostra quanto precisa colocar em cada faixa.' },
+                { who: 'bit', art: 'rows', rows: [['🎯', 'Estreita', 'ganha mais, sai mais da faixa', 'bad'], ['🛋️', 'Larga', 'ganha menos, aguenta mais', 'ok']], say: 'Faixa estreita rende mais enquanto o preço está dentro dela, mas sai mais vezes. Faixa larga rende menos e aguenta mais sobe e desce.' },
+                { who: 'duda', art: 'rows', rows: [['📉', 'Volume muda', 'todo dia', 'bad']], say: 'A conta usa o movimento de hoje do fundo. Amanhã pode ser diferente: é estimativa, nunca promessa.' },
+                { who: 'bit', art: 'rows', rows: [['🧮', 'Faixa', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Faixa mais estreita…', options: [['🎯 Rende mais, mas sai da faixa mais vezes', true], ['🛡 Nunca sai da faixa', false], ['💤 Não rende nada', false]] }, action: { kind: 'calc', label: '🧮 Abrir a calculadora' } }
+            ]
+        },
+        {
+            id: 'app-extrato', icon: '🧾', title: 'O extrato e o lucro', scenes: [
+                { who: 'duda', art: 'rows', rows: [['🧾', 'Extrato', 'tudo que entrou e saiu', 'ok'], ['🌐', 'Todas as redes', 'Bitcoin, Polygon, BNB…', 'ok']], say: 'No Extrato aparece tudo que entrou e saiu, em todas as redes. Cada linha mostra a rede e o valor em reais no dia.' },
+                { who: 'bit', art: 'rows', rows: [['➕', 'Entrada', 'dinheiro seu que chegou', 'ok'], ['🔁', 'Movimento', 'troca entre suas moedas', 'ok']], say: 'Toque numa linha pra dizer o que ela foi: dinheiro que você colocou, que você tirou, ou só troca entre suas moedas. Assim a conta do lucro fica certa.' },
+                { who: 'duda', art: 'rows', rows: [['📄', 'Planilha', 'para o imposto', 'ok']], say: 'Dá pra baixar tudo em planilha, que ajuda na hora do imposto de renda.' },
+                { who: 'bit', art: 'rows', rows: [['🧾', 'Extrato', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Trocou Bitcoin por dólar digital. No extrato isso é…', options: [['🔁 Movimento entre suas moedas', true], ['➕ Dinheiro novo', false], ['➖ Prejuízo', false]] }, action: { kind: 'tab:audit', label: '🧾 Abrir o extrato' } }
+            ]
+        },
+        {
+            id: 'app-avisos', icon: '🔔', title: 'Sons, avisos e privacidade', scenes: [
+                { who: 'bit', art: 'rows', rows: [['🔒', 'Trancar', 'barulho de cofre', 'ok'], ['💰', 'Dinheiro entrando', 'barulho de moedas', 'ok']], say: 'Quando o cofre tranca, você ouve a porta. Quando entra dinheiro, ouve as moedas e recebe um aviso no celular.' },
+                { who: 'duda', art: 'rows', rows: [['🔔', 'Avisos', 'liga e desliga no menu', 'ok'], ['🕵️', 'Modo anônimo', 'o app fala com menos gente', 'ok']], say: 'No menu você liga ou desliga sons, vibração e avisos. E pode ligar o modo anônimo, que esconde valores e conversa com o mínimo de servidores.' },
+                { who: 'bit', art: 'rows', rows: [['📴', 'App fechado', 'sem aviso', 'bad']], say: 'Só um detalhe: com o app totalmente fechado o celular não avisa. O app não usa servidor ligado o tempo todo, e isso protege você.' },
+                { who: 'duda', art: 'rows', rows: [['🔔', 'Avisos', '?', 'ok']], say: 'Valendo!', quiz: { q: 'Onde liga os sons e avisos?', options: [['☰ No menu', true], ['🧾 No extrato', false], ['🔄 Na troca', false]] }, action: { kind: 'feel', label: '🔔 Ajustar sons e avisos' } }
+            ]
+        },
+        {
+            id: 'app-semnet', icon: '✈️', title: 'Bitcoin sem internet', scenes: [
+                { who: 'duda', art: 'rows', rows: [['📱', 'Celular 1', 'prepara o pedido', 'ok'], ['✈️', 'Celular 2', 'modo avião, assina', 'ok'], ['📡', 'Celular 3', 'transmite', 'ok']], say: 'Dá pra assinar uma transação de Bitcoin num celular que nunca toca a internet. Um celular prepara, o outro assina em modo avião, e qualquer um transmite.' },
+                { who: 'bit', art: 'rows', rows: [['🔳', 'QR Code', 'leva o pedido e a assinatura', 'ok']], say: 'Tudo passa por QR Code, de tela pra câmera. A chave nunca sai do celular desligado da internet.' },
+                { who: 'duda', art: 'rows', rows: [['✈️', 'Assinar', '?', 'ok']], say: 'Valendo!', quiz: { q: 'O celular que assina fica…', options: [['✈️ Sem internet', true], ['📶 No Wi-Fi da praça', false], ['🔌 Desligado da tomada', false]] }, action: { kind: 'offline', label: '✈️ Ver como funciona' } }
+            ]
+        },
+        {
+            id: 'app-portugues', icon: '🇧🇷', title: 'Palavras em português', scenes: [
+                { who: 'duda', art: 'rows', rows: [['🇺🇸', 'Inglês', 'abre em qualquer carteira', 'ok'], ['🇧🇷', 'Português', 'mais fácil de escrever', 'ok']], say: 'Na hora de criar o cofre você escolhe: palavras em inglês ou em português. As duas são do padrão oficial e têm a mesma força.' },
+                { who: 'bit', art: 'rows', rows: [['⚠️', 'Outras carteiras', 'algumas só aceitam inglês', 'bad']], say: 'Só saiba que algumas carteiras famosas, como MetaMask e Rabby, só aceitam inglês. Aqui no app as duas funcionam, e o app descobre sozinho o idioma da sua chave.', voice: 'Só saiba que algumas carteiras famosas, como Méta Másk e Rábi, só aceitam inglês. Aqui no app as duas funcionam, e o app descobre sozinho o idioma da sua chave.' },
+                { who: 'duda', art: 'rows', rows: [['🔀', 'Misturar', 'não pode', 'bad']], say: 'Valendo!', quiz: { q: 'Posso misturar palavras em inglês e português na mesma chave?', options: [['🚫 Não, é tudo num idioma só', true], ['✅ Pode, tanto faz', false], ['🤷 Só às sextas', false]] } }
+            ]
+        },
         {
             id: 'pix', icon: '💸', title: 'Comprar com Pix', scenes: [
                 { who: 'duda', art: 'pix', say: 'Em breve você vai poder comprar cripto só mandando um Pix, do jeito que você já faz todo dia.' },

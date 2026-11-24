@@ -214,6 +214,22 @@ try {
     check('data real do contrato da AAVE na Ethereum (2020), não 2015', v43.aave && v43.aave.created && new Date(v43.aave.created * 1000).getUTCFullYear() === 2020, JSON.stringify(v43.aave));
     check('histórico de um endereço Bitcoin lido (para o extrato)', typeof v43.btcTxs === 'number' && v43.btcTxs > 0, String(v43.btcTxs));
 
+    // ---- v44: Dash (serviço público responde) e calculadora com dados reais do fundo ----
+    const v44 = await page.evaluate(async () => {
+        const out = {};
+        try { const b = await window.RdeskDash.fetchBalance('XoJA8qE3N2Y3jMLEtZ3vcN42qseZ8LvFf5'); out.dash = { ok: true, duffs: b.totalDuffs }; } catch (e) { out.dash = { ok: false, err: e.message }; }
+        document.querySelector('.nav-tab-btn[data-tab="earn"]')?.click();
+        const t0 = Date.now();
+        while (Date.now() - t0 < 25000) { const s = window.RdeskDefi._earn.state(); if (s.poolLiquidity > 0 && s.poolVol24hUsd > 0) break; await new Promise((r) => setTimeout(r, 500)); }
+        const s = window.RdeskDefi._earn.state();
+        const m = window.RdeskDefi._earn.earnModel(0.08);
+        out.calc = { L: s.poolLiquidity, vol: Math.round(s.poolVol24hUsd), spot: s.poolPrice, perDay1000: m.usdPerDay(1000), need1day: m.needUsd(1), poolDay: m.poolDayUsd };
+        return out;
+    });
+    console.log('   v44:', JSON.stringify(v44));
+    check('Dash: serviço público de saldo responde', v44.dash.ok, JSON.stringify(v44.dash));
+    check('calculadora com dados reais: US$ 1.000 numa faixa média rende um valor plausível por dia', v44.calc.L > 0 && v44.calc.perDay1000 > 0.0001 && v44.calc.perDay1000 < 100, JSON.stringify(v44.calc));
+
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));
     await context.close();

@@ -8,16 +8,19 @@
    ========================================================================= */
 (function (global) {
     'use strict';
-    let WORDS = null;
+    // Inglês e português (listas oficiais BIP39; nenhuma palavra existe nas duas)
+    let WORDS = null, SET = null;
     function words() {
         if (WORDS) return WORDS;
         try {
-            const wl = global.ethers.wordlists.en;
-            WORDS = Array.from({ length: 2048 }, (_, i) => wl.getWord(i));
+            const R = global.RdeskWordlists;
+            WORDS = R ? [...R.words('en'), ...R.words('pt')] : Array.from({ length: 2048 }, (_, i) => global.ethers.wordlists.en.getWord(i));
         } catch (e) { WORDS = []; }
+        SET = new Set(WORDS);
         return WORDS;
     }
-    const isWord = (w) => words().includes(w);
+    const isWord = (w) => { words(); return SET.has(w); };
+    const langOf = (w) => global.RdeskWordlists?.langOf(w) || (isWord(w) ? 'en' : null);
     const clean = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^a-z\s]/g, ' ').trim();
 
     function mount(textarea) {
@@ -50,8 +53,15 @@
             textarea.value = ws.filter(Boolean).length ? ws.join(' ').trim() : '';
             const filled = ws.filter(Boolean).length;
             const bad = ws.filter((w) => w && !isWord(w)).length;
-            status.textContent = bad ? `⚠️ ${bad} palavra${bad > 1 ? 's' : ''} não existe${bad > 1 ? 'm' : ''} na lista. Confira no papel.` : `${filled} de ${count} palavras`;
-            status.className = `sg-status ${bad ? 'bad' : filled === count ? 'ok' : ''}`;
+            const langs = new Set(ws.filter((w) => w && isWord(w)).map(langOf));
+            const mixed = langs.size > 1;
+            const lang = langs.size === 1 ? [...langs][0] : null;
+            box.dataset.lang = lang || '';
+            const tag = lang ? ` · ${lang === 'pt' ? '🇧🇷 em português' : '🇺🇸 em inglês'}` : '';
+            status.textContent = bad ? `⚠️ ${bad} palavra${bad > 1 ? 's' : ''} não existe${bad > 1 ? 'm' : ''} na lista. Confira no papel.`
+                : mixed ? '⚠️ Tem palavras em inglês e em português misturadas. A chave é toda num idioma só.'
+                : `${filled} de ${count} palavras${tag}`;
+            status.className = `sg-status ${bad || mixed ? 'bad' : filled === count ? 'ok' : ''}`;
         };
         const paint = (inp) => {
             const w = clean(inp.value);
@@ -61,7 +71,9 @@
         const showSugg = (inp) => {
             const w = clean(inp.value);
             if (!w || isWord(w)) { sugg.innerHTML = ''; return; }
-            const list = words().filter((x) => x.startsWith(w)).slice(0, 4);
+            const lang = box.dataset.lang;
+            const all = words().filter((x) => x.startsWith(w));
+            const list = (lang ? all.filter((x) => langOf(x) === lang) : all).slice(0, 4);
             sugg.innerHTML = list.map((x) => `<button type="button" class="sg-chip" data-w="${x}">${x}</button>`).join('');
         };
         // Coloca várias palavras a partir de uma caixa (colar a frase toda)
@@ -93,7 +105,7 @@
                     // Palavra completa e única: já vai para a próxima caixa (nunca ao apagar)
                     const w = inp.value;
                     if (e.inputType && /^delete/.test(e.inputType)) return;
-                    if (isWord(w) && words().filter((x) => x.startsWith(w)).length === 1) inputs()[Number(inp.dataset.i) + 1]?.focus();
+                    if (isWord(w) && words().filter((x) => x.startsWith(w) && (!box.dataset.lang || langOf(x) === box.dataset.lang)).length === 1) inputs()[Number(inp.dataset.i) + 1]?.focus();
                 });
                 inp.addEventListener('compositionstart', () => { composing = true; });
                 inp.addEventListener('compositionend', () => { composing = false; inp.dispatchEvent(new Event('input')); });

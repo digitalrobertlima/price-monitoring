@@ -44,6 +44,12 @@
         const caip = raw.match(/^eip155:(\d+):(0x[0-9a-fA-F]{40})$/i);
         if (caip) return { ...out, kind: 'evm', address: caip[2], chainId: Number(caip[1]) };
 
+        // dash:Xabc…?amount=0.1  |  Xabc…
+        const dash = raw.match(/^(?:dash:)?([X7][1-9A-HJ-NP-Za-km-z]{25,34})(?:\?(.*))?$/);
+        if (dash && global.RdeskDash?.isAddress(dash[1])) {
+            const amount = new URLSearchParams(dash[2] || '').get('amount');
+            return { ...out, kind: 'dash', address: dash[1], amount: amount && Number(amount) > 0 ? amount : null };
+        }
         if (/^0x[0-9a-fA-F]{40}$/.test(raw)) return { ...out, kind: 'evm', address: raw };
         if (global.RdeskBitcoin && global.RdeskBitcoin.isValidAddress(raw)) return { ...out, kind: 'bitcoin', address: raw };
         return out;

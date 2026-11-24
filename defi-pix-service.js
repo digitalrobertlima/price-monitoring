@@ -296,6 +296,97 @@
         document.getElementById('btn-earn-reset-sniper')?.toggleAttribute('hidden', !defiState.customRange);
 
         redrawChartRangeLines();
+        renderEarnCalc();
+    }
+
+    // =========================================================================
+    // CALCULADORA: quanto preciso colocar, em qual faixa, para ganhar R$ X por minuto/hora/dia/mês
+    // Conta da própria Uniswap V3: sua fatia das taxas = sua liquidez ÷ (sua + a que já está no preço atual).
+    // Liquidez do fundo lida na rede; volume de 24 h do GeckoTerminal; taxa do fundo 0,05%.
+    // =========================================================================
+    const CALC_POOL_FEE = 0.0005;
+    const PERIOD_MIN = { min: 1, hora: 60, dia: 1440, mes: 43200 };
+    const PERIOD_LABEL = { min: 'minuto', hora: 'hora', dia: 'dia', mes: 'mês' };
+    function dailySigma() {
+        const c = defiState.candles || [];
+        if (c.length < 10) return 0.035;
+        const rets = [];
+        for (let i = 1; i < c.length; i++) if (c[i - 1].close > 0) rets.push(Math.log(c[i].close / c[i - 1].close));
+        const m = rets.reduce((a, b) => a + b, 0) / rets.length;
+        const sd = Math.sqrt(rets.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, rets.length - 1));
+        const perDay = { '15m': 96, '1h': 24, '4h': 6 }[defiState.timeframe || '15m'] || 96;
+        return Math.max(0.01, Math.min(0.25, sd * Math.sqrt(perDay)));
+    }
+    // Liquidez (unidades da Uniswap) que um valor em dólar vira numa faixa de largura w (fração do preço)
+    function liquidityPerUsd(spot, w) {
+        const k = 1e-12; // WPOL (18 casas) / USDT (6 casas)
+        const P = spot * k, pa = spot * (1 - w / 2) * k, pb = spot * (1 + w / 2) * k;
+        const denom = 2 * Math.sqrt(P) - Math.sqrt(pa) - P / Math.sqrt(pb);
+        return denom > 0 ? 1e6 / denom : 0;
+    }
+    function earnModel(widthPct) {
+        const spot = currentSpotPrice() || 0;
+        const vol = defiState.poolVol24hUsd || 0;
+        const La = defiState.poolLiquidity || 0;
+        const sigma = dailySigma();
+        const inRange = Math.max(0.05, Math.min(1, (widthPct / 2) / (1.2 * sigma)));
+        const c = liquidityPerUsd(spot, widthPct);
+        const poolDayUsd = vol * CALC_POOL_FEE * inRange; // o máximo que caberia a quem está na faixa
+        const usdPerDay = (capUsd) => (La > 0 && c > 0 ? poolDayUsd * (c * capUsd) / (c * capUsd + La) : poolDayUsd * Math.min(1, capUsd / 320000) * Math.min(18, 0.16 / widthPct));
+        const needUsd = (targetUsdDay) => {
+            if (!(targetUsdDay > 0)) return 0;
+            if (targetUsdDay >= poolDayUsd * 0.98) return Infinity;
+            if (La > 0 && c > 0) return (targetUsdDay * La) / (c * (poolDayUsd - targetUsdDay));
+            let lo = 0, hi = 1e9; for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (usdPerDay(mid) < targetUsdDay) lo = mid; else hi = mid; } return hi;
+        };
+        return { spot, vol, sigma, inRange, poolDayUsd, usdPerDay, needUsd, min: spot * (1 - widthPct / 2), max: spot * (1 + widthPct / 2) };
+    }
+    function renderEarnCalc() {
+        const box = document.getElementById('earn-calc-out');
+        if (!box) return;
+        const prices = window.RdeskWallet.getPrices();
+        const fx = prices.USD_BRL || 5.4;
+        const target = REG.parseBRL(document.getElementById('calc-target')?.value) || 0;
+        const per = document.getElementById('calc-period')?.value || 'dia';
+        const haveTxt = document.getElementById('calc-have')?.value;
+        const free = getFreePolygonInvestableUsd().totalUsd * fx;
+        const have = haveTxt ? (REG.parseBRL(haveTxt) || 0) : free;
+        const fmt = (v) => window.RdeskWallet.formatBRL(v);
+        const perMin = PERIOD_MIN[per];
+        const fmtRate = (brlDay) => { const v = brlDay / 1440 * perMin; return v >= 1 ? fmt(v) : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`; };
+        const widths = [{ w: 0.03, name: 'Estreita' }, { w: 0.08, name: 'Média' }, { w: 0.2, name: 'Larga' }];
+        if (defiState.sniper && defiState.sniper.max > defiState.sniper.min) {
+            const sp = currentSpotPrice() || 1;
+            widths.push({ w: Math.max(0.005, (defiState.sniper.max - defiState.sniper.min) / sp), name: defiState.customRange ? 'A sua' : 'Sugerida', current: true });
+        }
+        const m0 = earnModel(0.08);
+        if (!(m0.spot > 0) || !(m0.vol > 0)) { box.innerHTML = '<p class="muted-sm">Carregando o preço e o movimento do fundo…</p>'; return; }
+        const targetDayUsd = target > 0 ? (target / perMin) * 1440 / fx : 0;
+        const rows = widths.map(({ w, name, current }) => {
+            const m = earnModel(w);
+            const need = targetDayUsd ? m.needUsd(targetDayUsd) * fx : null;
+            const gain = m.usdPerDay(have / fx) * fx;
+            return { w, name, current, m, need, gain };
+        });
+        box.innerHTML = `
+            <div class="calc-table" role="table" aria-label="Resultado da calculadora">
+                ${rows.map((r) => `
+                <div class="calc-row ${r.current ? 'current' : ''}" role="row">
+                    <div class="calc-name"><strong>${REG.esc(r.name)}</strong><small>±${(r.w * 50).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% · US$ ${r.m.min.toFixed(4)} – ${r.m.max.toFixed(4)}</small><small>no preço ~${Math.round(r.m.inRange * 100)}% do tempo</small></div>
+                    ${target > 0 ? `<div class="calc-cell"><span>Precisa colocar</span><strong class="money">${r.need === Infinity ? 'impossível' : fmt(r.need)}</strong></div>` : ''}
+                    <div class="calc-cell"><span>Com ${fmt(have)}</span><strong class="money">${fmtRate(r.gain)}/${PERIOD_LABEL[per]}</strong></div>
+                    ${r.current ? '' : `<button type="button" class="btn-soft small" data-calc-use="${r.w}">Usar</button>`}
+                </div>`).join('')}
+            </div>
+            <p class="muted-sm">Estimativa com dados de agora: o fundo movimentou US$ ${Math.round(m0.vol).toLocaleString('pt-BR')} em 24 h e as taxas de quem está no preço somam ~${fmt(m0.poolDayUsd / m0.inRange * fx)}/dia. ${rows.some((r) => r.need === Infinity) ? 'Quando aparece "impossível", nem com todo o dinheiro do mundo: o fundo inteiro não gera esse valor nessa faixa. ' : ''}Faixa estreita ganha mais enquanto o preço está nela, mas sai mais vezes. Não é promessa: o volume muda todo dia.</p>`;
+        box.querySelectorAll('[data-calc-use]').forEach((b) => {
+            b.onclick = () => {
+                const w = Number(b.getAttribute('data-calc-use'));
+                const sp = currentSpotPrice();
+                setCustomRange(sp * (1 - w / 2), sp * (1 + w / 2), 'calculadora');
+                document.getElementById('earn-chart-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            };
+        });
     }
 
     // =========================================================================
@@ -634,10 +725,11 @@
     async function readPoolPrice(providerOrSigner) {
         const pool = new ethers.Contract(
             POOL_POL_USDT,
-            ['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)'],
+            ['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)', 'function liquidity() view returns (uint128)'],
             providerOrSigner
         );
         const slot0 = await pool.slot0();
+        pool.liquidity().then((l) => { defiState.poolLiquidity = Number(l.toString()); renderEarnCalc(); }).catch(() => {});
         defiState.poolTick = Number(slot0.tick);
         defiState.poolPrice = Math.pow(1.0001, defiState.poolTick) * 1e12;
         window.RdeskWallet.notePoolPrice?.(defiState.poolPrice);
@@ -1339,6 +1431,8 @@
             data = await res.json();
             if (!res.ok || !data?.estimate?.toAmount) {
                 if (/UTXO/i.test(data?.message || '')) return fail('Sem bitcoin confirmado nesta carteira para trocar.');
+                const two = twoStepPlan(f);
+                if (two) { fail(two.text); showTwoStep(two); return null; }
                 return fail('Nenhum serviço aceita essa troca agora (valor baixo demais ou rota indisponível).');
             }
         } catch (err) { return fail('Serviço de rotas indisponível agora. Tente de novo.'); }
@@ -1385,6 +1479,99 @@
             lifiData: data, btcPlan, btcAddress, tool, minutes, serviceBrl: serviceUsd * usdBrl, networkBrl: networkUsd * usdBrl,
             routeLabel: `${tool} • ~${minutes} min`
         }, `${tool} • ~${minutes} min • ${amountsText}`);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // TROCA EM 2 ETAPAS (Bitcoin ↔ real digital): quando nenhum serviço faz BTC → BRZ/BRLA direto,
+    // o caminho é passar pelo dólar digital (USDC) da mesma rede. Cada etapa é uma troca normal,
+    // conferida e confirmada por você. O app lembra da etapa 2 e avisa quando o USDC chegar.
+    // ---------------------------------------------------------------------------------
+    const LEG_KEY = 'rdesk_swap_leg2_v1';
+    const readLeg = () => { try { return JSON.parse(localStorage.getItem(LEG_KEY) || 'null'); } catch (e) { return null; } };
+    const writeLeg = (v) => { try { if (v) localStorage.setItem(LEG_KEY, JSON.stringify(v)); else localStorage.removeItem(LEG_KEY); } catch (e) {} };
+    const usdcBal = (chainId) => Number(window.RdeskWallet.getBalances().find((b) => b.chainId === chainId && b.symbol === 'USDC')?.amount || 0);
+    function twoStepPlan(f) {
+        const other = f.fromChain === 'btc' ? f.toChain : f.fromChain;
+        const otherSym = f.fromChain === 'btc' ? f.toSym : f.fromSym;
+        if (other === 'btc' || otherSym === 'USDC' || !getTokenMeta(other, 'USDC')) return null;
+        const chain = REG.getChain(other).name;
+        const brlIn = f.amountIn * tokenUnitUsd(f.fromChain, getTokenMeta(f.fromChain, f.fromSym)) * window.RdeskWallet.getPrices().USD_BRL;
+        if (f.fromChain === 'btc') {
+            return { text: `Nenhum serviço troca BTC por ${otherSym} direto agora. Dá em 2 etapas pelo USDC da ${chain}.`,
+                step1: { fromChain: 'btc', fromSym: 'BTC', toChain: other, toSym: 'USDC', amount: f.amountText },
+                step2: { fromChain: other, fromSym: 'USDC', toChain: other, toSym: otherSym }, brlIn, chain, last: otherSym };
+        }
+        return { text: `Nenhum serviço troca ${otherSym} por BTC direto agora. Dá em 2 etapas pelo USDC da ${chain}.`,
+            step1: { fromChain: other, fromSym: otherSym, toChain: other, toSym: 'USDC', amount: f.amountText },
+            step2: { fromChain: other, fromSym: 'USDC', toChain: 'btc', toSym: 'BTC' }, brlIn, chain, last: 'BTC' };
+    }
+    function setSwapForm({ fromChain, fromSym, toChain, toSym, amount }) {
+        const e = swapEls();
+        if (!e.fc) return;
+        e.fc.value = String(fromChain); e.tc.value = String(toChain);
+        fillTokenSelect(e.ft, chainOfValue(e.fc.value), fromSym);
+        fillTokenSelect(e.tt, chainOfValue(e.tc.value), toSym);
+        if (amount !== undefined) e.amt.value = String(amount);
+        renderSwapContracts(); updateSwapFromBalanceDisplay(); syncSwapBrl();
+        window.RdeskSwapPicker?.paint?.();
+        document.getElementById('swap-two-step')?.remove();
+        clearTimeout(swapQuoteTimer);
+        swapQuoteTimer = setTimeout(refreshSwapQuote, 200);
+    }
+    function showTwoStep(plan) {
+        const info = document.getElementById('swap-quote-info');
+        if (!info) return;
+        document.getElementById('swap-two-step')?.remove();
+        const box = document.createElement('div');
+        box.id = 'swap-two-step';
+        box.className = 'two-step';
+        box.innerHTML = `<div class="two-step-path"><span>1</span> ${REG.esc(plan.step1.fromSym)} → USDC <small>agora</small></div>
+            <div class="two-step-path"><span>2</span> USDC → ${REG.esc(plan.last)} <small>${plan.step1.fromChain === 'btc' ? 'quando o USDC chegar (o app avisa)' : 'logo em seguida'}</small></div>
+            <button type="button" class="btn-primary" id="btn-two-step">Fazer em 2 etapas</button>`;
+        info.after(box);
+        box.querySelector('#btn-two-step').onclick = () => {
+            writeLeg({ ...plan.step2, created: Date.now(), startUsdc: usdcBal(plan.step2.fromChain), armed: false });
+            box.remove();
+            setSwapForm(plan.step1);
+        };
+    }
+    // Depois da etapa 1: quando o USDC entra, oferece a etapa 2 já preenchida
+    function checkLeg2() {
+        const leg = readLeg();
+        const old = document.getElementById('swap-leg2');
+        if (!leg) { old?.remove(); return; }
+        if (Date.now() - leg.created > 3 * 86400 * 1000) { writeLeg(null); old?.remove(); return; }
+        const got = usdcBal(leg.fromChain) - Number(leg.startUsdc || 0);
+        if (!leg.armed || !(got > 0.5)) return;
+        const amount = Math.floor(got * 1e6) / 1e6;
+        if (old && old.dataset.amt === String(amount)) return;
+        old?.remove();
+        const card = document.getElementById('swap-panel') || document.getElementById('swap-quote-info')?.parentElement;
+        if (!card) return;
+        const box = document.createElement('div');
+        box.id = 'swap-leg2'; box.className = 'two-step ready'; box.dataset.amt = String(amount);
+        box.innerHTML = `<strong>✅ Etapa 1 concluída: chegaram ${amount.toLocaleString('pt-BR')} USDC.</strong>
+            <div class="two-step-path"><span>2</span> USDC → ${REG.esc(leg.toSym)}</div>
+            <div class="two-step-row"><button type="button" class="btn-primary" data-go>Fazer a etapa 2</button><button type="button" class="btn-soft" data-cancel>Agora não</button></div>`;
+        card.prepend(box);
+        if (!leg.notified) {
+            leg.notified = true; writeLeg(leg);
+            window.RdeskFeel?.toast?.(`Etapa 1 pronta: ${amount.toLocaleString('pt-BR')} USDC chegaram. Falta trocar por ${leg.toSym}.`, 'money');
+            window.RdeskFeel?.notify?.('Etapa 2 da troca pronta', `Chegaram ${amount.toLocaleString('pt-BR')} USDC. Toque para trocar por ${leg.toSym}.`, 'leg2');
+        }
+        box.querySelector('[data-go]').onclick = () => {
+            document.querySelector('.nav-tab-btn[data-tab="pixswap"]')?.click();
+            writeLeg(null); box.remove();
+            setSwapForm({ fromChain: leg.fromChain, fromSym: 'USDC', toChain: leg.toChain, toSym: leg.toSym, amount });
+        };
+        box.querySelector('[data-cancel]').onclick = () => { writeLeg(null); box.remove(); };
+    }
+    window.addEventListener('rdesk:balancesUpdated', () => { try { checkLeg2(); } catch (e) {} });
+    // A etapa 1 só "arma" a etapa 2 depois de enviada de verdade
+    function armLeg2IfMatches(q) {
+        const leg = readLeg();
+        if (!leg || leg.armed) return;
+        if (q.toSym === 'USDC' && String(q.toChain) === String(leg.fromChain)) { leg.armed = true; writeLeg(leg); setTimeout(checkLeg2, 500); }
     }
 
     async function executeActiveSwap() {
@@ -1436,6 +1623,7 @@
                 const signed = window.RdeskBitcoin.signTransaction(q.btcPlan, key.privateKey);
                 const txid = await window.RdeskBitcoin.broadcast(signed.hex);
                 defiState.swapQuote = null;
+                armLeg2IfMatches(q);
                 window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Bitcoin enviado para a troca!' } }));
                 fb.style.color = 'var(--green-bright)';
                 fb.innerHTML = `✓ Bitcoin enviado ao ${REG.esc(q.tool)}. ${REG.esc(q.toSym)} chega na ${REG.esc(REG.getChain(q.toChain).name)} em cerca de ${q.minutes} min. <a href="https://mempool.space/tx/${REG.esc(txid)}" target="_blank" rel="noopener noreferrer">Acompanhar ↗</a>`;
@@ -1521,6 +1709,7 @@
             }
 
             defiState.swapQuote = null;
+            armLeg2IfMatches(q);
             window.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: q.fromChain === q.toChain ? 'Troca concluída!' : 'Ponte enviada!' } }));
             say(q.fromChain === q.toChain
                 ? `✓ Troca de ${q.amountIn} ${q.fromSym} por ${q.toSym} concluída!`
@@ -1688,6 +1877,8 @@
     function bindDefiAndPixEvents() {
         // Tela 2: Render V3
         document.getElementById('earn-target-brl-min')?.addEventListener('input', recalculateSniperRange);
+        ['calc-target', 'calc-have'].forEach((id) => document.getElementById(id)?.addEventListener('input', renderEarnCalc));
+        document.getElementById('calc-period')?.addEventListener('change', renderEarnCalc);
         document.getElementById('btn-earn-reset-sniper')?.addEventListener('click', () => {
             const inp = document.getElementById('earn-target-brl-min');
             if (inp) inp.value = '';
@@ -1823,6 +2014,8 @@
     }
 
     window.RdeskDefi = {
+        _earn: { earnModel, renderEarnCalc, liquidityPerUsd, state: () => defiState },
+        _twoStep: { twoStepPlan, readLeg, checkLeg2, setSwapForm, armLeg2IfMatches },
         refreshPoolAndPositions: async () => {
             await loadPoolCandlesAndComputeSniper();
             await refreshUniswapPositions();

@@ -328,7 +328,15 @@
             receive: () => (hasWallet() ? W()?.openView('receive') : W()?.openModal('add')),
             'tab:earn': () => goTab('earn'),
             'buy-pix': () => W()?.openView('buy-pix'),
-            'sats-trail': () => global.RdeskSatsTrail?.open?.()
+            'sats-trail': () => global.RdeskSatsTrail?.open?.(),
+            'tab:pixswap': () => goTab('pixswap'),
+            'tab:audit': () => goTab('audit'),
+            market: () => global.RdeskMarket?.openMarket?.(),
+            feel: () => global.RdeskFeel?.openSettings?.(),
+            anon: () => global.RdeskAnon?.open?.(),
+            send: () => (hasWallet() ? W()?.openView('send') : W()?.openModal('add')),
+            calc: () => { goTab('earn'); setTimeout(() => document.getElementById('earn-calc')?.scrollIntoView({ behavior: 'smooth' }), 300); },
+            offline: () => global.RdeskAirgap?.open?.()
         }[a.kind];
         return run ? { label: a.label, run } : null;
     }

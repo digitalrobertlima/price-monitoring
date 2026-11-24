@@ -29,9 +29,10 @@
         WBTC: { name: 'Bitcoin embrulhado (WBTC)', since: 2019, cg: 'wrapped-bitcoin', kind: 'Token que representa BTC', backing: 'BTC guardado por uma empresa custodiante (BitGo e parceiros).', freeze: 'Depende da custodiante: não é Bitcoin de verdade.' },
         CBBTC: { name: 'Bitcoin da Coinbase (cbBTC)', since: 2024, cg: 'coinbase-wrapped-btc', kind: 'Token que representa BTC', backing: 'BTC guardado pela Coinbase.', freeze: 'A Coinbase pode congelar.' },
         CELO: { name: 'Celo', since: 2020, cg: 'celo', kind: 'Moeda da rede Celo', backing: 'Emitida pelas regras da rede Celo.', freeze: 'Não tem congelamento.' },
+        DASH: { name: 'Dash', since: 2014, cg: 'dash', kind: 'Moeda da rede Dash, feita para pagamentos', backing: 'Ninguém emite por conta própria: regras da rede, com teto de cerca de 18,9 milhões.', freeze: 'Ninguém consegue congelar. Só quem tem as palavras move.' },
         AAVE: { name: 'Aave', since: 2020, cg: 'aave', kind: 'Token de protocolo de empréstimos', backing: 'Nada garante o preço: vale o que o mercado paga.', freeze: 'O contrato não tem congelamento, mas pode ser atualizado pela governança.' }
     };
-    const NATIVE_HOME = { BTC: 'btc', ETH: 1, BNB: 56, POL: 137, CELO: 42220 };
+    const NATIVE_HOME = { BTC: 'btc', DASH: 'dash', ETH: 1, BNB: 56, POL: 137, CELO: 42220 };
 
     // Exploradores Blockscout (gratuitos, sem cadastro) que dizem quando cada contrato foi criado
     const BLOCKSCOUT = { 1: 'https://eth.blockscout.com', 137: 'https://polygon.blockscout.com', 8453: 'https://base.blockscout.com', 42161: 'https://arbitrum.blockscout.com', 10: 'https://optimism.blockscout.com', 42220: 'https://celo.blockscout.com' };

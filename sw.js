@@ -43,6 +43,8 @@ const CORE_ASSETS = [
   './icons/apple-touch-icon.png',
   './icons/icon.svg',
   './vendor/ethers-5.7.2.umd.min.js',
+  './wordlist-pt.js',
+  './dash.js',
   './vendor/qrcode-1.0.0.min.js',
   './vendor/jsqr-1.4.0.js',
   './vendor/chart-4.4.1.umd.min.js'

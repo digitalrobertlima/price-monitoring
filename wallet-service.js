@@ -51,6 +51,7 @@
             polUsd: 0.088,
             ethUsd: 0,
             btcUsd: 0,
+            dashUsd: 0,
             celoUsd: 0,
             bnbUsd: 0,
             custom: {}, confidence: {},      // { '137:0xabc…': preço em USD } para moedas adicionadas pelo usuário
@@ -156,6 +157,7 @@
             USD_BRL: usdBrl,
             ETH: Number(state.prices.ethUsd) || 0,
             BTC: Number(state.prices.btcUsd) || 0,
+            DASH: Number(state.prices.dashUsd) || 0,
             CELO: Number(state.prices.celoUsd) || 0,
             BNB: Number(state.prices.bnbUsd) || 0,
             live: Boolean(state.prices.usdBrlLive && state.prices.polLive),
@@ -205,7 +207,7 @@
             try {
                 const WPOL_KEY = 'polygon:0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
                 const customKeys = REG.loadCustomTokens().map((t) => `${REG.getChain(t.chainId).llama}:${t.address}`);
-                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', 'coingecko:binancecoin', ...customKeys];
+                const keys = [WPOL_KEY, 'coingecko:ethereum', 'coingecko:bitcoin', 'coingecko:celo', 'coingecko:binancecoin', 'coingecko:dash', ...customKeys];
                 const [fx, coinsRes] = await Promise.all([
                     fetchUsdBrl(),
                     fetchJson(`https://coins.llama.fi/prices/current/${keys.join(',')}`)
@@ -217,6 +219,7 @@
                 if (price('coingecko:bitcoin')) state.prices.btcUsd = price('coingecko:bitcoin');
                 if (price('coingecko:celo')) state.prices.celoUsd = price('coingecko:celo');
                 if (price('coingecko:binancecoin')) state.prices.bnbUsd = price('coingecko:binancecoin');
+                if (price('coingecko:dash')) state.prices.dashUsd = price('coingecko:dash');
                 if (price(WPOL_KEY)) {
                     state.prices.polUsd = price(WPOL_KEY);
                     state.prices.polLiveAt = Date.now();
@@ -704,16 +707,17 @@
     const passphraseOf = (seedGroupId) => state.unlockedSecrets?.passphraseMap?.[seedGroupId] || '';
 
     async function addAccountFromMnemonic({ mnemonic, name, hdIndex = 0, password, enableBio = false, passphrase = '' }) {
-        const cleanPhrase = String(mnemonic || '').trim().toLowerCase().replace(/\s+/g, ' ');
-        if (!ethers.utils.isValidMnemonic(cleanPhrase)) {
-            throw new Error('Frase-semente inválida. Verifique as 12 ou 24 palavras em inglês.');
+        const cleanPhrase = String(mnemonic || '').trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+        const lang = window.RdeskWordlists?.detect(cleanPhrase);
+        if (!lang || !ethers.utils.isValidMnemonic(cleanPhrase, window.RdeskWordlists.list(lang))) {
+            throw new Error(lang === null ? 'Alguma palavra não está na lista oficial, ou há palavras em inglês misturadas com português. Confira no papel.' : 'As palavras existem, mas a frase não fecha. Confira a ordem e se não falta nenhuma.');
         }
         const extra = String(passphrase || ''); // exatamente como digitada (maiúsculas e espaços contam)
 
         const secrets = await ensureUnlockedSecrets(password);
         secrets.passphraseMap = secrets.passphraseMap || {};
         const path = `m/44'/60'/0'/0/${Number(hdIndex) || 0}`;
-        const hdNode = ethers.utils.HDNode.fromMnemonic(cleanPhrase, extra || undefined).derivePath(path);
+        const hdNode = ethers.utils.HDNode.fromMnemonic(cleanPhrase, extra || undefined, window.RdeskWordlists.list(lang)).derivePath(path);
         const address = ethers.utils.getAddress(hdNode.address);
 
         // Mesma frase + senha extra diferente = outro cofre
@@ -796,6 +800,13 @@
         let changed = false;
         state.accounts.forEach((acc) => {
             try { if (btcExtend(acc)) changed = true; } catch (e) {}
+            // Dash: endereço público tirado da mesma chave (aparece mesmo com o cofre trancado)
+            if (!acc.dashAddress && window.RdeskDash) {
+                try {
+                    if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) { acc.dashAddress = window.RdeskDash.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0, passphraseOf(acc.seedGroupId)).address; changed = true; }
+                    else if (acc.type === 'pk' && state.unlockedSecrets.pkMap[acc.id]) { acc.dashAddress = window.RdeskDash.fromPrivateKey(state.unlockedSecrets.pkMap[acc.id]).address; changed = true; }
+                } catch (e) {}
+            }
             if (acc.btcAddress) return;
             try {
                 if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) {
@@ -1175,7 +1186,7 @@
             const phrase = state.unlockedSecrets.masterSeedMap[acc.seedGroupId];
             if (!phrase) throw new Error('Frase-semente não localizada.');
             const path = `m/44'/60'/0'/0/${Number(acc.hdIndex) || 0}`;
-            const node = ethers.utils.HDNode.fromMnemonic(phrase, passphraseOf(acc.seedGroupId) || undefined).derivePath(path);
+            const node = ethers.utils.HDNode.fromMnemonic(phrase, passphraseOf(acc.seedGroupId) || undefined, window.RdeskWordlists.forPhrase(phrase)).derivePath(path);
             return { privateKey: node.privateKey, mnemonic: phrase };
         }
         throw new Error('Tipo de conta desconhecido.');
@@ -1812,6 +1823,7 @@
         getActiveAccount: () => getActiveAccount(),
         getSigner: (chainId) => getActiveSigner(chainId),
         getBitcoinKey: () => getActiveBitcoinKey(),
+        getDashKey: () => window.RdeskWallet.getDashKey(),
         btcReceiveAddress: () => btcReceiveAddress(),
         btcChangeAddress: () => btcChangeAddress(),
         gatherBitcoinUtxos: () => btcGatherUtxos(),
@@ -2143,7 +2155,7 @@
     //   1. o que é a chave  2. ver a chave (12 palavras)  3. conferir  4. proteger
     // -------------------------------------------------------------------------
     function newSeedDraft() {
-        return { mnemonic: ethers.Wallet.createRandom().mnemonic.phrase, wordCount: 12, step: 'intro', revealed: false,
+        return { mnemonic: ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(16), window.RdeskWordlists.list('en')), wordCount: 12, lang: 'en', step: 'intro', revealed: false,
             quiz: [], quizAt: 0, name: '', password: '', enableBio: isBiometrySupported() };
     }
 
@@ -2223,6 +2235,11 @@
                         <button type="button" role="radio" data-wc="12" aria-checked="${words.length === 12}">12 palavras<small>padrão</small></button>
                         <button type="button" role="radio" data-wc="24" aria-checked="${words.length === 24}">24 palavras<small>ainda mais forte</small></button>
                     </div>
+                    <div class="ks-seg" role="radiogroup" aria-label="Idioma das palavras">
+                        <button type="button" role="radio" data-lang="en" aria-checked="${d.lang !== 'pt'}">Inglês<small>abre em qualquer carteira</small></button>
+                        <button type="button" role="radio" data-lang="pt" aria-checked="${d.lang === 'pt'}">Português<small>mais fácil de escrever</small></button>
+                    </div>
+                    ${d.lang === 'pt' ? '<p class="ks-note">🇧🇷 Palavras da lista oficial em português. Este app e outras carteiras que aceitam a lista em português abrem esta chave; algumas carteiras famosas (como MetaMask e Rabby) só aceitam inglês.</p>' : ''}
                     <p class="ks-sub">Copie as ${words.length} palavras no papel, <b>na ordem</b>.</p>
                     <div class="ks-words ${d.revealed ? 'revealed' : ''}" id="ks-words">
                         <div class="rmw-words-grid">${words.map((w, i) => `<div class="rmw-word-pill"><span class="rmw-word-num">${i + 1}</span><span class="rmw-word-txt">${esc(w)}</span></div>`).join('')}</div>
@@ -2238,8 +2255,19 @@
                     const n = Number(b.getAttribute('data-wc'));
                     if (n === words.length) return;
                     // Nova chave com 12 (128 bits) ou 24 palavras (256 bits)
-                    d.mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(n === 24 ? 32 : 16));
+                    d.mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(n === 24 ? 32 : 16), window.RdeskWordlists.list(d.lang));
                     d.wordCount = n;
+                    d.revealed = false;
+                    renderModal();
+                };
+            });
+            sheet.querySelectorAll('[data-lang]').forEach((b) => {
+                b.onclick = () => {
+                    const lang = b.getAttribute('data-lang');
+                    if (lang === d.lang) return;
+                    // Nova chave no idioma escolhido (mesma força: 12 ou 24 palavras)
+                    d.lang = lang;
+                    d.mnemonic = ethers.utils.entropyToMnemonic(ethers.utils.randomBytes(words.length === 24 ? 32 : 16), window.RdeskWordlists.list(lang));
                     d.revealed = false;
                     renderModal();
                 };
@@ -2899,6 +2927,10 @@
 
         const usdBrl = getNormalizedPricesObject().usdBrl;
         const arr = (list || []).map((b) => {
+            if (b.chainId === 'dash') {
+                const u = b.amount * unitUsdFor('DASH');
+                return { chainId: 'dash', symbol: 'DASH', amount: b.amount, pending: b.pending || 0, usdValue: u, brlValue: u * usdBrl, address: null, name: 'Dash', hasPrice: unitUsdFor('DASH') > 0 };
+            }
             if (b.chainId === 'btc') {
                 const usdBtc = b.amount * unitUsdFor('BTC');
                 return { chainId: 'btc', symbol: 'BTC', amount: b.amount, pending: b.pending || 0, usdValue: usdBtc, brlValue: usdBtc * usdBrl, address: null, hasPrice: unitUsdFor('BTC') > 0 };
@@ -2967,6 +2999,13 @@
                 const total = ok.reduce((s, [, b]) => s + b.totalSats, 0), pend = ok.reduce((s, [, b]) => s + b.pendingSats, 0);
                 return { chainId: 'btc', symbol: 'BTC', amount: total / 1e8, pending: pend / 1e8, ok: true };
             })());
+        }
+
+        // Dash (endereço próprio, mesma chave)
+        if (acc.dashAddress && window.RdeskDash && (!window.RdeskAnon || window.RdeskAnon.chainAllowed('dash'))) {
+            jobs.push(window.RdeskDash.fetchBalance(acc.dashAddress)
+                .then((b) => ({ chainId: 'dash', symbol: 'DASH', amount: b.totalDuffs / 1e8, pending: b.pendingDuffs / 1e8, ok: true }))
+                .catch(() => ({ chainId: 'dash', symbol: 'DASH', amount: 0, ok: false })));
         }
 
         // Cada saldo chega no seu tempo: um servidor lento não segura os outros (antes, um RPC travado
@@ -3120,7 +3159,7 @@
                 listEl.querySelectorAll('[data-asset-chain]').forEach((row) => {
                     row.onclick = () => {
                         const raw = row.getAttribute('data-asset-chain');
-                        walletApi.openView('asset', { chainId: raw === 'btc' ? 'btc' : Number(raw), symbol: row.getAttribute('data-asset-symbol') });
+                        walletApi.openView('asset', { chainId: raw === 'btc' || raw === 'dash' ? raw : Number(raw), symbol: row.getAttribute('data-asset-symbol') });
                     };
                 });
             }
@@ -3237,6 +3276,16 @@
         // Endereço para RECEBER Bitcoin: um novo a cada recebimento
         getBitcoinAddress: () => btcReceiveAddress(),
         getBitcoinLegacyAddress: () => getActiveAccount()?.btcAddress || '',
+        getDashAddress: () => getActiveAccount()?.dashAddress || '',
+        getDashKey: () => {
+            const acc = getActiveAccount();
+            if (!acc || !state.unlockedSecrets) throw new Error('Destranque o cofre para assinar.');
+            const k = acc.type === 'seed'
+                ? window.RdeskDash.deriveFromMnemonic(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], acc.hdIndex || 0, passphraseOf(acc.seedGroupId))
+                : window.RdeskDash.fromPrivateKey(state.unlockedSecrets.pkMap[acc.id]);
+            if (acc.dashAddress && k.address !== acc.dashAddress) throw new Error('Erro interno: endereço Dash não confere com a chave.');
+            return k;
+        },
         getBitcoinAddresses: () => btcScanList(getActiveAccount()),
         getBitcoinSpendAddress: () => btcRichestAddress(),
         getBitcoinChangeAddress: () => btcChangeAddress(),

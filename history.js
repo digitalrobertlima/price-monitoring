@@ -162,6 +162,7 @@
         if (s === 'POL' || s === 'WPOL') return `polygon:${WPOL}`;
         if (s === 'ETH' || s === 'WETH') return 'coingecko:ethereum';
         if (s === 'BTC' || s === 'WBTC' || s === 'CBBTC') return 'coingecko:bitcoin';
+        if (s === 'DASH') return 'coingecko:dash';
         if (s === 'USDT' || s === 'USDT0') return 'coingecko:tether';
         if (s === 'USDC' || s === 'USDC.E') return 'coingecko:usd-coin';
         if (s === 'BRZ') return `polygon:${BRZ}`;
