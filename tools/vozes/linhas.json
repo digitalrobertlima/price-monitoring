@@ -495,6 +495,156 @@
   "text": "Ganho não é garantido. Use só uma parte do dinheiro, e guarde a reserva no Bitcoin."
  },
  {
+  "key": "duda-d322ee5a",
+  "who": "duda",
+  "text": "No topo fica o seu saldo, sempre em reais. Tocando no olho, os valores somem da tela. Bom pra usar na rua."
+ },
+ {
+  "key": "bit-c6073f12",
+  "who": "bit",
+  "text": "Logo abaixo tem o meu preço ao vivo, em reais, e o gráfico do seu patrimônio. Arrasta o dedo no gráfico pra ver o valor de cada dia."
+ },
+ {
+  "key": "duda-3ea1a1e0",
+  "who": "duda",
+  "text": "Cada moeda da lista é clicável: abre o gráfico, a ficha com a idade dela e quem pode congelar. Os selos também explicam o que significam."
+ },
+ {
+  "key": "bit-46c641ba",
+  "who": "bit",
+  "text": "Valendo! Quer ver as 10 maiores moedas do mundo em reais. Onde toca?"
+ },
+ {
+  "key": "duda-d18f41db",
+  "who": "duda",
+  "text": "Pra receber, toque em Receber e mostre o QR. Pra mandar, toque em Enviar e leia o QR de quem vai receber."
+ },
+ {
+  "key": "bit-ff73f3c6",
+  "who": "bit",
+  "text": "Regra de ouro: a rede tem que ser a mesma dos dois lados. Bitcoin vai pra endereço de Bitcoin. Real digital na Polygon vai pra Polygon."
+ },
+ {
+  "key": "duda-86b0afa3",
+  "who": "duda",
+  "text": "Antes de confirmar, confira o começo e o fim do endereço. Golpistas criam endereços parecidos."
+ },
+ {
+  "key": "bit-62b8b5ff",
+  "who": "bit",
+  "text": "Valendo! Vai mandar Bitcoin. O endereço de quem recebe tem que ser…"
+ },
+ {
+  "key": "duda-a046aa9a",
+  "who": "duda",
+  "text": "Na aba Trocar você escolhe o que sai e o que entra. Antes de confirmar, o app mostra quanto chega, as taxas e o mínimo garantido, tudo em reais."
+ },
+ {
+  "key": "bit-3a9ede3c",
+  "who": "bit",
+  "text": "Quando ninguém troca Bitcoin por real digital direto, o app faz em duas etapas, passando pelo dólar digital. Ele te avisa quando a primeira terminar."
+ },
+ {
+  "key": "duda-d4630c0f",
+  "who": "duda",
+  "text": "E enquanto você só olha o preço, o app não manda o seu endereço pra ninguém. Ele só sai quando você confirma."
+ },
+ {
+  "key": "bit-f05b135c",
+  "who": "bit",
+  "text": "Valendo! Antes de confirmar uma troca, o que você confere?"
+ },
+ {
+  "key": "duda-22195c2f",
+  "who": "duda",
+  "text": "No Render tem uma calculadora. Você diz quanto quer ganhar por minuto, hora, dia ou mês, e ela mostra quanto precisa colocar em cada faixa."
+ },
+ {
+  "key": "bit-c15a6339",
+  "who": "bit",
+  "text": "Faixa estreita rende mais enquanto o preço está dentro dela, mas sai mais vezes. Faixa larga rende menos e aguenta mais sobe e desce."
+ },
+ {
+  "key": "duda-9ef375fa",
+  "who": "duda",
+  "text": "A conta usa o movimento de hoje do fundo. Amanhã pode ser diferente: é estimativa, nunca promessa."
+ },
+ {
+  "key": "bit-a2015360",
+  "who": "bit",
+  "text": "Valendo! Faixa mais estreita…"
+ },
+ {
+  "key": "duda-91fff25e",
+  "who": "duda",
+  "text": "No Extrato aparece tudo que entrou e saiu, em todas as redes. Cada linha mostra a rede e o valor em reais no dia."
+ },
+ {
+  "key": "bit-20d5acd6",
+  "who": "bit",
+  "text": "Toque numa linha pra dizer o que ela foi: dinheiro que você colocou, que você tirou, ou só troca entre suas moedas. Assim a conta do lucro fica certa."
+ },
+ {
+  "key": "duda-2a3f0895",
+  "who": "duda",
+  "text": "Dá pra baixar tudo em planilha, que ajuda na hora do imposto de renda."
+ },
+ {
+  "key": "bit-a6b52ab8",
+  "who": "bit",
+  "text": "Valendo! Trocou Bitcoin por dólar digital. No extrato isso é…"
+ },
+ {
+  "key": "bit-bf3dc869",
+  "who": "bit",
+  "text": "Quando o cofre tranca, você ouve a porta. Quando entra dinheiro, ouve as moedas e recebe um aviso no celular."
+ },
+ {
+  "key": "duda-9027e445",
+  "who": "duda",
+  "text": "No menu você liga ou desliga sons, vibração e avisos. E pode ligar o modo anônimo, que esconde valores e conversa com o mínimo de servidores."
+ },
+ {
+  "key": "bit-011febee",
+  "who": "bit",
+  "text": "Só um detalhe: com o app totalmente fechado o celular não avisa. O app não usa servidor ligado o tempo todo, e isso protege você."
+ },
+ {
+  "key": "duda-67bbd668",
+  "who": "duda",
+  "text": "Valendo! Onde liga os sons e avisos?"
+ },
+ {
+  "key": "duda-2940c05c",
+  "who": "duda",
+  "text": "Dá pra assinar uma transação de Bitcoin num celular que nunca toca a internet. Um celular prepara, o outro assina em modo avião, e qualquer um transmite."
+ },
+ {
+  "key": "bit-88c2a452",
+  "who": "bit",
+  "text": "Tudo passa por QR Code, de tela pra câmera. A chave nunca sai do celular desligado da internet."
+ },
+ {
+  "key": "duda-ea468de3",
+  "who": "duda",
+  "text": "Valendo! O celular que assina fica…"
+ },
+ {
+  "key": "duda-c42af3cb",
+  "who": "duda",
+  "text": "Na hora de criar o cofre você escolhe: palavras em inglês ou em português. As duas são do padrão oficial e têm a mesma força."
+ },
+ {
+  "key": "bit-536521f8",
+  "who": "bit",
+  "text": "Só saiba que algumas carteiras famosas, como Méta Másk e Rábi, só aceitam inglês. Aqui no app as duas funcionam, e o app descobre sozinho o idioma da sua chave."
+ },
+ {
+  "key": "duda-b2fc8e73",
+  "who": "duda",
+  "text": "Valendo! Posso misturar palavras em inglês e português na mesma chave?"
+ },
+ {
   "key": "duda-747546b4",
   "who": "duda",
   "text": "Em breve você vai poder comprar cripto só mandando um Pix, do jeito que você já faz todo dia."
