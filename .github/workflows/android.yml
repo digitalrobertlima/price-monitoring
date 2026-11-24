@@ -34,11 +34,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.11.1
+          gradle-version: 9.9.2
 
       - name: Arquivos do app + ponte do Tor
         run: |
@@ -64,7 +64,7 @@ jobs:
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses >/dev/null || true
           "$SDKM" --list 2>/dev/null | grep -oE "platforms;android-3[6-9][^ ]*" | sort -u
-          "$SDKM" "platforms;android-37" || "$SDKM" "platforms;android-37.0"
+          "$SDKM" "platforms;android-37.2" "build-tools;37.0.0" || "$SDKM" "platforms;android-37.2"
           ls "$ANDROID_HOME/platforms"
 
       - name: Compilar
