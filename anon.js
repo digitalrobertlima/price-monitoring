@@ -71,6 +71,7 @@
             <div class="ag-body">
                 <label class="an-toggle"><input type="checkbox" id="anon-on" ${s.on ? 'checked' : ''}><span><b>Modo anônimo</b><small>O mínimo de pistas. Use junto com o Tor Browser ou o Tails.</small></span></label>
                 <ul class="an-list">
+                    ${global.RDESK_NATIVE ? '<li>🧅 <b>No app Android, tudo já passa pelo Tor embutido</b>, com um caminho separado para cada endereço e outro para envios. Se o Tor cair, nada sai do app.</li>' : ''}
                     <li>🔎 Consulta só o saldo das redes marcadas abaixo. Cada servidor consultado vê o seu endereço.</li>
                     <li>📜 Não busca o histórico sozinho (o serviço de histórico veria o seu endereço).</li>
                     <li>🙈 Esconde os saldos ao abrir.</li>
