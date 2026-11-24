@@ -104,6 +104,7 @@ Regra do projeto: nenhuma mudança entra na `main` sem `npm test` passando.
 ## Próximo grande passo
 
 - **App Android nativo, sem Play Store**: APK gerado pelo GitHub Actions e publicado nos Releases. O plano está em [`docs/app-android.md`](docs/app-android.md).
+- **APK privado**: Tor embutido, um caminho por endereço, nada sai se o Tor cair. Pesquisa e plano em [`docs/apk-privado.md`](docs/apk-privado.md).
 - **Token do criador com relayer** (enviar sem moeda da rede, como um Pix): o app já está preparado. Ver [`docs/token-e-relayer.md`](docs/token-e-relayer.md).
 
 ## Ideias para o futuro (ainda não implementadas)
