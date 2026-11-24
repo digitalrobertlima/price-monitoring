@@ -486,7 +486,23 @@
         return txid.trim();
     }
 
+    // Histórico de um endereço (mais novo primeiro), até ~100 transações confirmadas + as pendentes
+    async function fetchAddressTxs(address, maxPages = 4) {
+        const out = [];
+        let page = JSON.parse(await api(`/address/${address}/txs`));
+        out.push(...page);
+        for (let i = 1; i < maxPages; i++) {
+            const conf = page.filter((t) => t.status?.confirmed);
+            if (conf.length < 25) break;
+            page = JSON.parse(await api(`/address/${address}/txs/chain/${conf[conf.length - 1].txid}`));
+            if (!page.length) break;
+            out.push(...page);
+        }
+        return out;
+    }
+
     global.RdeskBitcoin = {
+        fetchAddressTxs,
         DUST_SATS,
         deriveFromMnemonic, deriveAtPath, deriveFromPrivateKey, publicKeyToAddress,
         isValidAddress, addressToScript,

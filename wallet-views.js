@@ -605,6 +605,8 @@
                 <span>${row && row.hasPrice ? ctx.formatBRL(row.brlValue) : 'sem cotação disponível'}</span>
                 ${row && row.pending ? `<small>inclui ${fmtAmount(row.pending)} ainda não confirmado</small>` : ''}
             </div>
+            <div class="asset-chart-box" id="rmw-asset-chart"></div>
+            <div id="rmw-asset-facts" class="asset-facts-box"></div>
             ${riskNote(chainId)}
             <div class="contract-box">${contractLine(chainId, token)}</div>
             ${address ? `<a class="rmw-btn-secondary link-btn" href="${esc(REG.explorerAddressUrl(chainId, address))}" target="_blank" rel="noopener noreferrer">Ver minha carteira no explorador ↗</a>` : ''}
@@ -615,6 +617,8 @@
             ${token.isCustom ? '<button class="rmw-btn-danger" id="rmw-asset-remove">Remover esta moeda da lista</button><p class="view-footnote">Remover só tira da lista. Seu saldo continua na blockchain.</p>' : ''}`;
 
         sheet.querySelector('#rmw-close-btn').onclick = ctx.close;
+        global.RdeskAssetInfo?.fill(sheet.querySelector('#rmw-asset-facts'), { symbol: token.symbol, chainId, address: token.address, isCustom: token.isCustom, priceConfidence: token.address ? ctx.getPriceConfidence?.(chainId, token.address) : undefined });
+        global.RdeskMarket?.mountCoinChart(sheet.querySelector('#rmw-asset-chart'), { symbol: token.symbol, chainId, address: token.address });
         sheet.querySelector('#rmw-asset-send').onclick = () => ctx.navigate('send', { chainId, symbol: token.symbol });
         sheet.querySelector('#rmw-asset-receive').onclick = () => ctx.navigate('receive', { chainId });
         sheet.querySelector('#rmw-asset-remove')?.addEventListener('click', () => {
@@ -700,15 +704,27 @@
                             </div>
                         </div>
                         <code class="contract-code">${esc(found.address)}</code>
+                        <div class="token-age" id="rmw-tok-age">Conferindo quando este contrato foi criado…</div>
                         ${balance !== null ? `<div class="token-found-balance">Seu saldo: <strong class="money">${fmtAmount(balance)} ${esc(found.symbol)}</strong></div>` : ''}
                         <a class="mini-link-btn" href="${esc(REG.explorerTokenUrl(chainId, found.address))}" target="_blank" rel="noopener noreferrer">Conferir no explorador ↗</a>
                         ${already
                             ? `<div class="rmw-alert-ok">${esc(already.symbol)} já está na sua lista desta rede.</div>`
                             : '<button class="rmw-btn-primary" id="rmw-tok-add">Adicionar à minha lista</button>'}
                     </div>`;
+                global.RdeskAssetInfo?.contractInfo(chainId, found.address).then((c) => {
+                    const el = info.querySelector('#rmw-tok-age');
+                    if (!el) return;
+                    if (c?.created) {
+                        const d = new Date(c.created * 1000);
+                        const young = (Date.now() / 1000 - c.created) < 365 * 86400;
+                        el.className = `token-age ${young ? 'warn' : ''}`;
+                        el.textContent = `📅 Contrato criado em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}${young ? ' — tem menos de 1 ano, cuidado redobrado' : ''}${c.holders ? ` · ${c.holders.toLocaleString('pt-BR')} carteiras têm esta moeda` : ''}.`;
+                    } else el.textContent = c?.unavailable ? 'Esta rede não tem explorador gratuito para conferir a data do contrato.' : 'Não deu para conferir a data do contrato agora.';
+                });
                 info.querySelector('#rmw-tok-add')?.addEventListener('click', async () => {
                     try {
                         const added = REG.addCustomToken(found);
+                        ctx.refreshPrices?.().then(() => ctx.refreshBalances()).catch(() => {});
                         await ctx.refreshBalances();
                         ctx.navigate('asset', { chainId, symbol: added.symbol });
                     } catch (err) {
