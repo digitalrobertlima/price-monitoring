@@ -1,0 +1,37 @@
+// Testa a regra de "um caminho do Tor por endereço" da ponte do app Android (sem Android).
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const win = {};
+vm.runInNewContext(readFileSync(join(ROOT, 'android/bridge/native-bridge.js'), 'utf8'), { window: win, URL, TextEncoder, TextDecoder });
+const I = win.RdeskIsolation;
+let pass = 0, fail = 0;
+const check = (name, ok, extra = '') => { if (ok) { pass++; console.log('ok  ', name); } else { fail++; console.log('FAIL', name, extra); } };
+const A = '0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3';
+const B = '0x1111111111111111111111111111111111111111';
+const TOKEN = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
+const pad = (a) => '000000000000000000000000' + a.slice(2).toLowerCase();
+const rpc = (method, params) => JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
+const url = 'https://polygon-bor-rpc.publicnode.com';
+
+check('saldo nativo usa o endereço', I.keyFor(url, rpc('eth_getBalance', [A, 'latest'])) === A);
+check('nonce usa o endereço', I.keyFor(url, rpc('eth_getTransactionCount', [A, 'latest'])) === A);
+check('balanceOf usa o dono, não o token', I.keyFor(url, rpc('eth_call', [{ to: TOKEN, data: '0x70a08231' + pad(A) }, 'latest'])).toLowerCase() === A.toLowerCase());
+check('estimateGas usa o from', I.keyFor(url, rpc('eth_estimateGas', [{ from: B, to: TOKEN, data: '0x' }])) === B);
+check('envio de transação vai no caminho de envio', I.keyFor(url, rpc('eth_sendRawTransaction', ['0xf86c'])) === 'send');
+check('Bitcoin cru (POST /tx) vai no caminho de envio', I.keyFor('https://mempool.space/api/tx', '0200000001' + 'ab'.repeat(80)) === 'send');
+check('histórico no Blockscout usa o endereço da URL', I.keyFor(`https://polygon.blockscout.com/api/v2/addresses/${A}/transactions`, '') === A);
+check('histórico Bitcoin usa o endereço da URL', I.keyFor('https://mempool.space/api/address/bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq/txs', '') === 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq');
+check('preço não tem endereço: caminho público', I.keyFor('https://coins.llama.fi/prices/current/coingecko:bitcoin', '') === null);
+check('leitura de pool sem endereço: público', I.keyFor(url, rpc('eth_call', [{ to: TOKEN, data: '0x3850c7bd' }, 'latest'])) === null);
+check('valor numérico não vira endereço', I.keyFor(url, rpc('eth_call', [{ to: TOKEN, data: '0xa9059cbb' + '0'.repeat(48) + '0de0b6b3a7640000' }, 'latest'])) === null);
+I._reset();
+const sa = I.slotFor(A), sb = I.slotFor(B);
+check('endereços diferentes, caminhos diferentes', sa !== sb && sa >= 1 && sa <= 14 && sb >= 1 && sb <= 14, `${sa} ${sb}`);
+check('mesmo endereço (maiúsc./minúsc.), mesmo caminho', I.slotFor(A.toLowerCase()) === sa);
+check('público é o caminho 0', I.slotFor(null) === 0);
+check('envio é o caminho 15', I.slotFor('send') === 15);
+console.log(`\n${pass} ok, ${fail} falhas`);
+process.exit(fail ? 1 : 0);

@@ -1,4 +1,30 @@
-# Próximo grande passo: app Android nativo, sem Play Store
+# App Android (feito — v46)
+
+> **Status:** o APK é gerado e testado pelo workflow `.github/workflows/android.yml`.
+> A forma final ficou diferente do plano abaixo: em vez do Capacitor, um projeto Android enxuto (pasta `android/`)
+> com o Tor embutido. Detalhes de privacidade em [`apk-privado.md`](apk-privado.md).
+>
+> - **Download fixo (sempre a mais nova):** `https://github.com/digitalrobertlima/price-monitoring/releases/download/android/rdesk.apk`
+> - **Por versão:** tags `android-vXX` na página de versões, com SHA-256 e o certificado de assinatura.
+> - **Assinatura:** o workflow só publica quando os Secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASS` e `ANDROID_KEY_ALIAS` existem.
+>
+> Como o APK funciona por dentro:
+> - O app web vai inteiro dentro do APK. O WebView **não tem rede**: CSP `connect-src 'self'`, todo pedido externo bloqueado e um proxy inexistente como segunda trava.
+> - `android/bridge/native-bridge.js` troca o `fetch` por uma ponte nativa. O Java faz o pedido pelo **Tor embutido** (tor-android, do Guardian Project).
+> - São 16 portas SOCKS: 0 para consultas públicas, 1–14 uma por endereço e 15 só para enviar transações. O Tor nunca mistura portas num mesmo caminho.
+> - Não existe "tenta direto": sem Tor, nada sai.
+> - Proteções do celular: FLAG_SECURE, sem backup, teclado sem aprendizado, área de transferência sensível com limpeza em 60 s, sem Google/Firebase, avisos só locais.
+> - O CI instala o APK num emulador e faz quatro verificações:
+>   1. Confere que a saída é pelo Tor (check.torproject.org).
+>   2. Testa 19 serviços do app.
+>   3. Prova que XHR, imagem, WebSocket e service worker não saem por fora.
+>   4. Captura a placa de rede do computador, com controle positivo, e falha se o nome de qualquer serviço do app aparecer fora do Tor.
+
+---
+
+## Plano original (histórico)
+
+### Próximo grande passo: app Android nativo, sem Play Store
 
 ## Objetivo
 
