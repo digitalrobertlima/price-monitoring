@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  *   portas 1..14 → uma por endereço da carteira
  *   porta 15     → envio de transações
  */
-final class TorManager {
+public final class TorManager {
     static final int SLOTS = 16;
 
     interface Listener { void onState(JSONObject state); }
@@ -123,7 +123,7 @@ final class TorManager {
         try { ctx.stopService(new Intent(ctx, TorService.class)); } catch (Exception ignored) { }
     }
 
-    int port(int slot) {
+    public int port(int slot) {
         if (slot < 0 || slot >= SLOTS) slot = 0;
         return ports[slot];
     }
@@ -131,7 +131,7 @@ final class TorManager {
     boolean isOn() { return "on".equals(state); }
 
     /** Espera o Tor ficar pronto. Nunca existe "tenta direto". */
-    boolean awaitReady(long ms) {
+    public boolean awaitReady(long ms) {
         long end = System.currentTimeMillis() + ms;
         synchronized (lock) {
             while (!isOn()) {

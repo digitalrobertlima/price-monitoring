@@ -32,8 +32,8 @@ import okhttp3.ResponseBody;
  * - um cliente separado por caminho do Tor (nenhuma conexão é reaproveitada entre endereços);
  * - sem cookies, sem cache, mesmo "navegador" para todo mundo.
  */
-final class TorNet {
-    interface Done { void done(JSONObject result); }
+public final class TorNet {
+    public interface Done { void done(JSONObject result); }
 
     static final String UA = "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0";
     private static final long MAX_BODY = 25L * 1024 * 1024;
@@ -68,7 +68,7 @@ final class TorNet {
         }
     }
 
-    void request(String json, Done cb) {
+    public void request(String json, Done cb) {
         pool.execute(() -> cb.done(run(json)));
     }
 

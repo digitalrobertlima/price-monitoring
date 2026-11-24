@@ -128,7 +128,7 @@ class BtcLuz(
         val scan = if (nova || w.latestCheckpoint().height == 0u) {
             val h = cfg.getInt("height")
             val hash = BlockHash.fromString(cfg.getString("hash"))
-            ScanType.Recovery(RecoveryPoint.Other(BlockId(h.toUInt(), hash)))
+            ScanType.Recovery(100u, RecoveryPoint.Other(BlockId(h.toUInt(), hash)))
         } else ScanType.Sync
 
         set("preparando", "Procurando nós da rede Bitcoin pelo Tor")
