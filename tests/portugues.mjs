@@ -50,9 +50,11 @@ try {
     await page.locator('#rmw-f-seed-input').dispatchEvent('input');
     const st = await page.innerText('.sg-status');
     check('quadradinhos reconhecem a chave em português', /12 de 12 palavras · 🇧🇷 em português/.test(st), st);
-    await page.locator('.sg-grid input').nth(3).fill('ability');
-    await page.locator('.sg-grid input').nth(3).dispatchEvent('input');
-    check('mistura de inglês com português é avisada', /misturadas/.test(await page.innerText('.sg-status')));
+    const mixed = PT_PHRASE.split(' '); mixed[3] = 'ability';
+    await page.fill('#rmw-f-seed-input', mixed.join(' '));
+    await page.locator('#rmw-f-seed-input').dispatchEvent('input');
+    await waitFn(page, () => /misturadas/.test(document.querySelector('.sg-status')?.textContent || ''), null, { timeout: 5000 }).catch(() => {});
+    check('mistura de inglês com português é avisada', /misturadas/.test(await page.innerText('.sg-status')), await page.innerText('.sg-status'));
     await page.fill('#rmw-f-seed-input', PT_PHRASE);
     await page.locator('#rmw-f-seed-input').dispatchEvent('input');
     if (await page.locator('[data-lock="password"]').count()) await page.click('[data-lock="password"]');
