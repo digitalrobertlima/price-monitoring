@@ -96,6 +96,15 @@
 
     // ---------------------------------------------------------------- leitura
     const provider = (chainId) => W().getReadProvider(chainId);
+    // Servidor público às vezes responde lixo: tenta o principal e depois cada servidor da lista da rede
+    async function withRpcs(chainId, fn) {
+        let last;
+        try { return await fn(provider(chainId)); } catch (e) { last = e; }
+        for (const url of (REG().getChain(chainId)?.rpcs || [])) {
+            try { return await fn(new (E().providers.StaticJsonRpcProvider)(url, Number(chainId))); } catch (e) { last = e; }
+        }
+        throw last;
+    }
     const tokenCache = {};
     async function tokenMeta(chainId, address) {
         const k = `${chainId}:${address.toLowerCase()}`;
@@ -113,13 +122,14 @@
         if (meta.priceKey) return w.unitUsdFor(meta.priceKey, chainId, meta.address);
         return w.unitUsdFor(null, chainId, meta.address);
     }
-    async function poolInfo(chainId, tokenA, tokenB, fee) {
+    function poolInfo(chainId, tokenA, tokenB, fee) { return withRpcs(chainId, (pr) => poolInfoWith(pr, chainId, tokenA, tokenB, fee)); }
+    async function poolInfoWith(prov, chainId, tokenA, tokenB, fee) {
         const u = UNI[chainId];
         const [t0, t1] = tokenA.toLowerCase() < tokenB.toLowerCase() ? [tokenA, tokenB] : [tokenB, tokenA];
-        const factory = new (E().Contract)(u.factory, ABI.factory, provider(chainId));
+        const factory = new (E().Contract)(u.factory, ABI.factory, prov);
         const addr = await factory.getPool(t0, t1, fee);
         if (!addr || /^0x0{40}$/i.test(addr)) return { exists: false, token0: t0, token1: t1, fee };
-        const pool = new (E().Contract)(addr, ABI.pool, provider(chainId));
+        const pool = new (E().Contract)(addr, ABI.pool, prov);
         const [s0, liq] = await Promise.all([pool.slot0(), pool.liquidity()]);
         const sqrtP = Number(s0.sqrtPriceX96.toString()) / 2 ** 96;
         return { exists: true, address: addr, token0: t0, token1: t1, fee, tick: Number(s0.tick), sqrtP, liquidity: Number(liq.toString()), initialized: sqrtP > 0 };
@@ -131,10 +141,14 @@
         const chains = Object.keys(UNI).map(Number).filter((c) => !global.RdeskAnon || global.RdeskAnon.chainAllowed(c));
         await Promise.all(chains.map(async (chainId) => {
             try {
-                const nfpm = new (E().Contract)(UNI[chainId].nfpm, ABI.nfpm, provider(chainId));
-                const n = Number(await nfpm.balanceOf(owner));
-                const ids = await Promise.all(Array.from({ length: Math.min(n, 30) }, (_, i) => nfpm.tokenOfOwnerByIndex(owner, i)));
-                await Promise.all(ids.map(async (idBn) => {
+                const { nfpm, ids } = await withRpcs(chainId, async (pr) => {
+                    const c = new (E().Contract)(UNI[chainId].nfpm, ABI.nfpm, pr);
+                    const n = Number(await c.balanceOf(owner));
+                    // as mais novas primeiro (as abertas costumam ser as últimas)
+                    const idx = Array.from({ length: Math.min(n, 40) }, (_, i) => n - 1 - i);
+                    return { nfpm: c, ids: await Promise.all(idx.map((i) => c.tokenOfOwnerByIndex(owner, i))) };
+                });
+                await Promise.all(ids.map((idBn) => (async () => {
                     const id = idBn.toString();
                     const p = await nfpm.positions(id);
                     const liquidity = Number(p.liquidity.toString());
@@ -159,7 +173,7 @@
                         min: humanFromRaw(rawFromTick(Number(p.tickLower)), m0.decimals, m1.decimals), max: humanFromRaw(rawFromTick(Number(p.tickUpper)), m0.decimals, m1.decimals),
                         price: pool?.sqrtP ? humanFromRaw(pool.sqrtP ** 2, m0.decimals, m1.decimals) : 0
                     });
-                }));
+                })().catch(() => { /* uma posição com erro não esconde as outras */ })));
             } catch (e) { /* rede sem resposta: tenta de novo na próxima atualização */ }
         }));
         return out.sort((a, b) => Number(b.closed === false) - Number(a.closed === false) || b.usd - a.usd);
