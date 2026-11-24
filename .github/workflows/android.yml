@@ -90,6 +90,9 @@ jobs:
             sleep 5
             gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E > logcat.txt; exit 1)
             adb logcat -d -s RDESKTEST:I > logcat.txt
+            adb logcat -c
+            gradle -p android --no-daemon connectedReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.ponte=snowflake || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E >> logcat.txt; exit 1)
+            adb logcat -d -s RDESKTEST:I >> logcat.txt
             getent hosts "controle-$(date +%s)-rdesk.example.org" > /dev/null || true
             nslookup "controle2-$(date +%s)-rdesk.example.org" 8.8.8.8 > /dev/null 2>&1 || true
             sleep 2
@@ -123,13 +126,17 @@ jobs:
       - name: Empacotar
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/release/app-release.apk "dist/rdesk-$VER.apk"
+          OUT=android/app/build/outputs/apk/release
+          ls -la $OUT
+          cp "$OUT/app-universal-release.apk" "dist/rdesk-$VER.apk"
+          cp "$OUT/app-arm64-v8a-release.apk" "dist/rdesk-$VER-arm64.apk"
+          cp "$OUT/app-armeabi-v7a-release.apk" "dist/rdesk-$VER-arm32.apk"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs "dist/rdesk-$VER.apk" | tee dist/certificado.txt
           cd dist
-          sha256sum "rdesk-$VER.apk" > "rdesk-$VER.apk.sha256"
-          cat "rdesk-$VER.apk.sha256"
-          echo "Tamanho: $(du -h "rdesk-$VER.apk" | cut -f1)"
+          sha256sum rdesk-$VER*.apk > "rdesk-$VER.sha256"
+          cat "rdesk-$VER.sha256"
+          du -h rdesk-$VER*.apk
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -146,14 +153,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           CERT=$(grep -m1 'SHA-256 digest' dist/certificado.txt | sed 's/.*: //')
-          SUM=$(cut -d' ' -f1 "dist/rdesk-$VER.apk.sha256")
           cat > notas.md <<EOF
           **App Android do cofre — $VER**, com o Tor embutido. Nada sai do app fora do Tor.
 
-          **Instalar:** baixe \`rdesk-$VER.apk\` no celular, abra e permita "instalar apps desconhecidos". Em celulares com a verificação do Google, use o modo avançado (Configurações → Opções do desenvolvedor).
+          **Qual baixar:** \`rdesk-$VER-arm64.apk\` serve na grande maioria dos celulares (menor). Celular bem antigo: \`rdesk-$VER-arm32.apk\`. Na dúvida: \`rdesk-$VER.apk\` (universal, roda em qualquer um, maior).
+
+          **Instalar:** baixe no celular, abra e permita "instalar apps desconhecidos". Em celulares com a verificação do Google, use o modo avançado (Configurações → Opções do desenvolvedor).
 
           **Conferir antes de instalar (opcional):**
-          - SHA-256 do APK: \`$SUM\`
+          - SHA-256 de cada APK: veja o arquivo \`rdesk-$VER.sha256\`
           - Certificado de assinatura (SHA-256): \`$CERT\`. Toda versão futura terá **o mesmo** certificado.
 
           **Testado no emulador antes de publicar:** o Tor conecta, a saída é pelo Tor (check.torproject.org) e a captura de rede não mostra nenhum serviço do app fora do Tor.
@@ -162,8 +170,9 @@ jobs:
           EOF
           sed -i 's/^          //' notas.md
           gh release view "android-$VER" >/dev/null 2>&1 && gh release delete "android-$VER" --yes --cleanup-tag
-          gh release create "android-$VER" dist/rdesk-$VER.apk dist/rdesk-$VER.apk.sha256 dist/certificado.txt --title "App Android $VER (Tor embutido)" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
+          gh release create "android-$VER" dist/rdesk-$VER*.apk dist/rdesk-$VER.sha256 dist/certificado.txt --title "App Android $VER (Tor embutido)" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
           # Link fixo que sempre aponta para o APK mais novo
           cp "dist/rdesk-$VER.apk" dist/rdesk.apk
+          cp "dist/rdesk-$VER-arm64.apk" dist/rdesk-arm64.apk
           gh release delete android --yes --cleanup-tag 2>/dev/null || true
-          gh release create android dist/rdesk.apk dist/rdesk-$VER.apk.sha256 --title "App Android — sempre a versão mais nova" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
+          gh release create android dist/rdesk.apk dist/rdesk-arm64.apk dist/rdesk-$VER.sha256 --title "App Android — sempre a versão mais nova" --notes-file notas.md --latest=false --target "$GITHUB_SHA"

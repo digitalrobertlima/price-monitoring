@@ -50,6 +50,19 @@ configure<ApplicationExtension> {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { buildConfig = true }
+    // Um APK por tipo de processador (bem menor) + um universal que roda em qualquer celular
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+    // Bibliotecas nativas compactadas dentro do APK: download bem menor
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+    }
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -66,6 +79,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.core:core:1.13.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.netzarchitekten:IPtProxy:5.9.0")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

@@ -37,6 +37,7 @@ final class Bridge {
     private final TorNet net;
     private final Handler main = new Handler(Looper.getMainLooper());
     private int notifSeq = 1;
+    private BioVault bio;
 
     Bridge(MainActivity act, WebView web, TorManager tor, TorNet net) {
         this.act = act;
@@ -57,6 +58,27 @@ final class Bridge {
 
     @JavascriptInterface public void request(int id, String json) {
         net.request(json, r -> deliver(id, r));
+    }
+
+    private BioVault bio() { if (bio == null) bio = new BioVault(act); return bio; }
+
+    @JavascriptInterface public boolean bioAvailable() { return bio().available(); }
+
+    @JavascriptInterface public void bioEncrypt(int id, String plain) { bio().encrypt(plain, r -> deliver(id, r)); }
+
+    @JavascriptInterface public void bioDecrypt(int id, String ct, String iv) { bio().decrypt(ct, iv, r -> deliver(id, r)); }
+
+    @JavascriptInterface public void bioForget() { bio().forget(); }
+
+    @JavascriptInterface public String getBridge() {
+        JSONObject o = new JSONObject();
+        try { o.put("modo", Pontes.modo(act)); o.put("proprias", Pontes.proprias(act)); } catch (Exception ignored) { }
+        return o.toString();
+    }
+
+    @JavascriptInterface public void setBridge(String modo, String proprias) {
+        Pontes.salvar(act, modo, proprias);
+        main.post(tor::restart);
     }
 
     @JavascriptInterface public String torState() { return tor.stateJson().toString(); }

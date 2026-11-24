@@ -3021,3 +3021,10 @@ button:active, .asset-row-btn:active, .extrato-row:active, .chip:active { transf
 .pl-msg { font-size: .9rem; min-height: 1em; }
 #modal-receipt { z-index: 100100 !important; } /* o recibo sempre por cima das telas (mercado, fundos) */
 .rdesk-toast { pointer-events: none !important; } /* aviso nunca bloqueia o toque no que está embaixo */
+
+/* Ponte do Tor (app Android) */
+.an-pontes { flex-direction: column; }
+.an-ponte { align-items: flex-start !important; }
+.an-ponte span { display: flex; flex-direction: column; }
+.an-ponte small { color: #94a3b8; font-size: 12px; }
+#an-pontes-proprias { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }

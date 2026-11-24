@@ -170,6 +170,27 @@
     // Passkeys do navegador não funcionam no app: o app usa só senha/PIN
     try { global.PublicKeyCredential = undefined; } catch (e) { /* ok */ }
 
+    // Biometria do Android (chave no chip seguro do celular): usada pelo cofre no lugar das passkeys
+    function call(fn) {
+        return new Promise((resolve, reject) => {
+            const id = ++seq;
+            pending.set(id, { resolve, reject });
+            fn(id);
+        });
+    }
+    global.RdeskNativeBio = {
+        available: () => { try { return Boolean(N.bioAvailable()); } catch (e) { return false; } },
+        encrypt: (text) => call((id) => N.bioEncrypt(id, String(text))),
+        decrypt: (ct, iv) => call((id) => N.bioDecrypt(id, String(ct), String(iv))).then((r) => r.text),
+        forget: () => { try { N.bioForget(); } catch (e) { /* ok */ } }
+    };
+
+    // Ponte do Tor (Snowflake, obfs4 ou as suas): trocar religa o Tor
+    global.RdeskNativeTor = {
+        get: () => JSON.parse(N.getBridge()),
+        set: (modo, proprias) => N.setBridge(String(modo), String(proprias || ''))
+    };
+
     // Sem service worker: os arquivos já vêm dentro do APK
     const swStub = {
         register: () => Promise.reject(new Error('O app Android não usa service worker')),
