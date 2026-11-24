@@ -87,10 +87,12 @@ jobs:
           script: |
             adb logcat -c
             nohup sudo tcpdump -i "$(ip route | awk '/^default/ {print $5; exit}')" -nn -s 0 -w /tmp/host.pcap 'not port 5037 and not port 5555 and not port 5554' > /tmp/tcpdump.log 2>&1 &
-            sleep 3
-            getent hosts example.org > /dev/null || true
+            sleep 5
             gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E > logcat.txt; exit 1)
             adb logcat -d -s RDESKTEST:I > logcat.txt
+            getent hosts "controle-$(date +%s)-rdesk.example.org" > /dev/null || true
+            nslookup "controle2-$(date +%s)-rdesk.example.org" 8.8.8.8 > /dev/null 2>&1 || true
+            sleep 2
             sudo pkill -INT tcpdump || true
             sleep 3
 
@@ -105,7 +107,8 @@ jobs:
           # (O tráfego interno do adb, que instala o APK, fica de fora: ele contém o código do app.)
           # Controle positivo: o nome consultado de propósito no computador TEM que aparecer (prova que a captura funciona).
           echo "Captura do computador: $(stat -c %s /tmp/host.pcap) bytes, $(sudo tcpdump -nn -r /tmp/host.pcap 2>/dev/null | wc -l) pacotes"
-          strings -n 6 /tmp/host.pcap | grep -qi "example.org" || { echo "A captura não está funcionando (controle não apareceu)"; exit 1; }
+          cat /tmp/tcpdump.log || true
+          strings -n 4 /tmp/host.pcap | grep -qi "rdesk" || { echo "A captura não está funcionando (controle não apareceu)"; exit 1; }
           echo "Controle OK: a captura enxerga DNS."
           LEAK=""
           for f in /tmp/host.pcap rede.pcap; do
