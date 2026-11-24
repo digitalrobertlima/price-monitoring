@@ -191,6 +191,81 @@
         set: (modo, proprias) => N.setBridge(String(modo), String(proprias || ''))
     };
 
+    // ------------------------------------------------------------------ Bitcoin sem servidor (Kyoto)
+    // Os filtros dos blocos vêm direto da rede Bitcoin, pelo Tor. Nenhum servidor recebe seus endereços.
+    const BTC_KEY = 'rdesk_btc_luz_v1';
+    let btcSt = { estado: 'desligado' };
+    let btcWatch = new Set();
+    let btcStartedFor = '';
+    const btcCfg = () => { try { return JSON.parse(localStorage.getItem(BTC_KEY) || '{}'); } catch (e) { return {}; } };
+    global.__rdeskBtc = function (st) {
+        if (!st) return;
+        const dados = st.dados || btcSt.dados;
+        btcSt = { ...st, dados };
+        if (st.dados) btcWatch = new Set(st.dados.vigiados || []);
+        global.dispatchEvent(new CustomEvent('rdesk:btcluz', { detail: btcSt }));
+    };
+    const btcReady = () => btcSt.estado === 'pronto' && Boolean(btcSt.dados);
+    function btcTxsOf(a) {
+        return (btcSt.dados.txs || []).filter((t) => (t.vout || []).some((o) => o.scriptpubkey_address === a) || (t.vin || []).some((i) => i.prevout && i.prevout.scriptpubkey_address === a))
+            .sort((x, y) => (y.status.block_time || 9e12) - (x.status.block_time || 9e12));
+    }
+    async function birthday(year) {
+        const tipRes = await fetch('https://blockstream.info/api/blocks/tip/height');
+        const tip = Number(await tipRes.text());
+        let h;
+        if (year === 'novo') h = tip - 6;
+        else {
+            const ts = Date.UTC(Number(year) || 2015, 0, 1) / 1000;
+            h = Math.floor(840000 + (ts - 1713571200) / 600) - 2016; // ~1 bloco a cada 10 min, com folga de 2 semanas
+        }
+        h = Math.max(481824, Math.min(h, tip - 6)); // no mínimo a ativação do SegWit (endereços bc1)
+        const hash = (await (await fetch(`https://blockstream.info/api/block-height/${h}`)).text()).trim();
+        if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('sem hash do bloco');
+        return { height: h, hash };
+    }
+    async function btcTick() {
+        const c = btcCfg();
+        if (!c.on) return;
+        const d = global.RdeskWallet && global.RdeskWallet.getBtcDescriptors && global.RdeskWallet.getBtcDescriptors();
+        if (!d || btcStartedFor === d.id) return;
+        let t = {};
+        try { t = JSON.parse(N.torState()); } catch (e) { /* ok */ }
+        if (t.state !== 'on') return;
+        btcStartedFor = d.id;
+        try {
+            const b = await birthday(c.ano || '2020');
+            N.btcStart(JSON.stringify({ id: d.id, ext: d.ext, int: d.int, height: b.height, hash: b.hash }));
+        } catch (e) { btcStartedFor = ''; }
+    }
+    setInterval(btcTick, 15000);
+    global.addEventListener('rdesk:tor', () => setTimeout(btcTick, 2000));
+    try { btcSt = JSON.parse(N.btcState()); if (btcSt.dados) btcWatch = new Set(btcSt.dados.vigiados || []); } catch (e) { /* ok */ }
+    global.RdeskNativeBtc = {
+        config: btcCfg,
+        setConfig(c) {
+            localStorage.setItem(BTC_KEY, JSON.stringify(c || {}));
+            btcStartedFor = '';
+            if (!c || !c.on) { N.btcStop(); btcSt = { estado: 'desligado' }; btcWatch = new Set(); }
+            else setTimeout(btcTick, 500);
+        },
+        state: () => btcSt,
+        ready: btcReady,
+        covers: (a) => btcReady() && btcWatch.has(a),
+        balance(a) {
+            const us = (btcSt.dados.utxos || []).filter((u) => u.address === a);
+            const confirmed = us.filter((u) => u.confirmed).reduce((x, u) => x + u.value, 0);
+            const pending = us.filter((u) => !u.confirmed).reduce((x, u) => x + u.value, 0);
+            return { confirmedSats: confirmed, pendingSats: pending, totalSats: confirmed + pending, btc: (confirmed + pending) / 1e8, txCount: btcTxsOf(a).length };
+        },
+        utxos: (a) => (btcSt.dados.utxos || []).filter((u) => u.address === a).map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, confirmed: u.confirmed })),
+        txs: btcTxsOf,
+        broadcast: (hex) => call((id) => N.btcBroadcast(id, String(hex))).then((r) => r.txid),
+        wipe: () => { try { N.btcWipe(); } catch (e) { /* ok */ } },
+        _start: (cfg) => N.btcStart(JSON.stringify(cfg)),
+        _birthday: birthday
+    };
+
     // Sem service worker: os arquivos já vêm dentro do APK
     const swStub = {
         register: () => Promise.reject(new Error('O app Android não usa service worker')),

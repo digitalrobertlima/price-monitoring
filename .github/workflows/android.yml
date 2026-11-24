@@ -88,8 +88,8 @@ jobs:
             adb logcat -c
             nohup sudo tcpdump -i "$(ip route | awk '/^default/ {print $5; exit}')" -nn -s 0 -w /tmp/host.pcap 'not port 5037 and not port 5555 and not port 5554' > /tmp/tcpdump.log 2>&1 &
             sleep 5
-            gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E > logcat.txt; exit 1)
-            adb logcat -d -s RDESKTEST:I > logcat.txt
+            gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I RDESKBTC:V TorService:I AndroidRuntime:E > logcat.txt; exit 1)
+            adb logcat -d -s RDESKTEST:I RDESKBTC:V > logcat.txt
             adb logcat -c
             gradle -p android --no-daemon connectedReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.ponte=snowflake || gradle -p android --no-daemon connectedReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.ponte=snowflake || echo "::warning::A ponte Snowflake nao conectou no CI desta vez (rede de voluntarios instavel). O resto do teste passou."
             adb logcat -d -s RDESKTEST:I >> logcat.txt
@@ -116,7 +116,7 @@ jobs:
           LEAK=""
           for f in /tmp/host.pcap rede.pcap; do
             [ -s "$f" ] || continue
-            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com; do
+            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com dns.google sipa.be bluematt.me petertodd.net bitcoinstats.com sprovoost.nl; do
               if strings -n 6 "$f" | grep -qi "$h"; then echo "VAZOU em $f: $h apareceu fora do Tor"; LEAK=1; fi
             done
           done

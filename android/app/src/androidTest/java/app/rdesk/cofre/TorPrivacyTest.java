@@ -133,6 +133,18 @@ public class TorPrivacyTest {
                 Log.i(TAG, "SERVICO " + (res.optBoolean("ok") ? "OK   " : "FALHA") + " " + p[0] + " → " + (res.optBoolean("ok") ? res.opt("v") : res.optString("e")));
             }
             Log.i(TAG, "serviços que aceitam Tor: " + okCount + "/" + probes.length);
+
+            // 7. Bitcoin sem servidor (Kyoto): sincroniza direto com a rede Bitcoin, pelo Tor
+            String m = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+            JSONObject ini = obj(js(sc, "(async()=>{const d=RdeskBitcoin.accountDescriptors('" + m + "','',0);const b=await RdeskNativeBtc._birthday('novo');"
+                    + "RdeskNativeBtc._start({id:'teste-ci',ext:d.ext,int:d.int,height:b.height,hash:b.hash});return {d:d.ext.slice(0,40),b}})()", 120_000));
+            Log.i(TAG, "kyoto início: " + ini);
+            assertTrue("kyoto não começou: " + ini, ini.optBoolean("ok"));
+            JSONObject luz = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{const s=JSON.parse(RdeskNative.btcState());"
+                    + "if(s.estado==='pronto'||s.estado==='erro'){clearInterval(t);r({estado:s.estado,altura:s.altura,msg:s.mensagem,utxos:(s.dados&&s.dados.utxos||[]).length,vigiados:(s.dados&&s.dados.vigiados||[]).length})}},2000)})", 540_000));
+            Log.i(TAG, "kyoto: " + luz);
+            assertTrue("Kyoto não sincronizou: " + luz, luz.optBoolean("ok") && "pronto".equals(luz.getJSONObject("v").optString("estado")));
+            assertTrue("Kyoto sem endereços vigiados", luz.getJSONObject("v").optInt("vigiados") >= 80);
             if (okCount < probes.length / 2) fail("Poucos serviços aceitaram conexões pelo Tor: " + okCount);
         }
     }

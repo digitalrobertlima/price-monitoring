@@ -439,6 +439,19 @@
         };
     }
 
+    // Descritores PÚBLICOS da conta BIP84 (xpub): o app Android usa para achar o Bitcoin sem perguntar
+    // a servidor (Kyoto). Nenhuma chave privada sai daqui.
+    function accountDescriptors(mnemonic, passphrase = '', account = 0) {
+        const master = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined);
+        const fp = master.fingerprint.replace(/^0x/, '').toLowerCase();
+        const acct = master.derivePath(`m/84'/0'/${account}'`).neuter();
+        const origin = `[${fp}/84'/0'/${account}']${acct.extendedKey}`;
+        return { ext: `wpkh(${origin}/0/*)`, int: `wpkh(${origin}/1/*)`, fp };
+    }
+
+    // App Android com "Bitcoin sem servidor" ligado e em dia: os dados vêm da própria rede Bitcoin
+    const luz = (address) => { const l = global.RdeskNativeBtc; return l && l.covers && l.covers(address) ? l : null; };
+
     // ---------------------------------------------------------------- rede (API pública estilo Esplora)
     async function api(path, options) {
         let lastError;
@@ -453,6 +466,8 @@
         throw new Error(`Servidores de Bitcoin indisponíveis (${lastError?.message || 'sem resposta'}).`);
     }
     async function fetchBalance(address) {
+        const l = luz(address);
+        if (l) return l.balance(address);
         const info = JSON.parse(await api(`/address/${address}`));
         const c = info.chain_stats, m = info.mempool_stats;
         const confirmed = c.funded_txo_sum - c.spent_txo_sum;
@@ -461,6 +476,8 @@
         return { confirmedSats: confirmed, pendingSats: pending, totalSats: confirmed + pending, btc: (confirmed + pending) / 1e8, txCount };
     }
     async function fetchUtxos(address) {
+        const l = luz(address);
+        if (l) return l.utxos(address);
         const list = JSON.parse(await api(`/address/${address}/utxo`));
         return list.map((u) => ({ txid: u.txid, vout: u.vout, value: u.value, confirmed: Boolean(u.status?.confirmed) }));
     }
@@ -482,6 +499,10 @@
         }
     }
     async function broadcast(hex) {
+        const n = global.RdeskNativeBtc;
+        if (n && n.ready && n.ready()) {
+            try { return await n.broadcast(hex); } catch (e) { /* tenta pelo servidor, também pelo Tor */ }
+        }
         const txid = await api('/tx', { method: 'POST', body: hex });
         if (!/^[0-9a-f]{64}$/.test(txid.trim())) throw new Error(`A rede recusou a transação: ${txid.slice(0, 120)}`);
         return txid.trim();
@@ -489,6 +510,8 @@
 
     // Histórico de um endereço (mais novo primeiro), até ~100 transações confirmadas + as pendentes
     async function fetchAddressTxs(address, maxPages = 4) {
+        const l = luz(address);
+        if (l) return l.txs(address);
         const out = [];
         let page = JSON.parse(await api(`/address/${address}/txs`));
         out.push(...page);
@@ -504,6 +527,7 @@
 
     global.RdeskBitcoin = {
         fetchAddressTxs,
+        accountDescriptors,
         DUST_SATS,
         deriveFromMnemonic, deriveAtPath, deriveFromPrivateKey, publicKeyToAddress,
         isValidAddress, addressToScript,
