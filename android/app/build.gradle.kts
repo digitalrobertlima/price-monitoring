@@ -50,6 +50,19 @@ configure<ApplicationExtension> {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { buildConfig = true }
+    // Um APK por tipo de processador (bem menor) + um universal que roda em qualquer celular
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+    // Bibliotecas nativas compactadas dentro do APK: download bem menor
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+    }
     lint {
         abortOnError = false
         checkReleaseBuilds = false
