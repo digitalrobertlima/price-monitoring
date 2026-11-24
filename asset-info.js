@@ -47,10 +47,11 @@
     const isNativeHere = (symbol, chainId) => NATIVE_HOME[String(symbol || '').toUpperCase()] !== undefined && String(NATIVE_HOME[String(symbol).toUpperCase()]) === String(chainId);
 
     const inflight = {};
-    async function contractInfo(chainId, address) {
+    async function contractInfo(chainId, address, { force = false } = {}) {
         if (!address) return null;
         const k = ck(chainId, address);
-        if (cache[k] && (cache[k].created || Date.now() - (cache[k].at || 0) < 6 * 3600 * 1000)) return cache[k];
+        // Sem a data (o explorador falhou), tenta de novo depois de 10 min — não guarda o erro por horas
+        if (!force && cache[k] && (cache[k].created || cache[k].unavailable || Date.now() - (cache[k].at || 0) < 10 * 60 * 1000)) return cache[k];
         if (global.RdeskAnon?.isOn?.()) return cache[k] || null; // modo anônimo: não pergunta a ninguém
         const host = BLOCKSCOUT[Number(chainId)];
         if (!host) { cache[k] = { at: Date.now(), unavailable: true }; saveCache(); return cache[k]; }

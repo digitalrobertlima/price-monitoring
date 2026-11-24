@@ -96,11 +96,18 @@
 
     // ---------------------------------------------------------------- leitura
     const provider = (chainId) => W().getReadProvider(chainId);
+    // Poucas perguntas por vez: servidores públicos recusam rajadas
+    async function inChunks(list, fn, size = 6) {
+        const out = [];
+        for (let i = 0; i < list.length; i += size) out.push(...await Promise.all(list.slice(i, i + size).map(fn)));
+        return out;
+    }
     // Servidor público às vezes responde lixo: tenta o principal e depois cada servidor da lista da rede
     async function withRpcs(chainId, fn) {
         let last;
         try { return await fn(provider(chainId)); } catch (e) { last = e; }
         for (const url of (REG().getChain(chainId)?.rpcs || [])) {
+            await new Promise((r) => setTimeout(r, 250));
             try { return await fn(new (E().providers.StaticJsonRpcProvider)(url, Number(chainId))); } catch (e) { last = e; }
         }
         throw last;
@@ -146,9 +153,9 @@
                     const n = Number(await c.balanceOf(owner));
                     // as mais novas primeiro (as abertas costumam ser as últimas)
                     const idx = Array.from({ length: Math.min(n, 40) }, (_, i) => n - 1 - i);
-                    return { nfpm: c, ids: await Promise.all(idx.map((i) => c.tokenOfOwnerByIndex(owner, i))) };
+                    return { nfpm: c, ids: await inChunks(idx, (i) => c.tokenOfOwnerByIndex(owner, i)) };
                 });
-                await Promise.all(ids.map((idBn) => (async () => {
+                await inChunks(ids, (idBn) => (async () => {
                     const id = idBn.toString();
                     const p = await nfpm.positions(id);
                     const liquidity = Number(p.liquidity.toString());
@@ -173,7 +180,7 @@
                         min: humanFromRaw(rawFromTick(Number(p.tickLower)), m0.decimals, m1.decimals), max: humanFromRaw(rawFromTick(Number(p.tickUpper)), m0.decimals, m1.decimals),
                         price: pool?.sqrtP ? humanFromRaw(pool.sqrtP ** 2, m0.decimals, m1.decimals) : 0
                     });
-                })().catch(() => { /* uma posição com erro não esconde as outras */ })));
+                })().catch(() => { /* uma posição com erro não esconde as outras */ }));
             } catch (e) { /* rede sem resposta: tenta de novo na próxima atualização */ }
         }));
         return out.sort((a, b) => Number(b.closed === false) - Number(a.closed === false) || b.usd - a.usd);
@@ -523,11 +530,11 @@
                 msg.innerHTML = `✅ Posição aberta! <a href="${esc(REG().explorerTxUrl(chainId, hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`;
                 global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Posição aberta: seu dinheiro já está trabalhando!' } }));
                 W().refreshBalances?.();
-                setTimeout(() => open(), 1800);
+                setTimeout(() => { if (msg.isConnected) open(); }, 1800); // só volta para a lista se a pessoa ainda estiver nesta tela
             } catch (e) { msg.textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 220); $('#pl-go').disabled = false; }
         };
         loadPool();
     }
 
-    global.RdeskPools = { open, openNew, listPositions, planMint, executeMint, collect, withdrawAll, poolInfo, UNI, WRAPPED, _math: { sqrtX96FromRaw, amountsFor, pairAmount, alignTick, tickFromRaw, rawFromHuman, humanFromRaw }, _last: () => lastList };
+    global.RdeskPools = { withRpcs, open, openNew, listPositions, planMint, executeMint, collect, withdrawAll, poolInfo, UNI, WRAPPED, _math: { sqrtX96FromRaw, amountsFor, pairAmount, alignTick, tickFromRaw, rawFromHuman, humanFromRaw }, _last: () => lastList };
 })(window);

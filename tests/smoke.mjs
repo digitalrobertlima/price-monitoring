@@ -118,7 +118,7 @@ try {
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
     console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 3000); }));
     const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
-    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}, incompleto: ${hs.st.incomplete}, cortados: ${hs.st.capped}`);
+    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}, incompleto: ${hs.st.incomplete}, cortados: ${hs.st.capped}, recibos: ${hs.st.receipts}`);
     // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela
     check('patrimônio do gráfico nunca passa muito do que realmente entrou (ou avisa que é estimativa)',
         maxBrl <= hs.r.inBrl * 1.3 || (hs.st.nativeMissing > 0 && /estimativa/.test(chartNote)) || (hs.st.incomplete && /pode estar errado/.test(chartNote)),
@@ -204,7 +204,11 @@ try {
         const out = {};
         try { const t = await window.RdeskMarket.top10(); out.top = t ? t.map((c) => `${c.symbol}:${Math.round(c.price)}`).join(' ') : null; } catch (e) { out.top = 'erro ' + e.message; }
         try { const s = await window.RdeskMarket.series({ cg: 'bitcoin' }, '1'); out.btc = s ? { n: s.pts.length, last: Math.round(s.pts[s.pts.length - 1].v), src: s.src } : null; } catch (e) { out.btc = 'erro ' + e.message; }
-        try { const c = await window.RdeskAssetInfo.contractInfo(1, '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'); out.aave = c; } catch (e) { out.aave = 'erro ' + e.message; }
+        try {
+            let c = await window.RdeskAssetInfo.contractInfo(1, '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9');
+            if (!c?.created) { await new Promise((r) => setTimeout(r, 3000)); c = await window.RdeskAssetInfo.contractInfo(1, '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9', { force: true }); }
+            out.aave = c;
+        } catch (e) { out.aave = 'erro ' + e.message; }
         try { const txs = await window.RdeskBitcoin.fetchAddressTxs('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', 1); out.btcTxs = txs.length; } catch (e) { out.btcTxs = 'erro ' + e.message; }
         return out;
     });
@@ -236,20 +240,23 @@ try {
         const usdc = { 1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 56: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 42220: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C' };
         await Promise.all(Object.keys(P.UNI).map(async (c) => {
             const id = Number(c);
-            try {
-                const pr = window.RdeskWallet.getReadProvider(id);
-                const nf = new E.Contract(P.UNI[id].nfpm, ['function factory() view returns (address)'], pr);
-                const f = await nf.factory();
+            // servidores públicos falham de vez em quando: até 3 tentativas com pausa
+            for (let tent = 0; tent < 3; tent++) try {
+                const f = await P.withRpcs(id, (pr) => new E.Contract(P.UNI[id].nfpm, ['function factory() view returns (address)'], pr).factory());
                 let found = 0;
                 for (const fee of [500, 3000, 100, 10000]) { const pi = await P.poolInfo(id, P.WRAPPED[id].address, usdc[id], fee).catch(() => null); if (pi?.exists) found++; }
-                out[id] = { factoryOk: f.toLowerCase() === P.UNI[id].factory.toLowerCase(), pools: found };
-            } catch (e) { out[id] = { err: String(e.message || e).slice(0, 80) }; }
+                out[id] = { factoryOk: f.toLowerCase() === P.UNI[id].factory.toLowerCase(), pools: found, tent };
+                break;
+            } catch (e) { out[id] = { err: String(e.message || e).slice(0, 80) }; await new Promise((r) => setTimeout(r, 2500)); }
         }));
         try { out.mine = (await P.listPositions('0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3')).length; } catch (e) { out.mine = 'erro ' + e.message; }
+        out.polyDbg = await Promise.all((window.RdeskRegistry.getChain(137).rpcs || []).map(async (u) => {
+            try { const pr = new E.providers.StaticJsonRpcProvider(u, 137); const code = await pr.getCode(P.UNI[137].nfpm); const bn = await pr.getBlockNumber(); return `${u.split('/')[2]} code=${code.length} bloco=${bn}`; } catch (e) { return `${u.split('/')[2]} erro ${String(e.message).slice(0, 60)}`; }
+        }));
         return out;
     });
     console.log('   v45:', JSON.stringify(v45));
-    check('fundos: contratos oficiais da Uniswap conferidos nas 7 redes (fábrica certa e fundos achados)', Object.keys(v45).filter((k) => k !== 'mine').every((k) => v45[k].factoryOk && v45[k].pools > 0), JSON.stringify(v45));
+    check('fundos: contratos oficiais da Uniswap conferidos nas 7 redes (fábrica certa e fundos achados)', Object.keys(v45).filter((k) => k !== 'mine' && k !== 'polyDbg').every((k) => v45[k].factoryOk && v45[k].pools > 0), JSON.stringify(v45));
     check('fundos: posições do cofre lidas direto da rede', typeof v45.mine === 'number' && v45.mine > 0, String(v45.mine));
 
     await page.waitForTimeout(4000);
