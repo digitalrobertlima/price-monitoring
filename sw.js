@@ -32,6 +32,8 @@ const CORE_ASSETS = [
   './history.js',
   './ledger.js',
   './market.js',
+  './pools.js',
+  './relayer.js',
   './wallet-service.js',
   './defi-pix-service.js',
   './swap-picker.js',

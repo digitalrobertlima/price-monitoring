@@ -19,7 +19,8 @@ export const ADDR = {
     QUOTER: '0x61ffe014ba17989e743c5f6cb21bf9697530b21e',
     USDC: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
     BRZ: '0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc',
-    BRLA: '0xe6a537a407488807f0bbeb0038b79004f19dddfb'
+    BRLA: '0xe6a537a407488807f0bbeb0038b79004f19dddfb',
+    FACTORY: '0x1f98431c8ad98523631ae4a59f267346ea31f984'
 };
 const DECIMALS = { [ADDR.USDT0]: 6, [ADDR.USDC]: 6 };
 const decimalsOf = (token) => DECIMALS[token.toLowerCase()] ?? 18;
@@ -57,9 +58,12 @@ const I = {
         'function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) payable returns (uint256 amount0, uint256 amount1)',
         'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) payable returns (uint256 amount0, uint256 amount1)',
         'function multicall(bytes[] data) payable returns (bytes[] results)',
-        'function burn(uint256 tokenId) payable'
-    ])
+        'function burn(uint256 tokenId) payable',
+        'function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96) payable returns (address pool)'
+    ]),
+    factory: new ethers.utils.Interface(['function getPool(address,address,uint24) view returns (address)'])
 };
+const SPACING = { 100: 1, 500: 10, 3000: 60, 10000: 200 };
 
 class Revert extends Error {}
 const big = (v) => BigInt(v.toString());
@@ -89,7 +93,7 @@ export class MockChain {
         this.block = 70000000;
         this.gasPrice = 120n * 10n ** 9n; // base fee realista em horário movimentado
         this.tick = Math.floor(Math.log(polPriceUsd * 1e-12) / Math.log(1.0001));
-        this.state = { native: {}, erc20: { [ADDR.WPOL]: {}, [ADDR.USDT0]: {} }, allow: {}, positions: {}, owned: {}, nextId: 2700001, nonces: {} };
+        this.state = { native: {}, erc20: { [ADDR.WPOL]: {}, [ADDR.USDT0]: {} }, allow: {}, positions: {}, owned: {}, nextId: 2700001, nonces: {}, pools: {} };
         this.receipts = {};
         this.txs = [];          // transações assinadas pela app, já decodificadas
         this.unknownCalls = []; // chamadas que a simulação não conhece (para diagnóstico)
@@ -132,8 +136,8 @@ export class MockChain {
     }
     positionsOf(addr) { return (this.state.owned[lower(addr)] || []).map((id) => ({ id, ...this.state.positions[id] })); }
 
-    amountsForLiquidity(L, tickLower, tickUpper) {
-        const sp = this.sqrtAt(this.tick), sa = this.sqrtAt(tickLower), sb = this.sqrtAt(tickUpper);
+    amountsForLiquidity(L, tickLower, tickUpper, tickNow = this.tick) {
+        const sp = this.sqrtAt(tickNow), sa = this.sqrtAt(tickLower), sb = this.sqrtAt(tickUpper);
         const l = Number(L);
         let a0 = 0, a1 = 0;
         if (sp <= sa) a0 = l * (1 / sa - 1 / sb);
@@ -162,7 +166,7 @@ export class MockChain {
             });
             return MC_IFACE.encodeFunctionResult('aggregate3', [out]);
         }
-        const special = [ADDR.POOL, ADDR.NFPM, ADDR.ROUTER, ADDR.QUOTER].includes(to);
+        const special = [ADDR.POOL, ADDR.NFPM, ADDR.ROUTER, ADDR.QUOTER, ADDR.FACTORY].includes(to) || Boolean(s.pools[to]);
         const meta = this.contracts?.[to];
         if (meta && (sel === '0x95d89b41' || sel === '0x06fdde03' || sel === '0x313ce567')) { // symbol(), name(), decimals() de um token registrado no teste
             if (sel === '0x313ce567') return ethers.utils.defaultAbiCoder.encode(['uint8'], [meta.decimals]);
@@ -196,6 +200,18 @@ export class MockChain {
             }
         }
 
+        if (to === ADDR.FACTORY) {
+            const [a, b, fee] = I.factory.decodeFunctionData('getPool', data);
+            return I.factory.encodeFunctionResult('getPool', [this.poolAddr(s, a, b, fee) || ethers.constants.AddressZero]);
+        }
+        if (s.pools[to]) { // fundo criado durante o teste
+            const f = I.pool.getFunction(sel);
+            const pl = s.pools[to];
+            const sqrtX96 = BigInt(Math.floor(this.sqrtAt(pl.tick) * 2 ** 64)) * (2n ** 32n);
+            if (f.name === 'slot0') return I.pool.encodeFunctionResult(f, [sqrtX96, pl.tick, 0, 1, 1, 0, true]);
+            if (f.name === 'liquidity') return I.pool.encodeFunctionResult(f, [pl.liquidity || 0n]);
+            return I.pool.encodeFunctionResult(f, f.name === 'ticks' ? [0, 0, 0, 0, 0, 0, 0, true] : [0]);
+        }
         if (to === ADDR.POOL) {
             const f = I.pool.getFunction(sel);
             const enc = (v) => I.pool.encodeFunctionResult(f, v);
@@ -278,6 +294,17 @@ export class MockChain {
         throw new Revert(`chamada desconhecida ${to} ${sel}`);
     }
 
+    // Endereço do fundo (token0, token1, taxa): o principal WPOL/USDT0 0,05% e os criados no teste
+    poolAddr(s, a, b, fee) {
+        const [t0, t1] = lower(a) < lower(b) ? [lower(a), lower(b)] : [lower(b), lower(a)];
+        if (t0 === ADDR.WPOL && t1 === ADDR.USDT0 && Number(fee) === 500) return ADDR.POOL;
+        return Object.keys(s.pools).find((k) => s.pools[k].token0 === t0 && s.pools[k].token1 === t1 && s.pools[k].fee === Number(fee)) || null;
+    }
+    poolTick(s, t0, t1, fee) {
+        const addr = this.poolAddr(s, t0, t1, fee);
+        if (!addr) throw new Revert('fundo inexistente');
+        return addr === ADDR.POOL ? this.tick : s.pools[addr].tick;
+    }
     execNfpm(s, from, data, value) {
         const sel = data.slice(0, 10);
         const f = I.nfpm.getFunction(sel);
@@ -296,16 +323,31 @@ export class MockChain {
             }
             case 'positions': {
                 const p = getPos(a[0]);
-                return enc([0, ethers.constants.AddressZero, ADDR.WPOL, ADDR.USDT0, 500, p.tickLower, p.tickUpper, p.liquidity, 0, 0, p.owed0, p.owed1]);
+                return enc([0, ethers.constants.AddressZero, p.token0 || ADDR.WPOL, p.token1 || ADDR.USDT0, p.fee || 500, p.tickLower, p.tickUpper, p.liquidity, 0, 0, p.owed0, p.owed1]);
+            }
+            case 'createAndInitializePoolIfNecessary': {
+                const [t0, t1, fee, sqrtX96] = a;
+                if (lower(t0) >= lower(t1)) throw new Revert('token0 precisa ser o menor endereço');
+                if (!SPACING[Number(fee)]) throw new Revert('taxa inválida');
+                let addr = this.poolAddr(s, t0, t1, fee);
+                if (!addr) {
+                    addr = lower(ethers.utils.getAddress(ethers.utils.hexDataSlice(ethers.utils.keccak256(ethers.utils.defaultAbiCoder.encode(['address', 'address', 'uint24'], [t0, t1, fee])), 12)));
+                    const sq = Number(BigInt(sqrtX96.toString())) / 2 ** 96;
+                    s.pools[addr] = { token0: lower(t0), token1: lower(t1), fee: Number(fee), tick: Math.floor(Math.log(sq * sq) / Math.log(1.0001)), liquidity: 0n };
+                    s.erc20[lower(t0)] ??= {}; s.erc20[lower(t1)] ??= {};
+                }
+                return enc([addr]);
             }
             case 'mint': {
                 const m = a[0];
-                if (lower(m.token0) !== ADDR.WPOL || lower(m.token1) !== ADDR.USDT0) throw new Revert('token0/token1 fora de ordem');
-                if (Number(m.fee) !== 500) throw new Revert('fee tier inesperado');
+                const t0 = lower(m.token0), t1 = lower(m.token1), sp0 = SPACING[Number(m.fee)];
+                if (t0 >= t1) throw new Revert('token0/token1 fora de ordem');
+                if (!sp0) throw new Revert('fee tier inesperado');
+                const tickNow = this.poolTick(s, t0, t1, m.fee);
                 if (m.tickLower >= m.tickUpper) throw new Revert('TLU');
-                if (m.tickLower % 10 !== 0 || m.tickUpper % 10 !== 0) throw new Revert('tick fora do espaçamento 10');
+                if (m.tickLower % sp0 !== 0 || m.tickUpper % sp0 !== 0) throw new Revert(`tick fora do espaçamento ${sp0}`);
                 if (Number(m.deadline) < now) throw new Revert('Transaction too old');
-                const sp = this.sqrtAt(this.tick), sa = this.sqrtAt(m.tickLower), sb = this.sqrtAt(m.tickUpper);
+                const sp = this.sqrtAt(tickNow), sa = this.sqrtAt(m.tickLower), sb = this.sqrtAt(m.tickUpper);
                 const d0 = Number(big(m.amount0Desired)), d1 = Number(big(m.amount1Desired));
                 let L;
                 if (sp <= sa) L = d0 / (1 / sa - 1 / sb);
@@ -313,13 +355,15 @@ export class MockChain {
                 else L = Math.min(d0 / (1 / sp - 1 / sb), d1 / (sp - sa));
                 const liq = BigInt(Math.floor(L));
                 if (liq <= 0n) throw new Revert('liquidez zero');
-                const [u0, u1] = this.amountsForLiquidity(liq, m.tickLower, m.tickUpper);
+                const [u0, u1] = this.amountsForLiquidity(liq, m.tickLower, m.tickUpper, tickNow);
                 if (u0 < big(m.amount0Min) || u1 < big(m.amount1Min)) throw new Revert('Price slippage check');
-                this._pull(s, ADDR.WPOL, from, ADDR.NFPM, u0);
-                this._pull(s, ADDR.USDT0, from, ADDR.NFPM, u1);
+                if (u0 > big(m.amount0Desired) || u1 > big(m.amount1Desired)) throw new Revert('usaria mais do que o pedido');
+                this._pull(s, t0, from, ADDR.NFPM, u0);
+                this._pull(s, t1, from, ADDR.NFPM, u1);
                 const id = String(s.nextId++);
                 const owner = lower(m.recipient);
-                s.positions[id] = { owner, tickLower: m.tickLower, tickUpper: m.tickUpper, liquidity: liq, owed0: 0n, owed1: 0n };
+                s.positions[id] = { owner, token0: t0, token1: t1, fee: Number(m.fee), tickLower: m.tickLower, tickUpper: m.tickUpper, liquidity: liq, owed0: 0n, owed1: 0n };
+                if (s.pools[this.poolAddr(s, t0, t1, m.fee)]) s.pools[this.poolAddr(s, t0, t1, m.fee)].liquidity += liq;
                 (s.owned[owner] ??= []).push(id);
                 return enc([id, liq, u0, u1]);
             }
@@ -328,7 +372,7 @@ export class MockChain {
                 if (Number(d.deadline) < now) throw new Revert('Transaction too old');
                 const liq = big(d.liquidity);
                 if (liq <= 0n || liq > p.liquidity) throw new Revert('liquidez inválida');
-                const [o0, o1] = this.amountsForLiquidity(liq, p.tickLower, p.tickUpper);
+                const [o0, o1] = this.amountsForLiquidity(liq, p.tickLower, p.tickUpper, p.token0 ? this.poolTick(s, p.token0, p.token1, p.fee) : this.tick);
                 if (o0 < big(d.amount0Min) || o1 < big(d.amount1Min)) throw new Revert('Price slippage check');
                 p.liquidity -= liq; p.owed0 += o0; p.owed1 += o1;
                 return enc([o0, o1]);
@@ -338,7 +382,7 @@ export class MockChain {
                 const g0 = p.owed0 < big(c.amount0Max) ? p.owed0 : big(c.amount0Max);
                 const g1 = p.owed1 < big(c.amount1Max) ? p.owed1 : big(c.amount1Max);
                 p.owed0 -= g0; p.owed1 -= g1;
-                this._credit(s, ADDR.WPOL, c.recipient, g0); this._credit(s, ADDR.USDT0, c.recipient, g1);
+                this._credit(s, p.token0 || ADDR.WPOL, c.recipient, g0); this._credit(s, p.token1 || ADDR.USDT0, c.recipient, g1);
                 return enc([g0, g1]);
             }
             case 'burn': {

@@ -336,7 +336,8 @@
             anon: () => global.RdeskAnon?.open?.(),
             send: () => (hasWallet() ? W()?.openView('send') : W()?.openModal('add')),
             calc: () => { goTab('earn'); setTimeout(() => document.getElementById('earn-calc')?.scrollIntoView({ behavior: 'smooth' }), 300); },
-            offline: () => global.RdeskAirgap?.open?.()
+            offline: () => global.RdeskAirgap?.open?.(),
+            pools: () => global.RdeskPools?.open?.()
         }[a.kind];
         return run ? { label: a.label, run } : null;
     }

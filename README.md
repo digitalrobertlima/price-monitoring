@@ -101,6 +101,11 @@ npm run test:smoke  # rede real: saldo, cotações, contratos de todas as moedas
 
 Regra do projeto: nenhuma mudança entra na `main` sem `npm test` passando.
 
+## Próximo grande passo
+
+- **App Android nativo, sem Play Store**: APK gerado pelo GitHub Actions e publicado nos Releases. O plano está em [`docs/app-android.md`](docs/app-android.md).
+- **Token do criador com relayer** (enviar sem moeda da rede, como um Pix): o app já está preparado. Ver [`docs/token-e-relayer.md`](docs/token-e-relayer.md).
+
 ## Ideias para o futuro (ainda não implementadas)
 
 - **Tornado Cash em todas as redes**: só ideia, sem data. Antes de qualquer integração: rever o status jurídico. As sanções dos EUA foram retiradas em março de 2025, mas o processo criminal contra um dos desenvolvedores segue aberto (novo julgamento marcado para abril de 2027). Também é preciso entender o risco para quem opera e cobra taxa no app.

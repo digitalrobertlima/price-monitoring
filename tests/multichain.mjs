@@ -178,7 +178,7 @@ try {
     await page.click('#btn-action-receive');
     await page.waitForSelector('#rmw-rec-qr img[src]', { state: 'attached' });
     const chips = await page.$$eval('#rdesk-mw-sheet .net-chip', (els) => els.map((e) => e.textContent.trim()));
-    check('receber oferece Bitcoin primeiro, Dash e as 7 redes', chips.join(',') === 'Bitcoin,Dash,Polygon,Ethereum,Base,Arbitrum,Optimism,Celo,BNB Chain', chips.join(','));
+    check('receber oferece Bitcoin primeiro, Dash e as 8 redes', chips.join(',') === 'Bitcoin,Dash,Polygon,Ethereum,Base,Arbitrum,Optimism,Celo,BNB Chain,HyperEVM', chips.join(','));
     check('rede Polygon: endereço 0x da carteira e aviso de rede', (await page.innerText('#rmw-rec-address')) === OWNER && /somente pela rede Polygon/.test(await page.innerText('#rmw-rec-warning')));
     await page.click('#rdesk-mw-sheet .net-chip[data-net="42220"]');
     await page.waitForSelector('#rmw-rec-qr img[src]', { state: 'attached' });

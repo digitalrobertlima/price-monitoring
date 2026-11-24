@@ -346,6 +346,9 @@
         const isDash = chainId === 'dash';
         const tokens = tokensFor(chainId);
         let token = tokens.find((t) => t.symbol === ctx.params.symbol) || tokens[0];
+        // Token do criador com relayer ligado: dá para enviar sem ter BNB/ETH/POL
+        const RL = global.RdeskRelayer;
+        const gaslessOk = Boolean(RL?.isEnabled() && String(RL.config().chainId) === String(chainId) && token.address && token.address.toLowerCase() === RL.config().address.toLowerCase());
         const prefill = { to: ctx.params.to || '', amount: ctx.params.amount || '' };
 
         sheet.innerHTML = `
@@ -384,6 +387,7 @@
             <label class="rmw-label" for="rmw-snd-fee">Velocidade (taxa da rede Bitcoin)</label>
             <select class="rmw-select" id="rmw-snd-fee"><option value="">Buscando taxas…</option></select>` : ''}
 
+            ${gaslessOk ? `<label class="toggle-inline gasless-row"><input type="checkbox" id="rmw-snd-gasless" checked> ⚡ Enviar sem moeda da rede (a taxa sai em ${esc(token.symbol)})</label>` : ''}
             <div id="rmw-snd-msg"></div>
             <button class="rmw-btn-primary" id="rmw-snd-exec">Revisar e enviar</button>
             <p class="view-footnote">Envios em blockchain não têm estorno. Confira rede, moeda e endereço.</p>`;
@@ -581,6 +585,16 @@
                 }
 
                 if (!global.ethers.utils.isAddress(to)) throw new Error('Endereço de destino inválido.');
+                if (gaslessOk && $('#rmw-snd-gasless')?.checked) {
+                    btn.disabled = true;
+                    showOk('Assinando a autorização (sem gastar moeda da rede)…');
+                    const hash = await RL.sendGasless({ to, amountText: amtStr });
+                    if (!hash) { msgBox.replaceChildren(); btn.disabled = false; return; }
+                    global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: `${token.symbol} enviado sem taxa da rede!` } }));
+                    showOk(`✅ Enviado! <a href="${esc(REG.explorerTxUrl(chainId, hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
+                    ctx.refreshBalances();
+                    return;
+                }
                 const dest = global.ethers.utils.getAddress(to);
                 if (token.address && dest.toLowerCase() === token.address.toLowerCase()) {
                     throw new Error('Este é o endereço do CONTRATO da moeda, não de uma carteira. Enviar para ele queima os fundos.');

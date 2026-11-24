@@ -3000,3 +3000,24 @@ button:active, .asset-row-btn:active, .extrato-row:active, .chip:active { transf
 .mk-ranges { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
 .mk-ranges::-webkit-scrollbar { display: none; }
 .mk-ranges .chip { flex: 0 0 auto; }
+.pl-list { display: grid; gap: 10px; }
+.pl-card { padding: 14px; border-radius: 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); display: grid; gap: 8px; }
+.pl-card.in { border-color: rgba(52,211,153,.45); }
+.pl-card.out { border-color: rgba(251,146,60,.5); }
+.pl-card.closed { opacity: .7; }
+.pl-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pl-head strong { margin-left: 4px; }
+.pl-fee { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: rgba(255,255,255,.08); }
+.pl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pl-grid div { display: grid; }
+.pl-grid .wide { grid-column: 1 / -1; }
+.pl-grid span { color: #94a3b8; font-size: .78rem; }
+.pl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pl-poolinfo { padding: 10px; border-radius: 12px; background: rgba(255,255,255,.04); margin: 6px 0; }
+.pl-preview .pl-need { display: grid; padding: 12px; border-radius: 12px; background: rgba(247,147,26,.08); margin: 8px 0; }
+.pl-preview .pl-need span { color: #94a3b8; font-size: .8rem; }
+.warn-text { color: #fdba74; font-size: .9rem; }
+#pl-fees .chip small { display: block; font-size: .68rem; color: #94a3b8; }
+.pl-msg { font-size: .9rem; min-height: 1em; }
+#modal-receipt { z-index: 100100 !important; } /* o recibo sempre por cima das telas (mercado, fundos) */
+.rdesk-toast { pointer-events: none !important; } /* aviso nunca bloqueia o toque no que está embaixo */

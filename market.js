@@ -38,7 +38,7 @@
         { id: 'hyperliquid', symbol: 'HYPE', name: 'Hyperliquid' },
         { id: 'zcash', symbol: 'ZEC', name: 'Zcash' }
     ];
-    const IN_APP = new Set(['BTC', 'ETH', 'USDT', 'BNB', 'USDC', 'BRZ', 'BRLA', 'POL', 'CELO', 'DAI', 'WBTC', 'WETH']);
+    const IN_APP = new Set(['BTC', 'ETH', 'USDT', 'BNB', 'USDC', 'BRZ', 'BRLA', 'POL', 'CELO', 'DAI', 'WBTC', 'WETH', 'DASH', 'HYPE']);
     const ABOUT = {
         XRP: 'Moeda da rede XRP Ledger (2012), criada pela empresa Ripple para pagamentos entre bancos.',
         SOL: 'Moeda da rede Solana (2020): rápida e barata, mas já parou algumas vezes.',

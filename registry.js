@@ -24,7 +24,9 @@
         { id: 42220, key: 'celo', name: 'Celo', short: 'CELO', color: '#35d07f', native: 'CELO', explorer: 'https://celoscan.io', llama: 'celo',
           rpcs: ['https://forno.celo.org', 'https://celo.drpc.org'] },
         { id: 56, key: 'bnb', name: 'BNB Chain', short: 'BNB', color: '#f0b90b', native: 'BNB', explorer: 'https://bscscan.com', llama: 'bsc',
-          rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-rpc.publicnode.com', 'https://bsc.drpc.org'] }
+          rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-rpc.publicnode.com', 'https://bsc.drpc.org'] },
+        { id: 999, key: 'hyperevm', name: 'HyperEVM', short: 'HYPE', color: '#50e3c2', native: 'HYPE', explorer: 'https://hyperevmscan.io', llama: 'hyperliquid',
+          rpcs: ['https://rpc.hyperliquid.xyz/evm', 'https://hyperliquid.drpc.org'] }
     ];
 
     // Rede Bitcoin (não é EVM: tratada pelo módulo bitcoin.js)
@@ -74,6 +76,10 @@
             { symbol: 'USDC', name: 'USD Coin', address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C', decimals: 6, priceKey: 'USD' },
             { symbol: 'BRLA', name: 'BRLA Digital', address: '0xFECB3F7c54E2CAAE9dC6Ac9060A822D47E053760', decimals: 18, priceKey: 'BRL' }
         ],
+        999: [
+            { symbol: 'HYPE', name: 'HYPE (moeda da rede Hyperliquid)', address: null, decimals: 18, isNative: true, priceKey: 'HYPE' },
+            { symbol: 'USDT', name: 'Tether USD (USDT0)', address: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', decimals: 6, priceKey: 'USD' }
+        ],
         56: [
             { symbol: 'BNB', name: 'BNB (moeda da rede)', address: null, decimals: 18, isNative: true, priceKey: 'BNB' },
             { symbol: 'USDT', name: 'Tether USD', address: '0x55d398326f99059fF775485246999027B3197955', decimals: 18, priceKey: 'USD' },
@@ -95,7 +101,8 @@
         BRLA: { bg: '#f4c20d', fg: '#0d3b1e', glyph: 'R$' },
         CELO: { bg: '#fcff52', fg: '#1a1a05', glyph: 'C' },
         BNB: { bg: '#f0b90b', fg: '#1a1405', glyph: 'B' },
-        DASH: { bg: '#008de4', fg: '#ffffff', glyph: 'D' }
+        DASH: { bg: '#008de4', fg: '#ffffff', glyph: 'D' },
+        HYPE: { bg: '#0f3d36', fg: '#50e3c2', glyph: 'H' }
     };
 
     function esc(value) {
@@ -233,6 +240,7 @@
         42161: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
         10: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
         42220: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 com pouco uso e liquidez. Mais riscos que as redes grandes.' },
+        999: { level: 'young', since: 2025, label: 'Rede jovem', note: 'Rede de 2025 da Hyperliquid, com poucos validadores ligados ao projeto. Nova e centralizada: use para movimentar, não para guardar.' },
         dash: { level: 'mid', since: 2014, label: 'Rede de 2014', note: 'Rede própria desde 2014, feita para pagamentos rápidos e baratos. Mais antiga que as redes novas, mas bem menor que o Bitcoin.' },
         56: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 ligada à corretora Binance, com poucos validadores. Muito usada e barata, mas centralizada. Use para movimentar, não para guardar tudo.' }
     };
