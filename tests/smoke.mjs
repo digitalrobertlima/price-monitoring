@@ -237,9 +237,7 @@ try {
         await Promise.all(Object.keys(P.UNI).map(async (c) => {
             const id = Number(c);
             try {
-                const pr = window.RdeskWallet.getReadProvider(id);
-                const nf = new E.Contract(P.UNI[id].nfpm, ['function factory() view returns (address)'], pr);
-                const f = await nf.factory();
+                const f = await P.withRpcs(id, (pr) => new E.Contract(P.UNI[id].nfpm, ['function factory() view returns (address)'], pr).factory());
                 let found = 0;
                 for (const fee of [500, 3000, 100, 10000]) { const pi = await P.poolInfo(id, P.WRAPPED[id].address, usdc[id], fee).catch(() => null); if (pi?.exists) found++; }
                 out[id] = { factoryOk: f.toLowerCase() === P.UNI[id].factory.toLowerCase(), pools: found };
