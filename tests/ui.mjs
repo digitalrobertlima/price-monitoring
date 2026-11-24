@@ -131,7 +131,11 @@ try {
 
     // ================================================================ 3. Ver a frase exige a senha de novo
     if (!(await page.locator('[data-detail-acc]').count())) await page.click('#btn-wallet-trigger');
-    await page.locator('[data-detail-acc]').first().click();
+    // A lista pode se redesenhar quando os saldos chegam: tenta de novo se o toque cair num botão antigo
+    for (let k = 0; k < 4 && !(await page.locator('#rmw-det-show-seed').count()); k++) {
+        await page.locator('[data-detail-acc]').first().click().catch(() => {});
+        await page.waitForSelector('#rmw-det-show-seed', { timeout: 4000 }).catch(() => {});
+    }
     await page.waitForSelector('#rmw-det-show-seed');
     await page.screenshot({ path: 'tests/artifacts-ui-detalhe.png' });
     await page.click('#rmw-det-show-seed');
