@@ -152,13 +152,13 @@
     }
     // BIP84: m/84'/0'/0'/0/índice
     function deriveFromMnemonic(mnemonic, index = 0, passphrase = '') {
-        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined).derivePath(`m/84'/0'/0'/0/${index}`);
+        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined).derivePath(`m/84'/0'/0'/0/${index}`);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey) };
     }
     // Qualquer caminho BIP84 (endereços novos a cada recebimento e troco em endereço separado)
     function deriveAtPath(mnemonic, path, passphrase = '') {
         if (!/^m\/84'\/0'\/\d+'\/[01]\/\d+$/.test(path)) throw new Error('Caminho Bitcoin inválido.');
-        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined).derivePath(path);
+        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined).derivePath(path);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey), path };
     }
     function deriveFromPrivateKey(privateKey) {

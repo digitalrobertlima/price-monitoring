@@ -57,7 +57,37 @@
         return v;
     }
     const getJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(String(r.status)); return r.json(); };
-    const RANGES = { '1': { label: '24 h', days: 1, period: '1h', span: 25 }, '7': { label: '7 dias', days: 7, period: '4h', span: 43 }, '30': { label: '30 dias', days: 30, period: '1d', span: 31 }, '365': { label: '1 ano', days: 365, period: '1d', span: 366 } };
+    // Períodos do gráfico. YTD = do dia 1º de janeiro até hoje. "Máx" = desde o início da moeda.
+    const ytdDays = () => Math.max(1, Math.ceil((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 1)) / 86400000));
+    const RANGES = {
+        '1': { label: '24 h', days: 1, period: '1h', span: 25 },
+        '7': { label: '7 dias', days: 7, period: '4h', span: 43 },
+        '30': { label: '30 dias', days: 30, period: '1d', span: 31 },
+        '180': { label: '6 meses', days: 180, period: '1d', span: 181 },
+        ytd: { label: 'YTD', title: 'Do dia 1º de janeiro até hoje', get days() { return ytdDays(); }, period: '1d', get span() { return ytdDays() + 1; } },
+        '365': { label: '1 ano', days: 365, period: '1d', span: 366 },
+        '1825': { label: '5 anos', days: 1825, period: '1w', span: 262, long: true },
+        max: { label: 'Máx', title: 'Desde o início da moeda', days: 6200, period: '2w', span: 445, long: true }
+    };
+    const RANGE_ORDER = ['1', '7', '30', '180', 'ytd', '365', '1825', 'max']; // (chaves numéricas viriam fora de ordem)
+    // Dólar oficial (PTAX do Banco Central) de cada dia, para converter históricos longos em reais
+    // com o dólar da época (e não o de hoje).
+    async function ptaxFrom(startUnix) {
+        return cached(`ptax:${Math.floor(startUnix / 86400 / 30)}`, 6 * 3600000, async () => {
+            const f = (d) => `${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}-${d.getUTCFullYear()}`;
+            const u = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@di,dataFinalCotacao=@df)?@di='${f(new Date(startUnix * 1000))}'&@df='${f(new Date())}'&$format=json&$select=cotacaoVenda,dataHoraCotacao`;
+            const j = await getJson(u);
+            const rows = (j?.value || []).map((r) => [Date.parse(String(r.dataHoraCotacao).replace(' ', 'T')) / 1000, Number(r.cotacaoVenda)]).filter(([t, v]) => t > 0 && v > 0).sort((a, b) => a[0] - b[0]);
+            return rows.length ? rows : null;
+        });
+    }
+    function fxAt(rows, t) {
+        if (!rows) return fxNow();
+        let lo = 0, hi = rows.length - 1;
+        if (t <= rows[0][0]) return rows[0][1];
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (rows[mid][0] <= t) lo = mid; else hi = mid - 1; }
+        return rows[lo][1];
+    }
 
     function thin(pts, max = 220) {
         if (pts.length <= max) return pts;
@@ -71,7 +101,7 @@
     async function series({ cg, llama }, rangeId) {
         const r = RANGES[rangeId] || RANGES['7'];
         return cached(`s:${cg || llama}:${rangeId}`, rangeId === '1' ? 60000 : 5 * 60000, async () => {
-            if (cg) {
+            if (cg && !r.long) {
                 try {
                     const j = await getJson(`${CG}/coins/${cg}/market_chart?vs_currency=brl&days=${r.days}`);
                     const pts = (j.prices || []).map(([ms, v]) => ({ t: ms / 1000, v: Number(v) })).filter((p) => p.v > 0);
@@ -82,9 +112,13 @@
             if (!key) return null;
             const start = Math.floor(Date.now() / 1000 - r.days * 86400);
             const j = await getJson(`${LLAMA}/chart/${key}?start=${start}&span=${r.span}&period=${r.period}`);
-            const fx = fxNow();
-            const pts = (j.coins?.[key]?.prices || []).map((p) => ({ t: p.timestamp, v: Number(p.price) * fx })).filter((p) => p.v > 0);
-            return pts.length > 1 ? { pts, src: 'DefiLlama (em dólar, convertido)' } : null;
+            const raw = (j.coins?.[key]?.prices || []).filter((p) => Number(p.price) > 0);
+            if (raw.length < 2) return null;
+            // Período longo: cada ponto convertido pelo dólar oficial daquele dia
+            let rows = null;
+            if (r.days > 30) { try { rows = await ptaxFrom(raw[0].timestamp); } catch (e) { rows = null; } }
+            const pts = raw.map((p) => ({ t: p.timestamp, v: Number(p.price) * (rows ? fxAt(rows, p.timestamp) : fxNow()) }));
+            return { pts: thin(pts), src: rows ? 'DefiLlama, convertido pelo dólar oficial (PTAX) de cada dia' : 'DefiLlama (em dólar, convertido pelo dólar de hoje)' };
         });
     }
     async function top10() {
@@ -118,7 +152,7 @@
             ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke(); ctx.restore();
         }
     };
-    function lineChart(canvas, pts, { short = false } = {}) {
+    function lineChart(canvas, pts, { short = false, long = false } = {}) {
         const C = global.Chart;
         if (!C || !canvas) return null;
         if (canvas._chart) canvas._chart.destroy();
@@ -129,7 +163,7 @@
         const grad = ctx.createLinearGradient(0, 0, 0, h);
         grad.addColorStop(0, up ? 'rgba(52,211,153,.32)' : 'rgba(251,113,133,.28)');
         grad.addColorStop(1, 'rgba(0,0,0,0)');
-        const fmtT = (t) => new Date(t * 1000).toLocaleString('pt-BR', short ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short' });
+        const fmtT = (t) => new Date(t * 1000).toLocaleString('pt-BR', short ? { hour: '2-digit', minute: '2-digit' } : long ? { month: 'short', year: '2-digit' } : { day: '2-digit', month: 'short' });
         let lastIdx = -1;
         canvas._chart = new C(canvas, {
             type: 'line',
@@ -167,7 +201,7 @@
         if (!box) return;
         box.innerHTML = `
             <div class="mk-head"><div><span class="mk-title">${esc(title)}</span><strong class="mk-price money" data-mk-price>…</strong><span class="chg" data-mk-chg></span></div></div>
-            <div class="chip-group mk-ranges" role="group" aria-label="Período">${Object.entries(RANGES).map(([id, r]) => `<button type="button" class="chip ${id === start ? 'active' : ''}" data-mk-range="${id}">${r.label}</button>`).join('')}</div>
+            <div class="chip-group mk-ranges" role="group" aria-label="Período">${RANGE_ORDER.map((id) => [id, RANGES[id]]).map(([id, r]) => `<button type="button" class="chip ${id === start ? 'active' : ''}" data-mk-range="${id}"${r.title ? ` title="${esc(r.title)}" aria-label="${esc(r.title)}"` : ''}>${r.label}</button>`).join('')}</div>
             <div class="mk-canvas-wrap"><canvas data-mk-canvas role="img" aria-label="Gráfico de preço em reais"></canvas><div class="mk-msg" data-mk-msg>Carregando…</div></div>
             <small class="mk-src muted-sm" data-mk-src></small>`;
         const q = (s) => box.querySelector(s);
@@ -178,11 +212,11 @@
                 const s = await series(source, rid);
                 if (!s || !box.isConnected) throw new Error('sem dados');
                 q('[data-mk-msg]').hidden = true;
-                lineChart(q('[data-mk-canvas]'), s.pts, { short: rid === '1' });
+                lineChart(q('[data-mk-canvas]'), s.pts, { short: rid === '1', long: Boolean(RANGES[rid].long) || rid === '365' || rid === 'ytd' || rid === '180' });
                 const first = s.pts[0].v, last = s.pts[s.pts.length - 1].v, ch = (last / first - 1) * 100;
                 q('[data-mk-price]').textContent = brl(last);
                 const c = q('[data-mk-chg]');
-                c.textContent = `${pct(ch)} em ${RANGES[rid].label}`; c.className = `chg ${ch > 0 ? 'up' : ch < 0 ? 'down' : ''}`;
+                c.textContent = `${pct(ch)} ${rid === 'ytd' ? 'no ano' : rid === 'max' ? 'desde o início' : `em ${RANGES[rid].label}`}`; c.className = `chg ${ch > 0 ? 'up' : ch < 0 ? 'down' : ''}`;
                 q('[data-mk-src]').textContent = `Fonte: ${s.src}`;
                 box.dataset.ready = '1';
             } catch (e) {

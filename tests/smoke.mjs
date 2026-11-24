@@ -116,12 +116,12 @@ try {
     check('histórico real lido desde a 1ª transação, com entradas reconhecidas', hs.st.events > 10 && ins > 0 && hs.r.inBrl > 0 && !hs.st.error, `${hs.st.events} transações, ${ins} entradas ${hs.st.error || ''}`);
     const maxBrl = await page.evaluate(() => { const fx = window.RdeskWallet.getPrices().USD_BRL; return Math.max(...window.RdeskHistory.getSeries().map((p) => p.usd * fx)); });
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
-    console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 600); }));
+    console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 3000); }));
     const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
-    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}`);
+    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}, incompleto: ${hs.st.incomplete}, cortados: ${hs.st.capped}`);
     // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela
     check('patrimônio do gráfico nunca passa muito do que realmente entrou (ou avisa que é estimativa)',
-        maxBrl <= hs.r.inBrl * 1.3 || (hs.st.nativeMissing > 0 && /estimativa/.test(chartNote)),
+        maxBrl <= hs.r.inBrl * 1.3 || (hs.st.nativeMissing > 0 && /estimativa/.test(chartNote)) || (hs.st.incomplete && /pode estar errado/.test(chartNote)),
         `máximo R$ ${maxBrl.toFixed(2)} vs entradas R$ ${hs.r.inBrl.toFixed(2)}; faltaram ${hs.st.nativeMissing} dias; aviso: ${chartNote}`);
     check('gráfico do patrimônio desenhado com o histórico real', hs.st.chart.points > 2 && hs.st.chart.last > 0, JSON.stringify(hs.st.chart));
     await page.click('.nav-tab-btn[data-tab="audit"]');
@@ -213,6 +213,22 @@ try {
     check('gráfico do Bitcoin em reais com dados reais (24 h)', v43.btc && v43.btc.n > 10 && v43.btc.last > 100000, JSON.stringify(v43.btc));
     check('data real do contrato da AAVE na Ethereum (2020), não 2015', v43.aave && v43.aave.created && new Date(v43.aave.created * 1000).getUTCFullYear() === 2020, JSON.stringify(v43.aave));
     check('histórico de um endereço Bitcoin lido (para o extrato)', typeof v43.btcTxs === 'number' && v43.btcTxs > 0, String(v43.btcTxs));
+
+    // ---- v44: Dash (serviço público responde) e calculadora com dados reais do fundo ----
+    const v44 = await page.evaluate(async () => {
+        const out = {};
+        try { const b = await window.RdeskDash.fetchBalance('XoJA8qE3N2Y3jMLEtZ3vcN42qseZ8LvFf5'); out.dash = { ok: true, duffs: b.totalDuffs }; } catch (e) { out.dash = { ok: false, err: e.message }; }
+        document.querySelector('.nav-tab-btn[data-tab="earn"]')?.click();
+        const t0 = Date.now();
+        while (Date.now() - t0 < 25000) { const s = window.RdeskDefi._earn.state(); if (s.poolLiquidity > 0 && s.poolVol24hUsd > 0) break; await new Promise((r) => setTimeout(r, 500)); }
+        const s = window.RdeskDefi._earn.state();
+        const m = window.RdeskDefi._earn.earnModel(0.08);
+        out.calc = { L: s.poolLiquidity || 0, liqError: s.liqError || "", vol: Math.round(s.poolVol24hUsd), spot: s.poolPrice, perDay1000: m.usdPerDay(1000), need1day: m.needUsd(1), poolDay: m.poolDayUsd };
+        return out;
+    });
+    console.log('   v44:', JSON.stringify(v44));
+    check('Dash: serviço público de saldo responde', v44.dash.ok, JSON.stringify(v44.dash));
+    check('calculadora com dados reais: US$ 1.000 numa faixa média rende um valor plausível por dia', v44.calc.L > 0 && v44.calc.perDay1000 > 0.0001 && v44.calc.perDay1000 < 100, JSON.stringify(v44.calc));
 
     await page.waitForTimeout(4000);
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && csp.length === 0, [...pageErrors, ...csp].slice(0, 4).join(' | '));

@@ -16,15 +16,16 @@
     ];
 
     const fmtAmount = (n, max = 8) => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: max });
-    const normChain = (v) => (v === 'btc' || v === 'BTC' ? 'btc' : Number(v));
+    const normChain = (v) => (v === 'btc' || v === 'BTC' ? 'btc' : v === 'dash' || v === 'DASH' ? 'dash' : Number(v));
 
     function networksFor(acc) {
         const list = REG.CHAINS.map((c) => c.id);
-        if (acc && (acc.type === 'seed' || acc.type === 'pk')) list.unshift('btc'); // Bitcoin primeiro
+        if (acc && (acc.type === 'seed' || acc.type === 'pk')) { list.unshift('btc'); if (acc.dashAddress) list.splice(1, 0, 'dash'); } // Bitcoin primeiro
         return list;
     }
     function tokensFor(chainId) {
         if (chainId === 'btc') return [{ symbol: 'BTC', name: 'Bitcoin', address: null, decimals: 8, isNative: true, priceKey: 'BTC' }];
+        if (chainId === 'dash') return [{ symbol: 'DASH', name: 'Dash', address: null, decimals: 8, isNative: true, priceKey: 'DASH' }];
         return REG.getTokens(chainId);
     }
     function balanceOf(ctx, chainId, symbol) {
@@ -33,6 +34,7 @@
     }
     function contractLine(chainId, token) {
         if (chainId === 'btc') return '<span class="contract-native">Bitcoin on-chain (não é contrato; não aceita Lightning)</span>';
+        if (chainId === 'dash') return '<span class="contract-native">Dash na rede própria (não é contrato). Endereços começam com X.</span>';
         if (!token || !token.address) return `<span class="contract-native">Moeda nativa da rede ${esc(REG.getChain(chainId).name)} (sem contrato)</span>`;
         return `
             <span class="contract-label">Contrato${token.isCustom ? ' (moeda adicionada por você)' : ' oficial'}</span>
@@ -83,7 +85,8 @@
         const chain = REG.getChain(chainId);
         const isBtc = chainId === 'btc';
         // Bitcoin: um endereço novo a cada recebimento (quem te paga não vê os seus outros pagamentos)
-        const address = isBtc ? (ctx.btcReceiveAddress?.() || acc.btcAddress || '') : acc.address;
+        const isDash = chainId === 'dash';
+        const address = isBtc ? (ctx.btcReceiveAddress?.() || acc.btcAddress || '') : isDash ? (acc.dashAddress || '') : acc.address;
 
         sheet.innerHTML = `
             ${header('↓ Receber')}
@@ -107,7 +110,7 @@
                 <div class="rec-ask-out" id="rmw-rec-ask"></div>
             </div>
             <div class="rmw-alert-warn" id="rmw-rec-warning">
-                ${isBtc
+                ${isDash ? 'Envie <strong>somente DASH pela rede Dash</strong>. Este endereço não recebe outras moedas.' : isBtc
                     ? 'Envie <strong>somente Bitcoin pela rede Bitcoin (on-chain)</strong>. Este endereço não recebe por Lightning nem por outras redes.'
                     : `Envie <strong>somente pela rede ${esc(chain.name)}</strong>. Se a corretora mandar por outra rede, o dinheiro pode se perder.`}
             </div>
@@ -340,6 +343,7 @@
         let chainId = normChain(ctx.params.chainId || 137);
         if (!networks.some((n) => String(n) === String(chainId))) chainId = 137;
         const isBtc = chainId === 'btc';
+        const isDash = chainId === 'dash';
         const tokens = tokensFor(chainId);
         let token = tokens.find((t) => t.symbol === ctx.params.symbol) || tokens[0];
         const prefill = { to: ctx.params.to || '', amount: ctx.params.amount || '' };
@@ -360,9 +364,9 @@
             </div>
             <div class="contract-box" id="rmw-snd-contract">${contractLine(chainId, token)}</div>
 
-            <label class="rmw-label" for="rmw-snd-to">Endereço de destino${isBtc ? ' (bc1…, 1… ou 3…)' : ' (0x…)'}</label>
+            <label class="rmw-label" for="rmw-snd-to">Endereço de destino${isBtc ? ' (bc1…, 1… ou 3…)' : isDash ? ' (X…)' : ' (0x…)'}</label>
             <div class="input-with-actions">
-                <input type="text" class="rmw-input" id="rmw-snd-to" placeholder="${isBtc ? 'bc1q…' : '0x…'}" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(prefill.to)}">
+                <input type="text" class="rmw-input" id="rmw-snd-to" placeholder="${isBtc ? 'bc1q…' : isDash ? 'X…' : '0x…'}" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(prefill.to)}">
                 <button type="button" class="rmw-icon-btn" id="rmw-snd-paste" title="Colar" aria-label="Colar endereço">📋</button>
                 <button type="button" class="rmw-icon-btn" id="rmw-snd-scan" title="Ler QR Code" aria-label="Ler QR Code">📷</button>
             </div>
@@ -425,6 +429,13 @@
             if (text === null) return;
             const p = global.RdeskQrScanner.parsePayload(text);
             if (p.kind === 'lightning') return showErr('Este QR é um pedido Lightning. O app envia Bitcoin on-chain e moedas das redes listadas; Lightning ainda não é suportado.');
+            if (p.kind === 'dash') {
+                if (!networks.includes('dash')) return showErr('Este QR é de um endereço Dash, mas esta carteira ainda não tem Dash (destranque o cofre uma vez).');
+                if (!isDash) return ctx.navigate('send', { chainId: 'dash', to: p.address, amount: p.amount || '' });
+                $('#rmw-snd-to').value = p.address;
+                if (p.amount) { $('#rmw-snd-amt').value = p.amount; updateFiat(); }
+                return;
+            }
             if (p.kind === 'bitcoin') {
                 if (!networks.includes('btc')) return showErr('Este QR é de um endereço Bitcoin, mas esta carteira não tem Bitcoin (use uma carteira criada ou importada no app).');
                 if (!isBtc) return ctx.navigate('send', { chainId: 'btc', to: p.address, amount: p.amount || '' });
@@ -476,7 +487,13 @@
         $('#rmw-snd-max').onclick = async () => {
             msgBox.replaceChildren();
             try {
-                if (isBtc) {
+                if (isDash) {
+                    const D = global.RdeskDash;
+                    const utxos = await D.fetchUtxos(acc.dashAddress);
+                    const dest = D.isAddress($('#rmw-snd-to').value.trim()) ? $('#rmw-snd-to').value.trim() : acc.dashAddress;
+                    const plan = D.plan({ utxos, toAddress: dest, changeAddress: acc.dashAddress, max: true });
+                    $('#rmw-snd-amt').value = (plan.amount / 1e8).toFixed(8);
+                } else if (isBtc) {
                     const rate = Number($('#rmw-snd-fee').value);
                     if (!rate) throw new Error('Aguarde as taxas da rede carregarem.');
                     const utxos = await ctx.gatherBitcoinUtxos();
@@ -519,6 +536,26 @@
             try {
                 if (!amtStr || !(Number(amtStr) > 0)) throw new Error('Informe uma quantidade válida.');
 
+                if (isDash) {
+                    const D = global.RdeskDash;
+                    D.decodeAddress(to); // erro claro se não for endereço Dash
+                    const duffs = Math.round(Number(amtStr) * 1e8);
+                    btn.disabled = true;
+                    showOk('Lendo saldo disponível…');
+                    const utxos = await D.fetchUtxos(acc.dashAddress);
+                    const total = utxos.reduce((n, u) => n + u.value, 0);
+                    const plan = D.plan({ utxos, toAddress: to, amountDuffs: duffs, changeAddress: acc.dashAddress, max: duffs >= total });
+                    const brl = (d) => ctx.formatBRL((d / 1e8) * (ctx.prices().DASH || 0) * ctx.prices().usdBrl);
+                    if (!confirm(`Enviar ${(plan.amount / 1e8).toFixed(8)} DASH (${brl(plan.amount)}) pela rede Dash para:\n\n${to}\n\nTaxa da rede: ${plan.fee} duffs (${brl(plan.fee)})\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) { msgBox.replaceChildren(); btn.disabled = false; return; }
+                    const key = ctx.getDashKey();
+                    const signed = D.sign(plan, key.privateKey);
+                    showOk('Transmitindo para a rede Dash…');
+                    const txid = await D.broadcast(signed.hex);
+                    global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: 'Dash enviado!' } }));
+                    showOk(`✅ Dash enviado! <a href="${esc(REG.explorerTxUrl('dash', txid))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`);
+                    ctx.refreshBalances();
+                    return;
+                }
                 if (isBtc) {
                     BTC().addressToScript(to); // lança erro claro se não for endereço Bitcoin válido
                     const rate = Number($('#rmw-snd-fee').value);
@@ -589,7 +626,7 @@
         if (!acc || !token) { ctx.back(); return; }
         const row = ctx.getBalances().find((b) => String(b.chainId) === String(chainId) && b.symbol === token.symbol);
         const amount = row ? row.amount : 0;
-        const address = chainId === 'btc' ? (ctx.btcReceiveAddress?.() || acc.btcAddress) : acc.address;
+        const address = chainId === 'btc' ? (ctx.btcReceiveAddress?.() || acc.btcAddress) : chainId === 'dash' ? acc.dashAddress : acc.address;
 
         sheet.innerHTML = `
             ${header('Moeda')}

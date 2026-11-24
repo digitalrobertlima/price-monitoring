@@ -26,6 +26,8 @@
 
     <!-- Bibliotecas servidas do próprio repositório, com hash de integridade (nenhum script de terceiros) -->
     <script src="vendor/ethers-5.7.2.umd.min.js" integrity="sha384-Htz1SE4Sl5aitpvFgr2j0sfsGUIuSXI6t8hEyrlQ93zflEF3a29bH2AvkUROUw7J" defer></script>
+    <script src="wordlist-pt.js" defer></script>
+    <script src="dash.js" defer></script>
     <script src="vendor/qrcode-1.0.0.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" defer></script>
     <script src="vendor/jsqr-1.4.0.js" integrity="sha384-cZTKky7cz5Oq0xyzxf7MB8E+03uCPGEe6K+lSuL2ozIvIaDDEhBkA8CmFyncqXwm" defer></script>
     <script src="vendor/chart-4.4.1.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" defer></script>
@@ -252,6 +254,20 @@
                         <input type="number" id="earn-target-brl-min" class="field-input" placeholder="ex.: 0,05" step="0.001" min="0">
                     </div>
                 </details>
+            </div>
+
+            <div class="section-card" id="earn-calc">
+                <div class="section-head stack"><h2>Calculadora: quanto preciso para ganhar?</h2></div>
+                <div class="calc-form">
+                    <label class="field-label">Quero ganhar
+                        <span class="calc-inline"><input type="text" inputmode="decimal" id="calc-target" class="field-input" placeholder="R$ 1,00" autocomplete="off">
+                        <select id="calc-period" class="field-input" aria-label="Por período"><option value="min">por minuto</option><option value="hora">por hora</option><option value="dia" selected>por dia</option><option value="mes">por mês</option></select></span>
+                    </label>
+                    <label class="field-label">Tenho para colocar (deixe vazio para usar o que está livre na carteira)
+                        <input type="text" inputmode="decimal" id="calc-have" class="field-input" placeholder="R$ 500,00" autocomplete="off">
+                    </label>
+                </div>
+                <div id="earn-calc-out" aria-live="polite"><p class="muted-sm">Carregando o preço e o movimento do fundo…</p></div>
             </div>
 
             <div class="section-card">

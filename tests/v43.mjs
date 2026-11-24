@@ -123,6 +123,16 @@ try {
     check('mercado lista as 10 maiores moedas em reais', (await page.locator('.mk-row').count()) === 10);
     await waitFn(page, () => document.querySelector('#mk-btc')?.dataset.ready === '1', null, { timeout: 15000 });
     check('gráfico do Bitcoin em reais desenhado (com preço e variação do período)', /R\$/.test(await page.innerText('#mk-btc .mk-price')) && (await page.locator('#mk-btc canvas').count()) === 1);
+    const chips = await page.locator('#mk-btc [data-mk-range]').allInnerTexts();
+    check('períodos do gráfico: 24 h, 7 dias, 30 dias, 6 meses, YTD, 1 ano, 5 anos e Máx', chips.join('|') === '24 h|7 dias|30 dias|6 meses|YTD|1 ano|5 anos|Máx', chips.join('|'));
+    await page.click('#mk-btc [data-mk-range="ytd"]');
+    await waitFn(page, () => /no ano/.test(document.querySelector('#mk-btc [data-mk-chg]')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+    const ytdReq = cgHits.filter((u) => /market_chart/.test(u)).pop() || '';
+    const ytdDays = Math.ceil((Date.now() - Date.UTC(new Date().getUTCFullYear(), 0, 1)) / 86400000);
+    check('YTD pede do dia 1º de janeiro até hoje', new RegExp(`days=${ytdDays}$`).test(ytdReq) && /no ano/.test(await page.innerText('#mk-btc [data-mk-chg]')), ytdReq);
+    await page.click('#mk-btc [data-mk-range="1825"]');
+    await waitFn(page, () => /desde o início|5 anos/.test(document.querySelector('#mk-btc [data-mk-chg]')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+    check('5 anos desenhado (série longa, convertida em reais)', /em 5 anos/.test(await page.innerText('#mk-btc [data-mk-chg]')) && /DefiLlama/.test(await page.innerText('#mk-btc [data-mk-src]')), await page.innerText('#mk-btc [data-mk-src]'));
     await page.locator('.mk-row').nth(6).click();
     await page.waitForSelector('#mk-coin');
     const coin = await page.innerText('.mk-sheet');

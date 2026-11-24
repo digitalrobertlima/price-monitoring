@@ -94,7 +94,8 @@
         BRZ: { bg: '#0f7a3d', fg: '#ffe14d', glyph: 'R$' },
         BRLA: { bg: '#f4c20d', fg: '#0d3b1e', glyph: 'R$' },
         CELO: { bg: '#fcff52', fg: '#1a1a05', glyph: 'C' },
-        BNB: { bg: '#f0b90b', fg: '#1a1405', glyph: 'B' }
+        BNB: { bg: '#f0b90b', fg: '#1a1405', glyph: 'B' },
+        DASH: { bg: '#008de4', fg: '#ffffff', glyph: 'D' }
     };
 
     function esc(value) {
@@ -107,8 +108,10 @@
         return `hsl(${h}, 55%, 42%)`;
     }
 
+    const DASH = { id: 'dash', key: 'dash', name: 'Dash', short: 'DASH', color: '#008de4', native: 'DASH', explorer: 'https://blockchair.com/dash' };
     function getChain(chainId) {
         if (chainId === 'btc') return BITCOIN;
+        if (chainId === 'dash') return DASH;
         return CHAINS.find((c) => c.id === Number(chainId)) || null;
     }
 
@@ -196,6 +199,7 @@
     }
     function explorerTxUrl(chainId, hash) {
         const chain = getChain(chainId);
+        if (chainId === 'dash') return `${DASH.explorer}/transaction/${hash}`;
         return chain ? `${chain.explorer}/tx/${hash}` : null;
     }
 
@@ -229,9 +233,10 @@
         42161: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
         10: { level: 'young', since: 2021, label: 'Rede jovem', note: 'Rede de 2021 que depende da Ethereum e de um operador central. Prática, mas ainda nova.' },
         42220: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 com pouco uso e liquidez. Mais riscos que as redes grandes.' },
+        dash: { level: 'mid', since: 2014, label: 'Rede de 2014', note: 'Rede própria desde 2014, feita para pagamentos rápidos e baratos. Mais antiga que as redes novas, mas bem menor que o Bitcoin.' },
         56: { level: 'young', since: 2020, label: 'Rede jovem', note: 'Rede de 2020 ligada à corretora Binance, com poucos validadores. Muito usada e barata, mas centralizada. Use para movimentar, não para guardar tudo.' }
     };
-    const maturity = (chainId) => MATURITY[chainId === 'btc' || chainId === 'BTC' ? 'btc' : Number(chainId)] || { level: 'young', label: 'Rede jovem', note: 'Rede nova: mais riscos.' };
+    const maturity = (chainId) => MATURITY[chainId === 'btc' || chainId === 'BTC' ? 'btc' : chainId === 'dash' ? 'dash' : Number(chainId)] || { level: 'young', label: 'Rede jovem', note: 'Rede nova: mais riscos.' };
     function maturityBadge(chainId) {
         const m = maturity(chainId);
         return `<span class="net-tag ${m.level}" title="${esc(m.note)}">${m.level === 'solid' ? '🛡 ' : ''}${esc(m.label)}${m.since ? ` · desde ${m.since}` : ''}</span>`;
