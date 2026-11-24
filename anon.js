@@ -58,6 +58,34 @@
         } catch (e) {}
     }
 
+    // ------------------------------------------------------------------ pontes do Tor (só no app Android)
+    const PONTES = [
+        ['nenhuma', 'Sem ponte', 'Mais rápido. A operadora vê que você usa Tor, mas não o que faz.'],
+        ['snowflake', 'Snowflake', 'Parece uma chamada de vídeo. Bom quando o Tor está bloqueado. Mais lento.'],
+        ['obfs4', 'obfs4 (embutidas)', 'Tráfego embaralhado, sem cara de nada. Usa pontes públicas que vêm no app.'],
+        ['propria', 'Minhas pontes', 'Cole as linhas que você recebeu (bridges.torproject.org ou o robô @GetBridgesBot no Telegram).']
+    ];
+    function pontesHtml() {
+        let cur = { modo: 'nenhuma', proprias: '' };
+        try { cur = global.RdeskNativeTor.get(); } catch (e) { /* ok */ }
+        return `<div class="an-chains an-pontes"><b>🌉 Ponte do Tor</b>
+            ${PONTES.map(([id, nome, txt]) => `<label class="an-ponte"><input type="radio" name="an-ponte" value="${id}" ${cur.modo === id ? 'checked' : ''}><span><b>${nome}</b><small>${txt}</small></span></label>`).join('')}
+            <textarea class="rmw-input" id="an-pontes-proprias" rows="3" placeholder="obfs4 1.2.3.4:443 ABCD… cert=… iat-mode=0" style="${cur.modo === 'propria' ? '' : 'display:none'}">${esc(cur.proprias || '')}</textarea>
+            <button type="button" class="rmw-btn-secondary" id="an-ponte-aplicar">Aplicar e religar o Tor</button>
+            <small id="an-ponte-msg"></small>
+        </div>`;
+    }
+    function bindPontes(m) {
+        const ta = m.querySelector('#an-pontes-proprias');
+        m.querySelectorAll('input[name="an-ponte"]').forEach((r) => { r.onchange = () => { ta.style.display = r.value === 'propria' && r.checked ? '' : 'none'; }; });
+        m.querySelector('#an-ponte-aplicar').onclick = () => {
+            const modo = m.querySelector('input[name="an-ponte"]:checked')?.value || 'nenhuma';
+            if (modo === 'propria' && !/\S/.test(ta.value)) { m.querySelector('#an-ponte-msg').textContent = 'Cole pelo menos uma linha de ponte.'; return; }
+            global.RdeskNativeTor.set(modo, ta.value);
+            m.querySelector('#an-ponte-msg').textContent = 'Religando o Tor pela ponte escolhida… Nada sai do app até conectar.';
+        };
+    }
+
     function open() {
         document.getElementById('anon-modal')?.remove();
         const s = read();
@@ -82,6 +110,7 @@
                     <label><input type="checkbox" data-ch="btc" ${s.chains.map(String).includes('btc') ? 'checked' : ''}> Bitcoin</label>
                     ${chains.map((c) => `<label><input type="checkbox" data-ch="${c.id}" ${s.chains.map(String).includes(String(c.id)) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}
                 </div>
+                ${global.RdeskNativeTor ? pontesHtml() : ''}
                 <div class="ag-ok">✅ Sempre ligado, em qualquer modo: sem cadastro, sem rastreador, sem fontes do Google, nenhum servidor sabe que o pedido veio deste app, endereço Bitcoin novo a cada recebimento, cotação de troca com endereço neutro até você confirmar, e a voz da Duda nunca vai para a nuvem.</div>
                 <h3 class="an-danger-t">🧨 Apagar tudo deste aparelho</h3>
                 <p class="ag-note">Remove o cofre cifrado, o histórico e as preferências deste aparelho. Seu dinheiro <b>não</b> some: ele está na blockchain e volta com as suas palavras. <b>Sem as palavras, não tem volta.</b></p>
@@ -95,6 +124,7 @@
         m.addEventListener('click', (e) => { if (e.target === m) close(); });
         const save = () => set($('#anon-on', m).checked, [...m.querySelectorAll('[data-ch]:checked')].map((x) => (x.dataset.ch === 'btc' ? 'btc' : Number(x.dataset.ch))));
         $('#anon-on', m).onchange = save;
+        if (global.RdeskNativeTor) bindPontes(m);
         m.querySelectorAll('[data-ch]').forEach((x) => { x.onchange = save; });
         $('#anon-wipe', m).onclick = async () => {
             if ($('#anon-wipe-confirm', m).value.trim().toUpperCase() !== 'APAGAR') { $('#anon-msg', m).innerHTML = '<div class="rmw-alert-err">Digite APAGAR para confirmar.</div>'; return; }

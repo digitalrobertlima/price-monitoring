@@ -3,6 +3,7 @@ package app.rdesk.cofre;
 import android.util.Log;
 
 import androidx.test.core.app.ActivityScenario;
+import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.json.JSONArray;
@@ -59,6 +60,11 @@ public class TorPrivacyTest {
 
     @Test
     public void tudoPeloTor() throws Exception {
+        // Com -e ponte snowflake|obfs4 o mesmo teste roda com o Tor por uma ponte
+        String ponte = InstrumentationRegistry.getArguments().getString("ponte", "nenhuma");
+        Pontes.salvar(InstrumentationRegistry.getInstrumentation().getTargetContext(), ponte, "");
+        boolean comPonte = !"nenhuma".equals(ponte);
+        Log.i(TAG, "ponte: " + ponte);
         try (ActivityScenario<MainActivity> sc = ActivityScenario.launch(MainActivity.class)) {
             // 1. o app carregou
             JSONObject boot = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{if(window.RdeskRegistry&&window.RDESK_NATIVE&&document.body){clearInterval(t);r(true)}},300)})", 60_000));
@@ -81,7 +87,7 @@ public class TorPrivacyTest {
             assertTrue("biometria quebrou: " + bio, bio.optBoolean("ok"));
 
             // 3. Tor conecta
-            JSONObject tor = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{const s=JSON.parse(RdeskNative.torState());if(s.state==='on'){clearInterval(t);r(s)}},1000)})", 300_000));
+            JSONObject tor = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{const s=JSON.parse(RdeskNative.torState());if(s.state==='on'){clearInterval(t);r(s)}},1000)})", comPonte ? 480_000 : 300_000));
             Log.i(TAG, "estado do Tor: " + tor);
             assertTrue("Tor não conectou: " + tor, tor.optBoolean("ok"));
 
@@ -94,6 +100,9 @@ public class TorPrivacyTest {
             // 5. endereços diferentes → caminhos diferentes (a saída costuma mudar)
             JSONObject iso = obj(js(sc, "Promise.all(['0x1111111111111111111111111111111111111111','0x2222222222222222222222222222222222222222'].map(a=>fetch('https://check.torproject.org/api/ip?a='+a).then(r=>r.json()).then(j=>j.IP)))", 180_000));
             Log.i(TAG, "isolamento: " + iso + " slots=" + run(sc, "JSON.stringify(['0x1111111111111111111111111111111111111111','0x2222222222222222222222222222222222222222'].map(a=>RdeskIsolation.slotFor(a)))"));
+
+            assertEquals("ponte em uso", ponte, tor.getJSONObject("v").optString("ponte"));
+            if (comPonte) return; // com ponte basta provar que conecta e sai pelo Tor
 
             // 6. relatório: quais serviços do app aceitam o Tor
             String[][] probes = {

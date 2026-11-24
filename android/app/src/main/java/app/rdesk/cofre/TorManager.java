@@ -75,7 +75,6 @@ final class TorManager {
         started = true;
         try {
             pickPorts();
-            writeTorrc();
         } catch (IOException e) {
             setState("error", 0, "Não deu para preparar o Tor: " + e.getMessage());
             return;
@@ -83,14 +82,42 @@ final class TorManager {
         IntentFilter f = new IntentFilter(TorService.ACTION_STATUS);
         f.addAction(TorService.ACTION_ERROR);
         LocalBroadcastManager.getInstance(ctx).registerReceiver(receiver, f);
-        ctx.bindService(new Intent(ctx, TorService.class), conn, Context.BIND_AUTO_CREATE);
         Thread poll = new Thread(this::pollBootstrap, "tor-progresso");
         poll.setDaemon(true);
         poll.start();
+        launch();
     }
+
+    /** Escreve o torrc (com a ponte escolhida) e liga o Tor. */
+    private void launch() {
+        new Thread(() -> {
+            try {
+                writeTorrc();
+            } catch (Exception e) {
+                setState("error", 0, "Não deu para preparar a ponte do Tor: " + e.getMessage());
+                return;
+            }
+            stopping = false;
+            ctx.bindService(new Intent(ctx, TorService.class), conn, Context.BIND_AUTO_CREATE);
+        }, "tor-inicio").start();
+    }
+
+    /** Religa o Tor (ex.: trocou a ponte). Enquanto isso, nada sai do app. */
+    void restart() {
+        stopping = true;
+        setState("starting", 0, "Religando o Tor");
+        try { ctx.unbindService(conn); } catch (Exception ignored) { }
+        try { ctx.stopService(new Intent(ctx, TorService.class)); } catch (Exception ignored) { }
+        service = null;
+        Pontes.pararTudo();
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::launch, 1500);
+    }
+
+    String ponte() { return Pontes.modo(ctx); }
 
     void stop() {
         stopping = true;
+        Pontes.pararTudo();
         try { LocalBroadcastManager.getInstance(ctx).unregisterReceiver(receiver); } catch (Exception ignored) { }
         try { ctx.unbindService(conn); } catch (Exception ignored) { }
         try { ctx.stopService(new Intent(ctx, TorService.class)); } catch (Exception ignored) { }
@@ -122,6 +149,7 @@ final class TorManager {
             o.put("state", state);
             o.put("progress", progress);
             o.put("summary", summary);
+            o.put("ponte", Pontes.modo(ctx));
         } catch (Exception ignored) { }
         return o;
     }
@@ -149,6 +177,7 @@ final class TorManager {
             int pct = Integer.parseInt(m.group(1));
             Matcher sm = ps.matcher(info);
             String sum = sm.find() ? sm.group(1) : "";
+            if (stopping) continue;
             if (pct >= 100) setState("on", 100, "");
             else if (!isOn()) setState("starting", pct, sum);
         }
@@ -167,8 +196,9 @@ final class TorManager {
         }
     }
 
-    private void writeTorrc() throws IOException {
+    private void writeTorrc() throws Exception {
         StringBuilder sb = new StringBuilder();
+        for (String l : Pontes.torrc(ctx)) sb.append(l).append('\n');
         for (int p : ports) sb.append("SOCKSPort 127.0.0.1:").append(p).append('\n');
         sb.append("HTTPTunnelPort 0\n");
         sb.append("DNSPort 0\n");

@@ -70,6 +70,17 @@ final class Bridge {
 
     @JavascriptInterface public void bioForget() { bio().forget(); }
 
+    @JavascriptInterface public String getBridge() {
+        JSONObject o = new JSONObject();
+        try { o.put("modo", Pontes.modo(act)); o.put("proprias", Pontes.proprias(act)); } catch (Exception ignored) { }
+        return o.toString();
+    }
+
+    @JavascriptInterface public void setBridge(String modo, String proprias) {
+        Pontes.salvar(act, modo, proprias);
+        main.post(tor::restart);
+    }
+
     @JavascriptInterface public String torState() { return tor.stateJson().toString(); }
 
     @JavascriptInterface public int versionCode() { return BuildConfig.VERSION_CODE; }

@@ -185,6 +185,12 @@
         forget: () => { try { N.bioForget(); } catch (e) { /* ok */ } }
     };
 
+    // Ponte do Tor (Snowflake, obfs4 ou as suas): trocar religa o Tor
+    global.RdeskNativeTor = {
+        get: () => JSON.parse(N.getBridge()),
+        set: (modo, proprias) => N.setBridge(String(modo), String(proprias || ''))
+    };
+
     // Sem service worker: os arquivos já vêm dentro do APK
     const swStub = {
         register: () => Promise.reject(new Error('O app Android não usa service worker')),
