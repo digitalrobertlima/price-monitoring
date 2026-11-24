@@ -9,7 +9,7 @@ def ks = file('../keystore.jks')
 
 android {
     namespace 'app.rdesk.cofre'
-    compileSdk 35
+    compileSdk 37
 
     defaultConfig {
         applicationId 'app.rdesk.cofre'
