@@ -57,6 +57,7 @@ class BtcLuz(
     @Volatile private var mensagem = ""
     @Volatile private var snapshot: JSONObject? = null
     @Volatile private var idAtual = ""
+    @Volatile private var ultimoAviso = ""
 
     fun stateJson(withSnapshot: Boolean): JSONObject {
         val o = JSONObject()
@@ -84,7 +85,8 @@ class BtcLuz(
             try {
                 run(cfg)
             } catch (e: Throwable) {
-                set("erro", "Bitcoin sem servidor parou: " + (e.message ?: e.javaClass.simpleName))
+                android.util.Log.e("RDESKBTC", "parou", e)
+                set("erro", "Bitcoin sem servidor parou: " + e.javaClass.name + " " + (e.message ?: "") + " " + (e.cause?.toString() ?: "") + " | " + ultimoAviso)
             }
         }
     }
@@ -162,6 +164,12 @@ class BtcLuz(
                         else -> { }
                     }
                 } catch (_: Throwable) { break }
+            }
+        }
+
+        scope.launch {
+            while (isActive && client === c) {
+                try { val w2 = c.nextWarning(); ultimoAviso = w2.toString().take(200); android.util.Log.w("RDESKBTC", ultimoAviso) } catch (_: Throwable) { break }
             }
         }
 

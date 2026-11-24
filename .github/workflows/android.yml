@@ -88,8 +88,8 @@ jobs:
             adb logcat -c
             nohup sudo tcpdump -i "$(ip route | awk '/^default/ {print $5; exit}')" -nn -s 0 -w /tmp/host.pcap 'not port 5037 and not port 5555 and not port 5554' > /tmp/tcpdump.log 2>&1 &
             sleep 5
-            gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E > logcat.txt; exit 1)
-            adb logcat -d -s RDESKTEST:I > logcat.txt
+            gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I RDESKBTC:V TorService:I AndroidRuntime:E > logcat.txt; exit 1)
+            adb logcat -d -s RDESKTEST:I RDESKBTC:V > logcat.txt
             adb logcat -c
             gradle -p android --no-daemon connectedReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.ponte=snowflake || gradle -p android --no-daemon connectedReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.ponte=snowflake || echo "::warning::A ponte Snowflake nao conectou no CI desta vez (rede de voluntarios instavel). O resto do teste passou."
             adb logcat -d -s RDESKTEST:I >> logcat.txt
