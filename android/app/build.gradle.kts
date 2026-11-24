@@ -40,7 +40,12 @@ configure<ApplicationExtension> {
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = if (ks.exists()) signingConfigs.getByName("projeto") else signingConfigs.getByName("debug")
+            // RDESK_SEM_ASSINATURA=1: APK sem assinatura, para conferir que o build é reproduzível
+            signingConfig = when {
+                System.getenv("RDESK_SEM_ASSINATURA") == "1" -> null
+                ks.exists() -> signingConfigs.getByName("projeto")
+                else -> signingConfigs.getByName("debug")
+            }
         }
     }
     testBuildType = "release"

@@ -138,6 +138,25 @@ jobs:
           cat "rdesk-$VER.sha256"
           du -h rdesk-$VER*.apk
 
+      - name: Build reproduzível (compila de novo, do zero, em outra pasta, e compara byte a byte)
+        run: |
+          rm -rf /tmp/refeito && mkdir -p /tmp/refeito
+          git archive HEAD | tar -x -C /tmp/refeito
+          cd /tmp/refeito
+          bash android/tools/preparar.sh > /dev/null
+          RDESK_SEM_ASSINATURA=1 gradle -p android --no-daemon --no-build-cache --quiet assembleRelease
+          ls android/app/build/outputs/apk/release/
+          pip install --quiet --break-system-packages apksigcopier==1.1.1 || pip install --quiet apksigcopier==1.1.1
+          cd "$GITHUB_WORKSPACE"
+          OK=1
+          for abi in universal arm64-v8a armeabi-v7a; do
+            case $abi in universal) mine="dist/rdesk-$VER.apk";; arm64-v8a) mine="dist/rdesk-$VER-arm64.apk";; armeabi-v7a) mine="dist/rdesk-$VER-arm32.apk";; esac
+            other=$(ls /tmp/refeito/android/app/build/outputs/apk/release/app-$abi-release-unsigned.apk)
+            if apksigcopier compare "$mine" --unsigned "$other"; then echo "IGUAL: $abi"; else echo "DIFERENTE: $abi"; OK=0; fi
+          done
+          [ "$OK" = 1 ] && echo "Build reproduzível: o APK publicado é exatamente o que o código-fonte gera."
+          [ "$OK" = 1 ]
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -163,6 +182,8 @@ jobs:
           **Conferir antes de instalar (opcional):**
           - SHA-256 de cada APK: veja o arquivo \`rdesk-$VER.sha256\`
           - Certificado de assinatura (SHA-256): \`$CERT\`. Toda versão futura terá **o mesmo** certificado.
+
+          **Build reproduzível:** o CI compila o app duas vezes, do zero, e confere que os APKs são idênticos byte a byte (fora a assinatura). Qualquer pessoa pode repetir: \`bash android/tools/preparar.sh && RDESK_SEM_ASSINATURA=1 gradle -p android assembleRelease\` e comparar com \`apksigcopier compare\`.
 
           **Testado no emulador antes de publicar:** o Tor conecta, a saída é pelo Tor (check.torproject.org) e a captura de rede não mostra nenhum serviço do app fora do Tor.
 
