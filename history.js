@@ -415,6 +415,17 @@
         const need = list.filter((e) => e.ok && e.fromSelf && NATIVE_AWARE.has(e.to) && !e.nativeChecked && !/^approve$/i.test(e.method || ''));
         if (!need.length) return;
         const receipts = await fetchReceipts(need.map((e) => e.hash));
+        // Recibos que não vieram: mais duas rodadas, aos poucos (sem eles o POL devolvido pelo render some
+        // da conta e o gráfico mostra dinheiro que já tinha saído)
+        for (let round = 0; round < 2; round++) {
+            const missing = need.map((e) => e.hash).filter((h) => !receipts[h]);
+            if (!missing.length) break;
+            await new Promise((r) => setTimeout(r, 1500));
+            for (let i = 0; i < missing.length; i += 5) Object.assign(receipts, await fetchReceipts(missing.slice(i, i + 5)));
+        }
+        st.receiptsMissing = need.filter((e) => !receipts[e.hash]).length;
+        st.receiptsNeeded = need.length;
+        if (st.receiptsMissing) st.incomplete = true;
         const word = (hex) => Number(global.ethers.utils.formatEther(global.ethers.BigNumber.from(hex || '0x0')));
         need.forEach((e) => {
             const rc = receipts[e.hash];
@@ -1132,7 +1143,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries, renderAll,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, incomplete: Boolean(st.incomplete), keptCache: Boolean(st.keptCache), capped: st.capped || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, incomplete: Boolean(st.incomplete), keptCache: Boolean(st.keptCache), receipts: `${(st.receiptsNeeded || 0) - (st.receiptsMissing || 0)}/${st.receiptsNeeded || 0}`, capped: st.capped || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };

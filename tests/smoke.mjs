@@ -118,7 +118,7 @@ try {
     console.log(`   maior patrimônio no gráfico: R$ ${maxBrl.toFixed(2)}`);
     console.log('   pico:', await page.evaluate(() => { const s = window.RdeskHistory.getSeries(); const m = s.reduce((b, p) => (p.usd > b.usd ? p : b), s[0] || {}); const i = s.indexOf(m); return JSON.stringify(s.slice(Math.max(0, i - 1), i + 2)).slice(0, 3000); }));
     const chartNote = await page.evaluate(() => document.getElementById('home-chart-status')?.textContent || '');
-    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}, incompleto: ${hs.st.incomplete}, cortados: ${hs.st.capped}`);
+    console.log(`   saldos diários conferidos na rede: ${hs.st.nativeDays}, sem conferência: ${hs.st.nativeMissing}, incompleto: ${hs.st.incomplete}, cortados: ${hs.st.capped}, recibos: ${hs.st.receipts}`);
     // Se algum servidor de arquivo falhar, o gráfico pode estimar alto — mas então TEM que avisar na tela
     check('patrimônio do gráfico nunca passa muito do que realmente entrou (ou avisa que é estimativa)',
         maxBrl <= hs.r.inBrl * 1.3 || (hs.st.nativeMissing > 0 && /estimativa/.test(chartNote)) || (hs.st.incomplete && /pode estar errado/.test(chartNote)),
