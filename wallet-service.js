@@ -832,6 +832,10 @@
                     else if (acc.type === 'pk' && state.unlockedSecrets.pkMap[acc.id]) { acc.dashAddress = window.RdeskDash.fromPrivateKey(state.unlockedSecrets.pkMap[acc.id]).address; changed = true; }
                 } catch (e) {}
             }
+            // Descritores públicos (xpub) para o "Bitcoin sem servidor" do app Android
+            if (window.RDESK_NATIVE && btcHdOk(acc) && !acc.btcDesc && state.unlockedSecrets.masterSeedMap[acc.seedGroupId] && window.RdeskBitcoin.accountDescriptors) {
+                try { acc.btcDesc = window.RdeskBitcoin.accountDescriptors(state.unlockedSecrets.masterSeedMap[acc.seedGroupId], passphraseOf(acc.seedGroupId), acc.hdIndex || 0); changed = true; } catch (e) {}
+            }
             if (acc.btcAddress) return;
             try {
                 if (acc.type === 'seed' && state.unlockedSecrets.masterSeedMap[acc.seedGroupId]) {
@@ -3312,6 +3316,7 @@
             return k;
         },
         getBitcoinAddresses: () => btcScanList(getActiveAccount()),
+        getBtcDescriptors: () => { const a = getActiveAccount(); return a && a.btcDesc ? { id: a.id, ext: a.btcDesc.ext, int: a.btcDesc.int } : null; },
         getBitcoinSpendAddress: () => btcRichestAddress(),
         getBitcoinChangeAddress: () => btcChangeAddress(),
         getBitcoinKeyFor: (a) => btcKeyFor(a),

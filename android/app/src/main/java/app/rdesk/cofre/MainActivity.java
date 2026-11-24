@@ -249,6 +249,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (bridge != null) bridge.close();
         if (tor != null) tor.stop();
         if (web != null) {
             web.removeJavascriptInterface("RdeskNative");

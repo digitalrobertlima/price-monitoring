@@ -116,7 +116,7 @@ jobs:
           LEAK=""
           for f in /tmp/host.pcap rede.pcap; do
             [ -s "$f" ] || continue
-            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com; do
+            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com dns.google sipa.be bluematt.me petertodd.net bitcoinstats.com sprovoost.nl; do
               if strings -n 6 "$f" | grep -qi "$h"; then echo "VAZOU em $f: $h apareceu fora do Tor"; LEAK=1; fi
             done
           done

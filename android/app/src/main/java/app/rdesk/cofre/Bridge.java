@@ -38,6 +38,7 @@ final class Bridge {
     private final Handler main = new Handler(Looper.getMainLooper());
     private int notifSeq = 1;
     private BioVault bio;
+    private BtcLuz btc;
 
     Bridge(MainActivity act, WebView web, TorManager tor, TorNet net) {
         this.act = act;
@@ -69,6 +70,25 @@ final class Bridge {
     @JavascriptInterface public void bioDecrypt(int id, String ct, String iv) { bio().decrypt(ct, iv, r -> deliver(id, r)); }
 
     @JavascriptInterface public void bioForget() { bio().forget(); }
+
+    private synchronized BtcLuz btc() {
+        if (btc == null) btc = new BtcLuz(act, tor, net, st -> {
+            final String js = "window.__rdeskBtc&&window.__rdeskBtc(" + st.toString() + ")";
+            main.post(() -> web.evaluateJavascript(js, null));
+            return kotlin.Unit.INSTANCE;
+        });
+        return btc;
+    }
+
+    @JavascriptInterface public void btcStart(String cfg) { btc().start(cfg); }
+    @JavascriptInterface public void btcStop() { btc().stop(); }
+    @JavascriptInterface public void btcWipe() { btc().wipe(); }
+    @JavascriptInterface public String btcState() { return btc().stateJson(true).toString(); }
+    @JavascriptInterface public void btcBroadcast(int id, String hex) {
+        new Thread(() -> deliver(id, btc().broadcast(hex)), "btc-envio").start();
+    }
+
+    void close() { if (btc != null) btc.close(); }
 
     @JavascriptInterface public String getBridge() {
         JSONObject o = new JSONObject();

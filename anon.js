@@ -39,7 +39,7 @@
     const OUR_DBS = ['rdesk_vault_backup'];
     const scope = () => new URL('./', global.location.href).href;
     async function wipeAll() {
-        try { global.RdeskNativeBio?.forget(); } catch (e) {} // apaga também a chave da digital no chip do celular
+        try { global.RdeskNativeBio?.forget(); global.RdeskNativeBtc?.wipe(); } catch (e) {} // apaga também a chave da digital no chip do celular
         try {
             Object.keys(localStorage).filter((k) => /^rdesk/i.test(k)).forEach((k) => localStorage.removeItem(k));
         } catch (e) {}
@@ -86,6 +86,36 @@
         };
     }
 
+    // ------------------------------------------------------------------ Bitcoin sem servidor (só no app Android)
+    function luzStatus() {
+        const st = global.RdeskNativeBtc.state() || {};
+        const pct = Math.round(Number(st.progresso) || 0);
+        return {
+            desligado: 'Desligado: o saldo de Bitcoin vem do servidor (blockstream), pelo Tor, com um caminho por endereço.',
+            preparando: `Preparando… ${esc(st.mensagem || '')}`,
+            sincronizando: `Sincronizando direto com a rede Bitcoin… ${pct}% (bloco ${st.altura || '…'})`,
+            pronto: `✅ Em dia (bloco ${st.altura}). Saldo e histórico vêm da própria rede Bitcoin, sem servidor.`,
+            erro: `⚠️ ${esc(st.mensagem || 'Parou')}. Enquanto isso, o app usa o servidor pelo Tor.`
+        }[st.estado] || '';
+    }
+    function luzHtml() {
+        const c = global.RdeskNativeBtc.config();
+        const anos = ['novo', 2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017];
+        return `<div class="an-chains an-pontes"><b>₿ Bitcoin sem servidor (Kyoto)</b>
+            <label class="an-ponte"><input type="checkbox" id="an-luz-on" ${c.on ? 'checked' : ''}><span><b>Achar meu Bitcoin direto na rede</b><small>O celular baixa os filtros dos blocos e descobre sozinho o que é seu. Nenhum servidor recebe seus endereços. A primeira vez usa bastante internet (cerca de 1 GB por ano de histórico): prefira Wi-Fi.</small></span></label>
+            <label class="an-ponte"><span><b>Desde quando esta carteira tem Bitcoin?</b><small>Quanto mais recente, mais rápido. Se escolher uma data depois da primeira entrada, ela não aparece.</small></span></label>
+            <select class="rmw-input" id="an-luz-ano">${anos.map((a) => `<option value="${a}" ${String(c.ano || '2020') === String(a) ? 'selected' : ''}>${a === 'novo' ? 'Carteira nova (de hoje)' : `Desde ${a}`}</option>`).join('')}</select>
+            <small id="an-luz-st">${luzStatus()}</small>
+        </div>`;
+    }
+    function bindLuz(m) {
+        const save = () => global.RdeskNativeBtc.setConfig({ on: m.querySelector('#an-luz-on').checked, ano: m.querySelector('#an-luz-ano').value });
+        m.querySelector('#an-luz-on').onchange = save;
+        m.querySelector('#an-luz-ano').onchange = () => { if (m.querySelector('#an-luz-on').checked) { global.RdeskNativeBtc.wipe(); save(); } else save(); };
+        const upd = () => { const el = m.querySelector('#an-luz-st'); if (el) el.innerHTML = luzStatus(); };
+        global.addEventListener('rdesk:btcluz', upd);
+    }
+
     function open() {
         document.getElementById('anon-modal')?.remove();
         const s = read();
@@ -111,6 +141,7 @@
                     ${chains.map((c) => `<label><input type="checkbox" data-ch="${c.id}" ${s.chains.map(String).includes(String(c.id)) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}
                 </div>
                 ${global.RdeskNativeTor ? pontesHtml() : ''}
+                ${global.RdeskNativeBtc ? luzHtml() : ''}
                 <div class="ag-ok">✅ Sempre ligado, em qualquer modo: sem cadastro, sem rastreador, sem fontes do Google, nenhum servidor sabe que o pedido veio deste app, endereço Bitcoin novo a cada recebimento, cotação de troca com endereço neutro até você confirmar, e a voz da Duda nunca vai para a nuvem.</div>
                 <h3 class="an-danger-t">🧨 Apagar tudo deste aparelho</h3>
                 <p class="ag-note">Remove o cofre cifrado, o histórico e as preferências deste aparelho. Seu dinheiro <b>não</b> some: ele está na blockchain e volta com as suas palavras. <b>Sem as palavras, não tem volta.</b></p>
@@ -125,6 +156,7 @@
         const save = () => set($('#anon-on', m).checked, [...m.querySelectorAll('[data-ch]:checked')].map((x) => (x.dataset.ch === 'btc' ? 'btc' : Number(x.dataset.ch))));
         $('#anon-on', m).onchange = save;
         if (global.RdeskNativeTor) bindPontes(m);
+        if (global.RdeskNativeBtc) bindLuz(m);
         m.querySelectorAll('[data-ch]').forEach((x) => { x.onchange = save; });
         $('#anon-wipe', m).onclick = async () => {
             if ($('#anon-wipe-confirm', m).value.trim().toUpperCase() !== 'APAGAR') { $('#anon-msg', m).innerHTML = '<div class="rmw-alert-err">Digite APAGAR para confirmar.</div>'; return; }
