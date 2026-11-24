@@ -28,6 +28,15 @@
         { id: 999, key: 'hyperevm', name: 'HyperEVM', short: 'HYPE', color: '#50e3c2', native: 'HYPE', explorer: 'https://hyperevmscan.io', llama: 'hyperliquid',
           rpcs: ['https://rpc.hyperliquid.xyz/evm', 'https://hyperliquid.drpc.org'] }
     ];
+    // No app Android tudo sai pelo Tor. Alguns servidores recusam conexões vindas do Tor
+    // (testado no emulador): ficam por último, só como reserva.
+    const RECUSAM_TOR = ['ethereum-rpc.publicnode.com', 'bsc-rpc.publicnode.com', '1rpc.io'];
+    if (global.RDESK_NATIVE) {
+        CHAINS.forEach((c) => {
+            const bad = (u) => RECUSAM_TOR.some((h) => u.includes(h));
+            c.rpcs = c.rpcs.filter((u) => !bad(u)).concat(c.rpcs.filter(bad));
+        });
+    }
 
     // Rede Bitcoin (não é EVM: tratada pelo módulo bitcoin.js)
     const BITCOIN = { id: 'btc', key: 'bitcoin', name: 'Bitcoin', short: 'BTC', color: '#f7931a', native: 'BTC', explorer: 'https://mempool.space' };

@@ -86,8 +86,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -tcpdump ${{ github.workspace }}/rede.pcap
           script: |
             adb logcat -c
+            nohup sudo tcpdump -i any -nn -s 0 -w /tmp/host.pcap > /tmp/tcpdump.log 2>&1 &
+            sleep 3
+            getent hosts example.org > /dev/null || true
             gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I TorService:I AndroidRuntime:E > logcat.txt; exit 1)
             adb logcat -d -s RDESKTEST:I > logcat.txt
+            sudo pkill -INT tcpdump || true
+            sleep 3
 
       - name: Relatório do teste
         if: always()
@@ -95,14 +100,21 @@ jobs:
 
       - name: Nada fora do Tor (nomes dos serviços nunca aparecem na rede)
         run: |
-          test -s rede.pcap
-          echo "Captura: $(stat -c %s rede.pcap) bytes"
+          sudo chmod a+r /tmp/host.pcap
+          # A captura do computador inteiro pega o DNS e o TLS que o emulador fizer.
+          # Controle positivo: o nome consultado de propósito no computador TEM que aparecer (prova que a captura funciona).
+          echo "Captura do computador: $(stat -c %s /tmp/host.pcap) bytes, $(sudo tcpdump -nn -r /tmp/host.pcap 2>/dev/null | wc -l) pacotes"
+          strings -n 6 /tmp/host.pcap | grep -qi "example.org" || { echo "A captura não está funcionando (controle não apareceu)"; exit 1; }
+          echo "Controle OK: a captura enxerga DNS."
           LEAK=""
-          for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com api.github.com; do
-            if strings -n 6 rede.pcap | grep -qi "$h"; then echo "VAZOU: $h apareceu fora do Tor"; LEAK=1; fi
+          for f in /tmp/host.pcap rede.pcap; do
+            [ -s "$f" ] || continue
+            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com; do
+              if strings -n 6 "$f" | grep -qi "$h"; then echo "VAZOU em $f: $h apareceu fora do Tor"; LEAK=1; fi
+            done
           done
           if [ -n "$LEAK" ]; then exit 1; fi
-          echo "OK: nenhum serviço do app aparece na rede do celular (nem no DNS, nem no TLS). Só tráfego cifrado do Tor."
+          echo "OK: o app falou com 19 serviços e nenhum deles aparece na rede (nem no DNS, nem no TLS). Só tráfego cifrado do Tor."
 
       - name: Empacotar
         run: |
