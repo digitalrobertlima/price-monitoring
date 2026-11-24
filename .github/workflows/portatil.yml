@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Montar o zip
         run: |
-          VER=$(sed -n "s/.*RDESK_VERSION = '\(v[0-9]*\)'.*/\1/p" version.js)
+          VER=$(sed -n "s/.*RDESK_VERSION = '\(v[0-9.]*\)'.*/\1/p" version.js)
           echo "VER=$VER" >> "$GITHUB_ENV"
           mkdir -p dist/cofre
           cp index.html tails.html manifest.json sw.js version.js LICENSE *.js *.css dist/cofre/ 2>/dev/null || true
