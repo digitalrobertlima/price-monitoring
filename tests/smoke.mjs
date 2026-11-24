@@ -244,10 +244,13 @@ try {
             } catch (e) { out[id] = { err: String(e.message || e).slice(0, 80) }; }
         }));
         try { out.mine = (await P.listPositions('0x2833a1C3dDe3B5d2265F057301a89bEf1BB50fe3')).length; } catch (e) { out.mine = 'erro ' + e.message; }
+        out.polyDbg = await Promise.all((window.RdeskRegistry.getChain(137).rpcs || []).map(async (u) => {
+            try { const pr = new E.providers.StaticJsonRpcProvider(u, 137); const code = await pr.getCode(P.UNI[137].nfpm); const bn = await pr.getBlockNumber(); return `${u.split('/')[2]} code=${code.length} bloco=${bn}`; } catch (e) { return `${u.split('/')[2]} erro ${String(e.message).slice(0, 60)}`; }
+        }));
         return out;
     });
     console.log('   v45:', JSON.stringify(v45));
-    check('fundos: contratos oficiais da Uniswap conferidos nas 7 redes (fábrica certa e fundos achados)', Object.keys(v45).filter((k) => k !== 'mine').every((k) => v45[k].factoryOk && v45[k].pools > 0), JSON.stringify(v45));
+    check('fundos: contratos oficiais da Uniswap conferidos nas 7 redes (fábrica certa e fundos achados)', Object.keys(v45).filter((k) => k !== 'mine' && k !== 'polyDbg').every((k) => v45[k].factoryOk && v45[k].pools > 0), JSON.stringify(v45));
     check('fundos: posições do cofre lidas direto da rede', typeof v45.mine === 'number' && v45.mine > 0, String(v45.mine));
 
     await page.waitForTimeout(4000);
