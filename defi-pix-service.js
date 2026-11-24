@@ -149,8 +149,13 @@
                 if (vol24 > 0) defiState.poolVol24hUsd = vol24;
             }
             // Liquidez e preço do fundo direto da rede (para a calculadora)
-            if (!(defiState.poolLiquidity > 0) && (!window.RdeskAnon || window.RdeskAnon.chainAllowed(137))) {
-                window.RdeskWallet.getReadProvider(POLYGON_ID).then((pr) => readPoolPrice(pr)).catch(() => {});
+            // (só lê a liquidez: não mexe no preço que as operações em andamento usam)
+            if (!(defiState.poolLiquidity > 0) && !defiState.liqTried && (!window.RdeskAnon || window.RdeskAnon.chainAllowed(137))) {
+                defiState.liqTried = true;
+                window.RdeskWallet.getReadProvider(POLYGON_ID)
+                    .then((pr) => new ethers.Contract(POOL_POL_USDT, ['function liquidity() view returns (uint128)'], pr).liquidity())
+                    .then((l) => { defiState.poolLiquidity = Number(l.toString()); renderEarnCalc(); })
+                    .catch(() => { defiState.liqTried = false; });
             }
 
             if (klinesRes && klinesRes.ok) {
@@ -729,11 +734,11 @@
     async function readPoolPrice(providerOrSigner) {
         const pool = new ethers.Contract(
             POOL_POL_USDT,
-            ['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)', 'function liquidity() view returns (uint128)'],
+            ['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)'],
             providerOrSigner
         );
         const slot0 = await pool.slot0();
-        pool.liquidity().then((l) => { defiState.poolLiquidity = Number(l.toString()); renderEarnCalc(); }).catch(() => {});
+
         defiState.poolTick = Number(slot0.tick);
         defiState.poolPrice = Math.pow(1.0001, defiState.poolTick) * 1e12;
         window.RdeskWallet.notePoolPrice?.(defiState.poolPrice);

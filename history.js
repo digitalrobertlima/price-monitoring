@@ -228,14 +228,26 @@
     }
 
     // ------------------------------------------------------------------ leitura do histórico
+    // Lê todas as páginas. Uma página que falha é tentada de novo (o explorador limita pedidos);
+    // se continuar falhando, o histórico fica marcado como INCOMPLETO — antes, a leitura parava
+    // calada no meio, faltavam saídas e o patrimônio aparecia inflado (ex.: R$ 9.000 que nunca existiram).
     async function fetchPages(url, label, maxPages = 30) {
         const all = [];
         let next = null;
         for (let page = 1; page <= maxPages; page++) {
             const u = new URL(url);
             if (next) Object.entries(next).forEach(([k, v]) => u.searchParams.set(k, v));
-            const res = await fetch(u.toString());
-            if (!res.ok) { if (page === 1) throw new Error(`histórico indisponível (${res.status})`); break; }
+            let res = null;
+            for (let attempt = 0; attempt < 4; attempt++) {
+                try { res = await fetch(u.toString()); } catch (e) { res = null; }
+                if (res && res.ok) break;
+                await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
+            }
+            if (!res || !res.ok) {
+                if (page === 1) throw new Error(`histórico indisponível (${res ? res.status : 'sem conexão'})`);
+                st.incomplete = true;
+                break;
+            }
             const json = await res.json();
             if (Array.isArray(json.items)) all.push(...json.items);
             setProgress(`Lendo ${label}: ${all.length}…`);
@@ -261,13 +273,18 @@
             fetchPages(`${BLOCKSCOUT}/addresses/${wallet}/token-transfers`, 'movimentos de moedas'),
             fetchPages(`${BLOCKSCOUT}/addresses/${wallet}/internal-transactions`, 'movimentos internos', 15)
         ]);
+        // Mesma linha repetida entre páginas não pode contar duas vezes
+        const uniq = (arr, keyOf) => { const seen = new Set(); return arr.filter((x) => { const k = keyOf(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
+        const txsU = uniq(txs, (t) => lower(t.hash));
+        const transfersU = uniq(transfers, (t) => `${lower(t.transaction_hash)}:${t.log_index ?? t.index ?? ''}:${lower(t.token?.address_hash || t.token?.address)}:${t.total?.value}:${lower(t.from?.hash)}:${lower(t.to?.hash)}`);
+        const internalsU = uniq(internals, (t) => `${lower(t.transaction_hash)}:${t.index ?? ''}:${t.value}:${lower(t.from?.hash)}:${lower(t.to?.hash)}`);
         const map = new Map();
         const get = (hash, ts) => {
             const h = lower(hash);
             if (!map.has(h)) map.set(h, { hash: h, unix: Math.floor(new Date(ts).getTime() / 1000), to: '', method: '', ok: true, gasPol: 0, items: [], contractTouched: false, fromSelf: false, block: 0 });
             return map.get(h);
         };
-        for (const tx of txs) {
+        for (const tx of txsU) {
             const e = get(tx.hash, tx.timestamp);
             e.block = Number(tx.block_number || tx.block || 0) || e.block;
             const from = lower(tx.from?.hash), to = lower(tx.to?.hash);
@@ -282,7 +299,7 @@
                 else if (from === wallet && to !== wallet) e.items.push({ sym: 'POL', kind: 'POL', amt: v, dir: -1, peerC: Boolean(tx.to?.is_contract) });
             }
         }
-        for (const it of internals) {
+        for (const it of internalsU) {
             if (!it.transaction_hash) continue;
             const v = it.value ? Number(global.ethers.utils.formatEther(it.value)) : 0;
             if (!(v > 0) || it.success === false) continue;
@@ -290,7 +307,7 @@
             const e = get(it.transaction_hash, it.timestamp);
             if (to === wallet && from !== wallet) { e.items.push({ sym: 'POL', kind: 'POL', amt: v, dir: 1, peerC: true }); e.contractTouched = true; }
         }
-        for (const tr of transfers) {
+        for (const tr of transfersU) {
             if (!tr.transaction_hash || tr.token?.type !== 'ERC-20' || tr.token?.is_spam === true) continue;
             const meta = TOKENS[lower(tr.token?.address_hash || tr.token?.address)];
             if (!meta) continue;
@@ -638,14 +655,18 @@
             setProgress('Lendo seu histórico desde a primeira transação…');
             renderAll();
             try {
+                st.incomplete = false;
+                const prev = st.events;
                 const events = await buildEvents(w);
                 if (lower(W()?.getAddress()) !== w) return; // trocou de carteira no meio
-                st.events = events;
+                // Leitura incompleta não substitui uma leitura completa já guardada
+                if (st.incomplete && prev.length >= events.length) { st.incomplete = false; st.keptCache = true; }
+                else st.events = events;
                 st.savedAt = Date.now();
                 setProgress('Buscando os preços de cada dia…');
                 // Saldos reais já conferidos antes continuam valendo (o passado não muda); só completa o que falta
-                await Promise.all([loadPriceSeries(events.length ? events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices(), loadNativeBalances(w).catch(() => {})]);
-                saveCache();
+                await Promise.all([loadPriceSeries(st.events.length ? st.events[0].unix : Date.now() / 1000 - 30 * 86400), loadExactPrices(), loadNativeBalances(w).catch(() => {})]);
+                if (!st.incomplete) saveCache();
             } catch (err) {
                 st.error = 'Não deu para ler o histórico agora (o serviço de histórico não respondeu). Toque em Atualizar para tentar de novo.';
                 if (st.events.length && !st.seriesReady) await loadPriceSeries(st.events[0].unix).catch(() => {});
@@ -712,8 +733,9 @@
         if (st.range !== 'all') pts = pts.slice(-Number(st.range) - 1);
         const others = (W()?.getBalances() || []).some((b) => b.chainId !== 137 && b.usdValue > 0.5);
         const partial = st.nativeMissing > 0 ? `Alguns dias são estimativa (${st.nativeMissing} sem conferência na rede). Toque em Atualizar no Extrato para conferir. ` : '';
+        const incompleteNote = st.incomplete ? 'O explorador não entregou o histórico inteiro agora: o gráfico pode estar errado. Toque em Atualizar no Extrato. ' : '';
         const capped = st.capped > 0 ? `${st.capped} dia${st.capped > 1 ? 's' : ''} com leitura impossível (acima de tudo que já entrou) ${st.capped > 1 ? 'foram limitados' : 'foi limitado'}. ` : '';
-        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (partial + capped + (others ? 'Antes de hoje o gráfico mostra a Polygon; a partir de agora, o valor real de todas as redes.' : '')));
+        if (status) status.textContent = st.loading ? 'Atualizando…' : (st.error || (incompleteNote + partial + capped + (others ? 'Antes de hoje o gráfico mostra a Polygon; a partir de agora, o valor real de todas as redes.' : '')));
         chart.set(pts, st.ref);
     }
 
@@ -1098,7 +1120,7 @@
         load, setRef, openRefPicker, renderBalance: renderBalanceRef, getRef: () => st.ref, REFS,
         changeVsRef, portfolioChangeVsRef, fmtPct, fmtRef, llamaKeyFor,
         getResult: computeResult, getSeries: computeSeries, renderAll,
-        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
+        getState: () => ({ wallet: st.wallet, events: st.events.length, exactPrices: Object.keys(st.exact).length, nativeDays: Object.keys(st.nativeEnd).length, nativeMissing: st.nativeMissing || 0, incomplete: Boolean(st.incomplete), keptCache: Boolean(st.keptCache), capped: st.capped || 0, loading: st.loading, error: st.error, ref: st.ref, filter: st.filter, seriesReady: st.seriesReady, chart: chart.getState() }),
         getEvents: () => st.events.map((e) => ({ hash: e.hash, type: e.type, title: e.title, auto: e.auto, cls: st.overrides[e.hash] || e.auto, items: e.items })),
         refreshChange24
     };
