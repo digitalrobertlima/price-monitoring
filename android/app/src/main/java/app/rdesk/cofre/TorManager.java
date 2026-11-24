@@ -203,7 +203,6 @@ public final class TorManager {
         sb.append("HTTPTunnelPort 0\n");
         sb.append("DNSPort 0\n");
         sb.append("TransPort 0\n");
-        sb.append("SafeSocks 1\n");
         sb.append("TestSocks 0\n");
         sb.append("AvoidDiskWrites 1\n");
         sb.append("ClientOnly 1\n");

@@ -85,8 +85,7 @@ class BtcLuz(
             try {
                 run(cfg)
             } catch (e: Throwable) {
-                android.util.Log.e("RDESKBTC", "parou", e)
-                set("erro", "Bitcoin sem servidor parou: " + e.javaClass.name + " " + (e.message ?: "") + " " + (e.cause?.toString() ?: "") + " | " + ultimoAviso)
+                                set("erro", "Bitcoin sem servidor parou: " + e.javaClass.name + " " + (e.message ?: "") + " " + (e.cause?.toString() ?: "") + " | " + ultimoAviso)
             }
         }
     }
@@ -169,7 +168,7 @@ class BtcLuz(
 
         scope.launch {
             while (isActive && client === c) {
-                try { val w2 = c.nextWarning(); ultimoAviso = w2.toString().take(200); android.util.Log.w("RDESKBTC", ultimoAviso) } catch (_: Throwable) { break }
+                try { val w2 = c.nextWarning(); ultimoAviso = w2.javaClass.simpleName; if (BuildConfig.DEBUG) android.util.Log.w("RDESKBTC", ultimoAviso) } catch (_: Throwable) { break }
             }
         }
 
