@@ -301,7 +301,9 @@
         lastList = list;
         if (!box.isConnected) return;
         if (!list.length) { box.innerHTML = '<div class="empty-state">Nenhuma posição ainda. Toque em "Abrir uma posição nova".</div>'; return; }
-        box.innerHTML = list.map((p, i) => `
+        // Encerradas e sem nada para colher ficam guardadas numa dobra (não poluem a lista)
+        const isOld = (p) => p.closed && !(p.fees0 > 0 || p.fees1 > 0);
+        const card = (p, i) => `
             <div class="pl-card ${p.closed ? 'closed' : p.inRange ? 'in' : 'out'}">
                 <div class="pl-head">${REG().tokenBadge(p.token0.symbol, 28)}${REG().tokenBadge(p.token1.symbol, 28)}
                     <strong>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</strong>
@@ -318,7 +320,11 @@
                     <button type="button" class="btn-soft" data-exit="${i}" ${p.closed && !(p.fees0 > 0 || p.fees1 > 0) ? 'disabled' : ''}>Tirar tudo</button>
                 </div>
                 <div class="pl-msg" data-msg="${i}" role="status"></div>
-            </div>`).join('');
+            </div>`;
+        const active = list.map((p, i) => [p, i]).filter(([p]) => !isOld(p));
+        const old = list.map((p, i) => [p, i]).filter(([p]) => isOld(p));
+        box.innerHTML = (active.length ? active.map(([p, i]) => card(p, i)).join('') : '<div class="empty-state">Nenhuma posição aberta agora.</div>')
+            + (old.length ? `<details class="more-fold"><summary>Encerradas (${old.length})</summary><div class="fold-content pl-list">${old.map(([p, i]) => card(p, i)).join('')}</div></details>` : '');
         const run = async (i, kind) => {
             const p = list[i];
             const msg = box.querySelector(`[data-msg="${i}"]`);
