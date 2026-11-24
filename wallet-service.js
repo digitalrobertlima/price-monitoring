@@ -479,9 +479,12 @@
     // =========================================================================
     // A chave que protege a senha é derivada DENTRO do autenticador (extensão PRF do WebAuthn)
     // e só sai dele depois da digital/rosto. No aparelho fica apenas a senha cifrada.
+    // No app Android a chave fica no chip seguro do celular (Keystore) e só abre com a digital/rosto.
+    const nativeBio = () => (window.RdeskNativeBio && window.RdeskNativeBio.available() ? window.RdeskNativeBio : null);
     function isBiometryRegistered() {
         try {
             const parsed = JSON.parse(localStorage.getItem(BIO_STORAGE_KEY) || 'null');
+            if (parsed && parsed.version === 'android') return Boolean(window.RdeskNativeBio && parsed.ctB64 && parsed.ivB64);
             return Boolean(parsed && parsed.credIdB64 && parsed.prfSaltB64 && parsed.wrappedPassB64 && parsed.ivB64);
         } catch (e) {
             return false;
@@ -489,6 +492,7 @@
     }
 
     function isBiometrySupported() {
+        if (window.RDESK_NATIVE) return Boolean(nativeBio());
         return Boolean(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
     }
 
@@ -516,6 +520,14 @@
     }
 
     async function registerDeviceBiometry(password) {
+        if (window.RDESK_NATIVE) {
+            const nb = nativeBio();
+            if (!nb) throw new Error('Este celular não tem digital ou rosto cadastrado. Cadastre nas configurações do Android e tente de novo.');
+            if (!password) throw new Error('Desbloqueie o cofre com sua senha primeiro para ativar a biometria.');
+            const r = await nb.encrypt(password);
+            localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify({ version: 'android', ctB64: r.ct, ivB64: r.iv }));
+            return true;
+        }
         if (!isBiometrySupported()) {
             throw new Error('Este navegador não suporta biometria WebAuthn.');
         }
@@ -571,6 +583,16 @@
             throw new Error('Biometria ainda não ativada neste aparelho. Desbloqueie com sua senha e ative a biometria nos detalhes da carteira.');
         }
         const bioRecord = JSON.parse(localStorage.getItem(BIO_STORAGE_KEY));
+        if (bioRecord.version === 'android') {
+            let pass;
+            try { pass = await window.RdeskNativeBio.decrypt(bioRecord.ctB64, bioRecord.ivB64); }
+            catch (e) {
+                if (/mudou|não está ativada/.test(e.message || '')) localStorage.removeItem(BIO_STORAGE_KEY);
+                throw e;
+            }
+            await unlockVaultWithPassword(pass);
+            return true;
+        }
         const wrapKey = await evaluatePrfSecret(safeBase64ToBytes(bioRecord.credIdB64), safeBase64ToBytes(bioRecord.prfSaltB64));
         let passBuf;
         try {

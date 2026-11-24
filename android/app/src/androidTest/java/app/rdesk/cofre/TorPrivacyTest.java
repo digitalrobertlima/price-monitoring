@@ -74,6 +74,12 @@ public class TorPrivacyTest {
             JSONObject sw = obj(js(sc, "navigator.serviceWorker.register('./sw.js').then(()=>'VAZOU',()=> 'bloqueado')", 10_000));
             assertEquals("service worker", "bloqueado", sw.optString("v"));
 
+            // 2b. biometria: responde sem travar e o cofre só oferece a digital se o celular tiver
+            JSONObject bio = obj(js(sc, "({nativo: RdeskNativeBio.available(), cofreOferece: RdeskWallet.isBiometrySupported(), registrada: RdeskWallet.isBiometryRegistered()})", 10_000));
+            assertEquals("o cofre só oferece digital quando o celular tem", bio.getJSONObject("v").optBoolean("nativo"), bio.getJSONObject("v").optBoolean("cofreOferece"));
+            Log.i(TAG, "biometria: " + bio);
+            assertTrue("biometria quebrou: " + bio, bio.optBoolean("ok"));
+
             // 3. Tor conecta
             JSONObject tor = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{const s=JSON.parse(RdeskNative.torState());if(s.state==='on'){clearInterval(t);r(s)}},1000)})", 300_000));
             Log.i(TAG, "estado do Tor: " + tor);

@@ -39,6 +39,7 @@
     const OUR_DBS = ['rdesk_vault_backup'];
     const scope = () => new URL('./', global.location.href).href;
     async function wipeAll() {
+        try { global.RdeskNativeBio?.forget(); } catch (e) {} // apaga também a chave da digital no chip do celular
         try {
             Object.keys(localStorage).filter((k) => /^rdesk/i.test(k)).forEach((k) => localStorage.removeItem(k));
         } catch (e) {}
