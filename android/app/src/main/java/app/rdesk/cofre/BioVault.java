@@ -41,6 +41,10 @@ final class BioVault {
     }
 
     boolean available() {
+        try { return availableOrThrow(); } catch (Exception e) { return false; }
+    }
+
+    private boolean availableOrThrow() {
         if (Build.VERSION.SDK_INT < 29) return false;
         BiometricManager bm = act.getSystemService(BiometricManager.class);
         if (bm == null) return false;
@@ -81,7 +85,9 @@ final class BioVault {
                 o.put("ok", c == BiometricManager.BIOMETRIC_SUCCESS);
                 o.put("motivo", why(c));
             }
-        } catch (Exception ignored) { }
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("motivo", "erro"); o.put("erro", e.getClass().getSimpleName() + ": " + e.getMessage()); } catch (Exception ignored) { }
+        }
         return o;
     }
 

@@ -97,7 +97,7 @@ Quem já usa Orbot ou Tor VPN no celular continua protegido. O app só não pode
 | Backup automático do Google | `allowBackup="false"` e regras de extração vazias. O cofre nunca vai para a nuvem |
 | Área de transferência | Endereço copiado marcado como sensível e apagado sozinho em 60 s. Semente nunca vai para a área de transferência |
 | Google Play Services, Firebase, notificação por servidor, relatório de erro | **Nenhum.** Avisos são locais (como já fazemos), sem push de servidor |
-| Permissões | Só INTERNET. Câmera apenas na hora de ler QR. Nada de localização, contatos ou identificador do aparelho |
+| Permissões | INTERNET; câmera só na hora de ler QR; USE_BIOMETRIC para a digital (não dá acesso a dados biométricos, só pede ao Android a verificação). Nada de localização, contatos ou identificador do aparelho |
 | Logs | Nada no logcat na versão final |
 | Chave do cofre | Senha do usuário + chave no Keystore do Android (StrongBox quando houver). Travar ao sair do app (já fazemos) |
 | Apps de "acessibilidade" maliciosos | Avisar quando algum estiver ativo. Não dá para bloquear 100% |
