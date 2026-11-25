@@ -3489,7 +3489,30 @@
                 const onBackdrop = (e) => { if (e.target === overlay) finish(false); };
                 const onKey = (e) => { if (e.key === 'Escape') finish(false); };
 
-                okBtn?.addEventListener('click', onOk);
+                // Mover dinheiro é deslizar, não clicar. Pedido igual há pouco: aviso antes.
+                const lugar = document.getElementById('rcp-slide');
+                const chave = ['recibo', spec.title, spec.sendVal, spec.recvVal, spec.route];
+                document.getElementById('rcp-repetido')?.remove();
+                if (lugar && window.RdeskSlide) {
+                    const seg = window.RdeskSlide.repetido(chave);
+                    if (seg != null) {
+                        const av = document.createElement('div');
+                        av.id = 'rcp-repetido';
+                        av.className = 'slide-repetido';
+                        av.setAttribute('role', 'alert');
+                        av.innerHTML = `<strong>⚠️ Você já confirmou esta mesma operação há ${seg < 60 ? seg + ' s' : Math.round(seg / 60) + ' min'}.</strong> Ela pode ainda estar a caminho. Se deslizar de novo, ela acontece outra vez.`;
+                        lugar.before(av);
+                    }
+                    window.RdeskSlide.trilha(lugar, {
+                        rotulo: seg != null ? 'Deslize para fazer DE NOVO' : 'Deslize para confirmar',
+                        perigo: seg != null,
+                        aoConfirmar: () => { window.RdeskSlide.registrar(chave); setTimeout(() => finish(true), 250); },
+                    });
+                    if (okBtn) okBtn.hidden = true;
+                } else if (okBtn) {
+                    okBtn.hidden = false;
+                    okBtn.addEventListener('click', onOk);
+                }
                 noBtn?.addEventListener('click', onNo);
                 overlay.addEventListener('click', onBackdrop);
                 document.addEventListener('keydown', onKey);

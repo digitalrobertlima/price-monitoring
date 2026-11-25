@@ -3083,3 +3083,30 @@ body.app-frame-aberto { overflow: hidden; }
 .app-confirm .app-confirm-de { margin: 4px 0; }
 .app-confirm .app-confirm-pedido { font-size: 18px; font-weight: 700; margin: 4px 0 12px; }
 .app-confirm .rcp-line small { font-family: ui-monospace, monospace; font-size: 11px; opacity: .7; word-break: break-all; }
+
+/* ---------- Deslizar para confirmar (v48.3): mover dinheiro nunca é um clique ---------- */
+.slide-folha { z-index: 100150 !important; }
+.slide-folha .slide-texto { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; color: var(--text-primary); margin: 6px 0 14px; }
+.slide-folha .slide-status { min-height: 1.2em; margin: 8px 0 0; font-size: 14px; color: var(--text-secondary); text-align: center; }
+.slide-folha .slide-status.erro { color: var(--red); font-weight: 600; }
+.slide-folha .slide-cancelar { width: 100%; margin-top: 6px; }
+.slide-repetido { border: 1px solid var(--amber); background: rgba(245, 158, 11, 0.12); color: var(--text-primary); border-radius: var(--radius-md); padding: 12px 14px; margin: 4px 0 12px; font-size: 14px; line-height: 1.45; }
+.slide-repetido strong { color: var(--amber); }
+.slide-trilha { position: relative; height: 60px; border-radius: var(--radius-pill); background: var(--bg-input); border: 1px solid var(--border-strong); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; margin-top: 4px; }
+.slide-preenche { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--green-soft); }
+.slide-rotulo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-left: 52px; font-family: var(--font-display); font-weight: 800; font-size: 15px; color: var(--text-secondary); pointer-events: none; }
+.slide-botao { position: absolute; top: 4px; left: 4px; width: 52px; height: 52px; border-radius: 50%; border: none; background: linear-gradient(135deg, var(--green) 0%, #059669 100%); color: #03150e; font-size: 22px; font-weight: 900; cursor: grab; touch-action: none; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35); }
+.slide-botao:disabled { background: var(--bg-surface-2); color: var(--text-muted); box-shadow: none; cursor: default; }
+.slide-botao:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.slide-trilha.arrastando .slide-botao { cursor: grabbing; }
+.slide-trilha.volta .slide-botao, .slide-trilha.volta .slide-preenche { transition: transform .25s ease, width .25s ease; }
+.slide-trilha[data-estado="pronta"] .slide-rotulo { color: var(--text-primary); }
+.slide-trilha[data-estado="enviando"] .slide-rotulo, .slide-trilha[data-estado="feito"] .slide-rotulo { color: var(--green-bright); padding-left: 0; padding-right: 52px; }
+.slide-trilha[data-estado="enviando"] .slide-preenche { background: var(--green-soft); }
+.slide-trilha[data-estado="enviando"] .slide-botao span { display: inline-block; animation: slide-gira 1s linear infinite; }
+.slide-trilha.perigo { border-color: var(--amber); }
+.slide-trilha.perigo .slide-botao:not(:disabled) { background: linear-gradient(135deg, var(--amber) 0%, #d97706 100%); box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35); }
+.slide-trilha.perigo .slide-preenche { background: rgba(245, 158, 11, 0.16); }
+@keyframes slide-gira { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .slide-trilha[data-estado="enviando"] .slide-botao span { animation: none; } .slide-trilha.volta .slide-botao, .slide-trilha.volta .slide-preenche { transition: none; } }
+#modal-receipt .slide-lugar { margin-top: 14px; }

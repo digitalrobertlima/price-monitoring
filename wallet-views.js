@@ -534,6 +534,8 @@
 
         $('#rmw-snd-exec').onclick = async () => {
             const btn = $('#rmw-snd-exec');
+            if (btn.dataset.ocupado) return; // segundo toque enquanto o primeiro ainda está em andamento: ignora
+            btn.dataset.ocupado = '1';
             msgBox.replaceChildren();
             const to = $('#rmw-snd-to').value.trim();
             const amtStr = parseAmount();
@@ -550,7 +552,7 @@
                     const total = utxos.reduce((n, u) => n + u.value, 0);
                     const plan = D.plan({ utxos, toAddress: to, amountDuffs: duffs, changeAddress: acc.dashAddress, max: duffs >= total });
                     const brl = (d) => ctx.formatBRL((d / 1e8) * (ctx.prices().DASH || 0) * ctx.prices().usdBrl);
-                    if (!confirm(`Enviar ${(plan.amount / 1e8).toFixed(8)} DASH (${brl(plan.amount)}) pela rede Dash para:\n\n${to}\n\nTaxa da rede: ${plan.fee} duffs (${brl(plan.fee)})\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) { msgBox.replaceChildren(); btn.disabled = false; return; }
+                    if (!(await global.RdeskSlide.confirmarTexto(`Enviar ${(plan.amount / 1e8).toFixed(8)} DASH (${brl(plan.amount)}) pela rede Dash para:\n\n${to}\n\nTaxa da rede: ${plan.fee} duffs (${brl(plan.fee)})\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`, { titulo: 'Enviar Dash', chave: ['dash', to, plan.amount] }))) { msgBox.replaceChildren(); btn.disabled = false; return; }
                     const key = ctx.getDashKey();
                     const signed = D.sign(plan, key.privateKey);
                     showOk('Transmitindo para a rede Dash…');
@@ -573,7 +575,7 @@
                     const plan = BTC().planTransaction({ utxos, toAddress: to, amountSats: sats, feeRate: rate, changeAddress: ctx.btcChangeAddress(), sendMax: sats >= spendable });
                     const brl = (s) => ctx.formatBRL((s / 1e8) * ctx.prices().BTC * ctx.prices().usdBrl);
                     if (plan.fee > plan.amount * 0.2 && plan.fee > 5000) throw new Error(`A taxa (${plan.fee} sat) passaria de 20% do valor enviado. Escolha uma velocidade mais barata ou envie um valor maior.`);
-                    if (!confirm(`Enviar ${(plan.amount / 1e8).toFixed(8)} BTC (${brl(plan.amount)}) pela rede Bitcoin para:\n\n${to}\n\nTaxa da rede: ${plan.fee} sat (${brl(plan.fee)})\nTotal: ${((plan.amount + plan.fee) / 1e8).toFixed(8)} BTC\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) { msgBox.replaceChildren(); return; }
+                    if (!(await global.RdeskSlide.confirmarTexto(`Enviar ${(plan.amount / 1e8).toFixed(8)} BTC (${brl(plan.amount)}) pela rede Bitcoin para:\n\n${to}\n\nTaxa da rede: ${plan.fee} sat (${brl(plan.fee)})\nTotal: ${((plan.amount + plan.fee) / 1e8).toFixed(8)} BTC\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`, { titulo: 'Enviar Bitcoin', chave: ['btc', to, plan.amount] }))) { msgBox.replaceChildren(); return; }
                     const signed = ctx.signBitcoinPlan(plan, utxos);
                     showOk('Transmitindo para a rede Bitcoin…');
                     const txid = await BTC().broadcast(signed.hex);
@@ -609,7 +611,7 @@
 
                 // Última conferência antes de assinar: envio em blockchain não tem estorno.
                 const contractInfo = token.address ? `\nContrato da moeda: ${token.address}` : '';
-                if (!confirm(`Enviar ${amtStr} ${token.symbol} na rede ${chainName} para:\n\n${dest}\n${contractInfo}\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`)) return;
+                if (!(await global.RdeskSlide.confirmarTexto(`Enviar ${amtStr} ${token.symbol} na rede ${chainName} para:\n\n${dest}\n${contractInfo}\n\nConfira o endereço inteiro. Este envio não pode ser desfeito.`, { titulo: 'Confirmar envio', chave: ['envio', chainId, token.symbol, dest, amtStr] }))) return;
 
                 btn.disabled = true;
                 const signer = await ctx.getSigner(chainId);
@@ -626,6 +628,7 @@
                 showErr(global.RdeskWallet.friendlyTxError(err, { native: tokensFor(chainId).find((t) => t.isNative)?.symbol }));
             } finally {
                 btn.disabled = false;
+                delete btn.dataset.ocupado;
             }
         };
     }

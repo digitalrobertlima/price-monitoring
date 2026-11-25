@@ -1,6 +1,6 @@
 // Taxa do criador: desligada por padrão; quando ligada, cobra só em trocas/Render, aparece no recibo
 // e vai direto para a carteira do criador. Rede e serviços simulados.
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, TEST_MNEMONIC } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, TEST_MNEMONIC, deslizar } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address;
@@ -42,7 +42,7 @@ try {
         check('taxa do criador vem DESLIGADA de fábrica', cfg.active === false && cfg.rateBps === 0, JSON.stringify(cfg));
         const rcp = await swapReceipt(page);
         check('desligada: recibo da troca diz "sem taxa do app"', /sem taxa do app/.test(rcp) && !/criador/.test(rcp), rcp.slice(0, 300));
-        await page.click('#btn-rcp-confirm');
+        await deslizar(page, '#modal-receipt');
         await waitFn(page, () => /conclu|rro/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 60000 });
         check('desligada: a troca usa os 100 USDT inteiros e nada vai para o criador', polygon.balOf(ADDR.USDT0, OWNER) === 300000000n && polygon.balOf(ADDR.USDT0, CREATOR) === 0n);
         await page.fill('#swap-amount-in', '0');
@@ -64,7 +64,7 @@ try {
         await page.evaluate(() => window.RdeskWallet.refreshBalances());
         const rcp = await swapReceipt(page);
         check('ligada: recibo mostra "Taxa do criador (0,3%)" em reais antes de confirmar', /Taxa do criador \(0,3%\): R\$ 1,6/.test(rcp), rcp.slice(0, 320));
-        await page.click('#btn-rcp-confirm');
+        await deslizar(page, '#modal-receipt');
         await waitFn(page, () => /conclu|rro/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 60000 });
         check('ligada: 0,3% (0,30 USDT) vai direto para a carteira do criador; o resto é trocado', polygon.balOf(ADDR.USDT0, CREATOR) === 300000n && polygon.balOf(ADDR.USDT0, OWNER) === 300000000n,
             `criador ${polygon.balOf(ADDR.USDT0, CREATOR)} dono ${polygon.balOf(ADDR.USDT0, OWNER)} | ${await page.innerText('#swap-feedback')}`);

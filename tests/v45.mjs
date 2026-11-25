@@ -1,6 +1,6 @@
 // v45: fundos de troca em qualquer rede pela interface do próprio app (sem abrir a Uniswap):
 // abrir posição num fundo existente, CRIAR um fundo novo, listar, tirar tudo.
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, waitFn, ROOT } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, waitFn, ROOT, deslizar } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -35,7 +35,7 @@ try {
     const confirmReceipt = async () => {
         await waitFn(page, () => { const m = document.getElementById('modal-receipt'); return m && getComputedStyle(m).display !== 'none'; }, null, { timeout: 30000 });
         const body = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
-        await page.click('#btn-rcp-confirm');
+        await deslizar(page, '#modal-receipt');
         return body;
     };
     await importWalletViaUi(page);

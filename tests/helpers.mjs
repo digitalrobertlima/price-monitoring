@@ -290,6 +290,9 @@ export async function openApp(context, url, chain, opts = {}) {
         });
     }
     const external = await mockNetwork(page, chain, opts);
+    // Envio de dinheiro é "deslize para confirmar" (v48.3). Nos testes de fluxo, a pessoa desliza de verdade
+    // (mouse arrastando a trilha) toda vez que a folha aparece; o texto vai para "dialogs" como antes.
+    if (opts.autoDeslizar !== false) autoDeslizar(page, dialogs);
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await waitFn(page, () => window.ethers && window.RdeskWallet && window.RdeskDefi && window.RdeskReceipt, null, { timeout: 60000 });
     await page.waitForTimeout(800);
@@ -333,4 +336,35 @@ export function finish() {
         console.log('Falharam:\n' + failed.map((f) => ` - ${f.name} ${f.detail}`).join('\n'));
         process.exitCode = 1;
     }
+}
+
+/** Arrasta a trilha de "deslize para confirmar" até o fim, como um dedo. */
+export async function deslizar(page, escopo = '.slide-folha', { timeout = 15000 } = {}) {
+    const bt = page.locator(`${escopo} .slide-botao:not([disabled])`).first();
+    await bt.waitFor({ state: 'visible', timeout });
+    const tr = page.locator(`${escopo} .slide-trilha`).first();
+    const b = await bt.boundingBox();
+    const t = await tr.boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + b.width / 2 + ((t.width - b.width) * i) / 8, b.y + b.height / 2);
+    await page.mouse.up();
+}
+
+function autoDeslizar(page, dialogs) {
+    let parar = false;
+    page.on('close', () => { parar = true; });
+    (async () => {
+        while (!parar) {
+            try {
+                const folha = page.locator('.slide-folha:not(.ja-deslizada) .slide-botao:not([disabled])').first();
+                if (await folha.count()) {
+                    const txt = await page.locator('.slide-folha:not(.ja-deslizada)').first().evaluate((m) => { m.classList.add('ja-deslizada'); return (m.querySelector('.slide-texto') || m).innerText; });
+                    dialogs.push(txt);
+                    await deslizar(page, '.slide-folha.ja-deslizada', { timeout: 3000 });
+                }
+            } catch (e) { /* página trocou: tenta de novo */ }
+            await new Promise((r) => setTimeout(r, 250));
+        }
+    })();
 }

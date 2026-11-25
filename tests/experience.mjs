@@ -1,7 +1,7 @@
 // Experiência de uso: primeira abertura (tutorial), primeiros passos, dicas na hora certa, menu,
 // tela inicial simples (sem endereço técnico e sem Pix), gráfico com toque e faixa própria,
 // e o Render abrindo exatamente a faixa que a pessoa escolheu. Cliques reais, tela de celular.
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, TEST_MNEMONIC, POL_USD } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, TEST_MNEMONIC, POL_USD, deslizar } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address;
@@ -191,7 +191,7 @@ try {
     await waitFn(page, () => getComputedStyle(document.getElementById('modal-receipt')).display !== 'none', null, { timeout: 60000 });
     const receipt = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
     check('recibo mostra a faixa escolhida e fala em "Taxa da rede"', receipt.includes(chosen.min.toFixed(4)) && receipt.includes(chosen.max.toFixed(4)) && /Taxa da rede/.test(receipt), receipt.slice(0, 200));
-    await page.click('#btn-rcp-confirm');
+    await deslizar(page, '#modal-receipt');
     await waitFn(page, () => /Posição aberta|insuficiente|cancelad|rro|revert/i.test(document.getElementById('autopilot-feedback')?.textContent || ''), null, { timeout: 240000 }).catch(() => {});
     const mint = chain.txs.slice(mark).find((t) => t.fn === 'mint');
     check('posição aberta com os ticks exatos da faixa que a pessoa escolheu',

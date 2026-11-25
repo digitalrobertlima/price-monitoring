@@ -119,6 +119,7 @@ Regra do projeto: nenhuma mudança entra na `main` sem `npm test` passando.
 ## Próximo grande passo
 
 - **App Android com Tor embutido (v46)**: APK gerado e testado num emulador pelo GitHub Actions, sem Play Store. Baixe em `releases/download/android/rdesk.apk`. Detalhes em [`docs/app-android.md`](docs/app-android.md).
+- **Deslizar para confirmar (v48.3)**: todo envio de dinheiro (enviar moeda, Bitcoin, Dash, sem taxa, recibos de troca/Pix/fundos e pedidos do BRLS) é "deslize até o fim", nunca um clique. A trilha fica travada em "Enviando…" até a rede responder, uma confirmação por vez, e um pedido igual nos últimos 3 min mostra aviso antes (`slide-confirm.js`, teste `tests/deslizar.mjs`).
 - **BRLS dentro do APK (v48.2)**: o app BRLS vai dentro do APK (commit fixo em `android/brls.txt`) e abre na origem oficial sem baixar nada. A janela dele não tem internet: cada pedido passa pela Caixa Forte, pelo Tor (`apps.js`, mensagens `rede`/`copiar`). O teste do emulador abre o BRLS e confere que ele leu a Polygon por esse caminho.
 - **APK privado**: Tor embutido, um caminho por endereço, nada sai se o Tor cair. Pesquisa e plano em [`docs/apk-privado.md`](docs/apk-privado.md).
 - **Modo teste (testnets)**: Polygon Amoy, Sepolia, Base/Arbitrum/OP Sepolia, Celo Sepolia, BNB testnet, HyperEVM testnet, Bitcoin testnet4 e Dash testnet, com cofre separado do real. Detalhes em [`docs/modo-teste.md`](docs/modo-teste.md).
