@@ -3084,6 +3084,7 @@
     // Lê todas as moedas de uma rede num pedido só (lote JSON-RPC). Se o servidor falhar ou recusar,
     // tenta o próximo da lista. No app Android (Tor) os prazos são maiores.
     const NATIVE = Boolean(window.RDESK_NATIVE);
+    const readRpcIndex = {}; // servidor que respondeu na última leitura de saldos (separado do usado para enviar)
     async function rpcPost(url, body, ms) {
         const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const t = setTimeout(() => ctl?.abort(), ms);
@@ -3100,7 +3101,7 @@
         const data = `0x70a08231${addr.replace(/^0x/, '').toLowerCase().padStart(64, '0')}`;
         const calls = tokens.map((tk, i) => ({ jsonrpc: '2.0', id: i + 1, method: tk.isNative ? 'eth_getBalance' : 'eth_call', params: tk.isNative ? [addr, 'latest'] : [{ to: tk.address, data }, 'latest'] }));
         const got = {};
-        const start = preferredRpcIndex[chainId] || 0;
+        const start = readRpcIndex[chainId] || 0;
         let why = '';
         for (let n = 0; n < list.length && Object.keys(got).length < tokens.length; n++) {
             const idx = (start + n) % list.length, url = list[idx];
@@ -3124,7 +3125,7 @@
                     if (!tk) return;
                     try { got[r.id] = hexAmount(r.result, tk.decimals); } catch (e) {}
                 });
-                if (Object.keys(got).length) { preferredRpcIndex[chainId] = idx; onTry?.(host, Date.now() - t0, true); }
+                if (Object.keys(got).length) { readRpcIndex[chainId] = idx; onTry?.(host, Date.now() - t0, true); }
                 else why = 'o servidor respondeu sem saldos';
             } catch (e) { why = /abort/i.test(String(e?.name || e?.message)) ? 'demorou demais' : String(e?.message || e).slice(0, 60); }
         }
