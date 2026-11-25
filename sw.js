@@ -18,6 +18,7 @@ const CORE_ASSETS = [
   './pix.js',
   './qr-scanner.js',
   './wallet-views.js',
+  './apps.js',
   './onboarding.js',
   './pinpad.js',
   './seed-grid.js',

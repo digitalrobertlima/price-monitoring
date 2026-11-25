@@ -7,7 +7,7 @@
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#0c0f16">
     <!-- Só roda script deste próprio site; nada embutido, nada de terceiros -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https: wss:; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https: wss:; frame-src https://digitalrobertlima.github.io; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
     <meta name="description" content="RDESK — carteira de cripto em que só você tem a chave. Receba, envie, troque e faça suas moedas renderem.">
     <title>RDESK — sua carteira, suas moedas</title>
 
@@ -63,6 +63,7 @@
     <script src="learn.js" defer></script>
     <script src="sats-trail.js" defer></script>
     <script src="airgap.js" defer></script>
+    <script src="apps.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -143,6 +144,8 @@
             </div>
 
             <!-- Patrimônio no tempo: entradas, saídas e o valor ao vivo -->
+            <div id="apps-card" class="section-card apps-card"></div>
+
             <div id="btc-live-card" class="section-card btc-live-card" data-public>
                 <div class="section-head">
                     <div><h2>Bitcoin agora</h2><strong id="btc-live-price" class="btc-live-price">…</strong> <span id="btc-live-chg" class="chg"></span></div>

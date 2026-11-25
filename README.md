@@ -44,6 +44,17 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Troca:** Uniswap V3 na Polygon procurando a melhor tarifa e rotas em dois saltos (ex.: POL → USDT → BRLA numa só transação); bloqueia trocas que perderiam mais de 10% para o mercado. Seta de inverter troca rede, moeda e quantidade. Outras redes e pontes via LI.FI.
 - **Ícones:** são selos gerados pela própria app (letra/símbolo e cor), não os logotipos oficiais.
 
+## Apps dentro da carteira (v48)
+
+A tela inicial tem **Apps na sua carteira**. O primeiro é o **BRLS — Real Soberano** (real digital 1:1, trabalho com pagamento garantido em contrato, conversa cifrada). Ele abre numa janela da própria Caixa Forte e usa a carteira ativa **sem receber a chave**:
+
+- O app só pode *pedir*. Toda transação ou assinatura abre uma confirmação da Caixa Forte dizendo o que o app pede, em qual contrato, quanto POL sai e a taxa máxima da rede.
+- A ponte (`apps.js`) só conversa com a janela do app aberto e com a origem cadastrada (`https://digitalrobertlima.github.io`), só na Polygon, e recusa pedido em nome de outra carteira, assinatura para outra rede e qualquer método fora da lista.
+- A conversa cifrada do BRLS calcula a chave compartilhada aqui dentro (ECDH) e devolve só o resultado; a chave privada nunca sai.
+- Carteira só de observação ou cofre trancado: o app não abre.
+
+Testes: `node tests/apps.mjs` (travas da ponte). A integração completa (BRLS rodando dentro da Caixa Forte: comprar BRLS, criar trabalho, conversa cifrada lida pelo outro lado) foi validada numa Polygon local.
+
 ## Taxa do criador (pronta e desligada)
 Fica em `registry.js` (`CREATOR_FEE`). Vem com `rateBps: 0`, ou seja, desligada. Para ligar:
 1. `rateBps`: 20 = 0,2% (limite máximo fixo de 1%; acima disso o app ignora e desliga).
