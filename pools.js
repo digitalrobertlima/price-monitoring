@@ -104,7 +104,7 @@
     }
     // Servidor público às vezes responde lixo: tenta o principal e depois cada servidor da lista da rede
     // Cada tentativa tem prazo: um servidor que não responde não trava a tela (nem o teste)
-    const PRAZO = global.RDESK_NATIVE ? 30000 : 12000;
+    const PRAZO = global.RDESK_NATIVE ? 90000 : 45000; // uma tentativa pode ter várias consultas (ex.: listar posições)
     const prazo = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('o servidor demorou demais')), PRAZO))]);
     async function withRpcs(chainId, fn) {
         let last;
