@@ -11,9 +11,16 @@
     // No app Android (pelo Tor) o blockstream responde melhor: vem primeiro
     // Pelo Tor (app Android), mempool.space não responde e o blockstream limita pedidos; estes
     // espelhos do mempool responderam em todos os circuitos (workflow "Saldos pelo Tor").
-    const API_HOSTS = global.RDESK_NATIVE
-        ? ['https://mempool.emzy.de/api', 'https://mempool.bitcoin-austria.at/api', 'https://blockstream.info/api', 'https://mempool.space/api']
-        : ['https://mempool.space/api', 'https://blockstream.info/api', 'https://mempool.emzy.de/api'];
+    // Modo teste: Bitcoin testnet4 (endereços tb1…, caminho m/84'/1'/…, moedas sem valor)
+    const TESTE = Boolean(global.RDESK_TESTE);
+    const HRP = TESTE ? 'tb' : 'bc';
+    const COIN = TESTE ? 1 : 0;
+    const VER_P2PKH = TESTE ? 0x6f : 0x00, VER_P2SH = TESTE ? 0xc4 : 0x05;
+    const API_HOSTS = TESTE
+        ? (global.RDESK_NATIVE ? ['https://mempool.emzy.de/testnet4/api', 'https://mempool.space/testnet4/api'] : ['https://mempool.space/testnet4/api', 'https://mempool.emzy.de/testnet4/api'])
+        : global.RDESK_NATIVE
+            ? ['https://mempool.emzy.de/api', 'https://mempool.bitcoin-austria.at/api', 'https://blockstream.info/api', 'https://mempool.space/api']
+            : ['https://mempool.space/api', 'https://blockstream.info/api', 'https://mempool.emzy.de/api'];
     const DUST_SATS = 294;          // abaixo disso um troco P2WPKH não é aceito pela rede
     const MAX_FEE_RATE = 500;       // sat/vB — trava contra taxa absurda
     const SEQUENCE = 0xfffffffd;    // permite acelerar depois (RBF)
@@ -131,7 +138,7 @@
         }
         const sw = segwitDecode(addr);
         if (sw) {
-            if (sw.hrp !== 'bc') throw new Error('Endereço de rede de teste. Use um endereço Bitcoin da rede principal.');
+            if (sw.hrp !== HRP) throw new Error(TESTE ? 'Endereço da rede principal. No modo teste, use um endereço de teste (tb1…).' : 'Endereço de rede de teste. Use um endereço Bitcoin da rede principal.');
             if (sw.version === 0) return { script: concat(Uint8Array.of(0x00, sw.program.length), sw.program), type: sw.program.length === 20 ? 'p2wpkh' : 'p2wsh' };
             if (sw.version === 1 && sw.program.length === 32) return { script: concat(Uint8Array.of(0x51, 0x20), sw.program), type: 'p2tr' };
             throw new Error('Tipo de endereço Bitcoin ainda não suportado.');
@@ -144,25 +151,25 @@
         const expected = dsha256(payload).slice(0, 4);
         if (toHex(checksum) !== toHex(expected)) throw new Error('Endereço Bitcoin inválido (erro de digitação detectado pelo código de verificação).');
         const h = payload.slice(1);
-        if (payload[0] === 0x00) return { script: concat(Uint8Array.of(0x76, 0xa9, 0x14), h, Uint8Array.of(0x88, 0xac)), type: 'p2pkh' };
-        if (payload[0] === 0x05) return { script: concat(Uint8Array.of(0xa9, 0x14), h, Uint8Array.of(0x87)), type: 'p2sh' };
-        throw new Error('Endereço não é da rede principal do Bitcoin.');
+        if (payload[0] === VER_P2PKH) return { script: concat(Uint8Array.of(0x76, 0xa9, 0x14), h, Uint8Array.of(0x88, 0xac)), type: 'p2pkh' };
+        if (payload[0] === VER_P2SH) return { script: concat(Uint8Array.of(0xa9, 0x14), h, Uint8Array.of(0x87)), type: 'p2sh' };
+        throw new Error(TESTE ? 'Endereço não é da rede de teste do Bitcoin.' : 'Endereço não é da rede principal do Bitcoin.');
     }
     function isValidAddress(address) {
         try { addressToScript(address); return true; } catch (e) { return false; }
     }
 
     function publicKeyToAddress(compressedPubKeyHex) {
-        return segwitEncode('bc', 0, hash160(bytes(compressedPubKeyHex)));
+        return segwitEncode(HRP, 0, hash160(bytes(compressedPubKeyHex)));
     }
     // BIP84: m/84'/0'/0'/0/índice
     function deriveFromMnemonic(mnemonic, index = 0, passphrase = '') {
-        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined).derivePath(`m/84'/0'/0'/0/${index}`);
+        const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined).derivePath(`m/84'/${COIN}'/0'/0/${index}`);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey) };
     }
     // Qualquer caminho BIP84 (endereços novos a cada recebimento e troco em endereço separado)
     function deriveAtPath(mnemonic, path, passphrase = '') {
-        if (!/^m\/84'\/0'\/\d+'\/[01]\/\d+$/.test(path)) throw new Error('Caminho Bitcoin inválido.');
+        if (!new RegExp(`^m/84'/${COIN}'/\\d+'/[01]/\\d+$`).test(path)) throw new Error('Caminho Bitcoin inválido.');
         const node = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined).derivePath(path);
         return { privateKey: node.privateKey, publicKey: node.publicKey.slice(2), address: publicKeyToAddress(node.publicKey), path };
     }
@@ -396,8 +403,8 @@
             const data = s[1] === 0x4c ? s.slice(3, 3 + s[2]) : s.slice(2, 2 + s[1]);
             return { type: 'op_return', memo: new TextDecoder().decode(data) };
         }
-        if (s[0] === 0x00 && (s[1] === 0x14 || s[1] === 0x20) && s.length === 2 + s[1]) return { type: s[1] === 0x14 ? 'p2wpkh' : 'p2wsh', address: segwitEncode('bc', 0, s.slice(2)) };
-        if (s[0] === 0x51 && s[1] === 0x20 && s.length === 34) return { type: 'p2tr', address: segwitEncode('bc', 1, s.slice(2)) };
+        if (s[0] === 0x00 && (s[1] === 0x14 || s[1] === 0x20) && s.length === 2 + s[1]) return { type: s[1] === 0x14 ? 'p2wpkh' : 'p2wsh', address: segwitEncode(HRP, 0, s.slice(2)) };
+        if (s[0] === 0x51 && s[1] === 0x20 && s.length === 34) return { type: 'p2tr', address: segwitEncode(HRP, 1, s.slice(2)) };
         return { type: 'outro', address: null };
     }
 
@@ -448,8 +455,8 @@
     function accountDescriptors(mnemonic, passphrase = '', account = 0) {
         const master = E().utils.HDNode.fromMnemonic(mnemonic, passphrase || undefined, global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined);
         const fp = master.fingerprint.replace(/^0x/, '').toLowerCase();
-        const acct = master.derivePath(`m/84'/0'/${account}'`).neuter();
-        const origin = `[${fp}/84'/0'/${account}']${acct.extendedKey}`;
+        const acct = master.derivePath(`m/84'/${COIN}'/${account}'`).neuter();
+        const origin = `[${fp}/84'/${COIN}'/${account}']${acct.extendedKey}`;
         return { ext: `wpkh(${origin}/0/*)`, int: `wpkh(${origin}/1/*)`, fp };
     }
 
@@ -530,6 +537,8 @@
     }
 
     global.RdeskBitcoin = {
+        TESTE, COIN, HRP,
+        explorerTx: (txid) => `https://mempool.space/${TESTE ? 'testnet4/' : ''}tx/${txid}`,
         fetchAddressTxs,
         accountDescriptors,
         DUST_SATS,

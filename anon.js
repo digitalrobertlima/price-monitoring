@@ -39,7 +39,8 @@
     const OUR_DBS = ['rdesk_vault_backup'];
     const scope = () => new URL('./', global.location.href).href;
     async function wipeAll() {
-        try { global.RdeskNativeBio?.forget(); global.RdeskNativeBtc?.wipe(); } catch (e) {} // apaga também a chave da digital no chip do celular
+        // apaga também a chave da digital no chip do celular (no modo teste, só o espaço de teste é apagado)
+        if (!global.RDESK_TESTE) { try { global.RdeskNativeBio?.forget(); global.RdeskNativeBtc?.wipe(); } catch (e) {} }
         try {
             Object.keys(localStorage).filter((k) => /^rdesk/i.test(k)).forEach((k) => localStorage.removeItem(k));
         } catch (e) {}
@@ -141,7 +142,7 @@
                     ${chains.map((c) => `<label><input type="checkbox" data-ch="${c.id}" ${s.chains.map(String).includes(String(c.id)) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}
                 </div>
                 ${global.RdeskNativeTor ? pontesHtml() : ''}
-                ${global.RdeskNativeBtc ? luzHtml() : ''}
+                ${global.RdeskNativeBtc && !global.RDESK_TESTE ? luzHtml() : ''}
                 <div class="ag-ok">✅ Sempre ligado, em qualquer modo: sem cadastro, sem rastreador, sem fontes do Google, nenhum servidor sabe que o pedido veio deste app, endereço Bitcoin novo a cada recebimento, cotação de troca com endereço neutro até você confirmar, e a voz da Duda nunca vai para a nuvem.</div>
                 <h3 class="an-danger-t">🧨 Apagar tudo deste aparelho</h3>
                 <p class="ag-note">Remove o cofre cifrado, o histórico e as preferências deste aparelho. Seu dinheiro <b>não</b> some: ele está na blockchain e volta com as suas palavras. <b>Sem as palavras, não tem volta.</b></p>

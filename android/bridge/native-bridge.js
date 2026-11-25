@@ -234,6 +234,7 @@
         return { height: h, hash };
     }
     async function btcTick() {
+        if (global.RDESK_TESTE) return; // modo teste: Bitcoin testnet4 pelos servidores (o Kyoto do app é só da rede real)
         const c = btcCfg();
         if (!c.on) return;
         const d = global.RdeskWallet && global.RdeskWallet.getBtcDescriptors && global.RdeskWallet.getBtcDescriptors();

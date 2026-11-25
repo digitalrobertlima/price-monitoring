@@ -11,12 +11,15 @@
 
     const E = () => global.ethers;
     const U = () => E().utils;
-    const VERSION_P2PKH = 0x4c, VERSION_P2SH = 0x10;
+    // Modo teste: Dash testnet (endereços "y…", caminho m/44'/1'/…, moedas sem valor)
+    const TESTE = Boolean(global.RDESK_TESTE);
+    const VERSION_P2PKH = TESTE ? 0x8c : 0x4c, VERSION_P2SH = TESTE ? 0x13 : 0x10;
+    const COIN = TESTE ? 1 : 5;
     const DUST = 1000;               // duffs
     const FEE_RATE = 1;              // duff por byte (mínimo da rede: 1.000 duffs/kB)
     const MAX_FEE_DUFFS = 200000;    // 0,002 DASH: acima disso algo está errado
-    const INSIGHT = 'https://insight.dash.org/insight-api';
-    const BLOCKCHAIR = 'https://api.blockchair.com/dash';
+    const INSIGHT = TESTE ? 'https://insight.testnet.networks.dash.org/insight-api' : 'https://insight.dash.org/insight-api';
+    const BLOCKCHAIR = TESTE ? null : 'https://api.blockchair.com/dash'; // Blockchair não tem a Dash testnet
 
     // ---------------------------------------------------------------- endereços
     const hexToBytes = (h) => U().arrayify(h.startsWith('0x') ? h : '0x' + h);
@@ -34,7 +37,7 @@
         const body = raw.slice(0, 21), sum = raw.slice(21);
         const want = sha256d(body).slice(0, 4);
         if (bytesToHex(sum) !== bytesToHex(want)) throw new Error('Endereço Dash com erro de digitação (o código de conferência não bate).');
-        if (body[0] !== VERSION_P2PKH && body[0] !== VERSION_P2SH) throw new Error('Este endereço não é da rede Dash (endereços Dash começam com X ou 7).');
+        if (body[0] !== VERSION_P2PKH && body[0] !== VERSION_P2SH) throw new Error(TESTE ? 'Este endereço não é da Dash testnet (no modo teste, endereços começam com y ou 8).' : 'Este endereço não é da rede Dash (endereços Dash começam com X ou 7).');
         return { version: body[0], hash: body.slice(1) };
     }
     const isAddress = (a) => { try { decodeAddress(a); return true; } catch (e) { return false; } };
@@ -51,7 +54,7 @@
     }
     function deriveFromMnemonic(mnemonic, index = 0, passphrase = '') {
         const wl = global.RdeskWordlists ? global.RdeskWordlists.forPhrase(mnemonic) : undefined;
-        const node = U().HDNode.fromMnemonic(mnemonic, passphrase || undefined, wl).derivePath(`m/44'/5'/0'/0/${index}`);
+        const node = U().HDNode.fromMnemonic(mnemonic, passphrase || undefined, wl).derivePath(`m/44'/${COIN}'/0'/0/${index}`);
         return fromPrivateKey(node.privateKey);
     }
 
@@ -124,6 +127,7 @@
             if (!Array.isArray(list)) throw new Error('resposta estranha');
             return list.map((u) => ({ txid: u.txid, vout: Number(u.vout), value: Number(u.satoshis), confirmed: Number(u.confirmations) > 0 }));
         } catch (e) {
+            if (!BLOCKCHAIR) throw e;
             const j = await getJson(`${BLOCKCHAIR}/dashboards/address/${address}?limit=100`);
             const d = j?.data?.[address];
             return (d?.utxo || []).map((u) => ({ txid: u.transaction_hash, vout: Number(u.index), value: Number(u.value), confirmed: Number(u.block_id) > 0 }));
@@ -141,6 +145,7 @@
             if (j?.txid) return j.txid;
             throw new Error('sem txid');
         } catch (e) {
+            if (!BLOCKCHAIR) throw new Error('A Dash testnet recusou a transação.');
             const body = new URLSearchParams({ data: hex });
             const j = await getJson(`${BLOCKCHAIR}/push/transaction`, { method: 'POST', body });
             const id = j?.data?.transaction_hash;
@@ -149,5 +154,5 @@
         }
     }
 
-    global.RdeskDash = { deriveFromMnemonic, fromPrivateKey, isAddress, decodeAddress, plan, sign, fetchUtxos, fetchBalance, broadcast, DUST, explorer: (txid) => `https://blockchair.com/dash/transaction/${txid}`, _serialize: serialize };
+    global.RdeskDash = { deriveFromMnemonic, fromPrivateKey, isAddress, decodeAddress, plan, sign, fetchUtxos, fetchBalance, broadcast, DUST, explorer: (txid) => (TESTE ? `https://insight.testnet.networks.dash.org/insight/tx/${txid}` : `https://blockchair.com/dash/transaction/${txid}`), TESTE, _serialize: serialize };
 })(window);
