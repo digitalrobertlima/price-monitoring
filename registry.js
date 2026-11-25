@@ -28,13 +28,62 @@
         { id: 999, key: 'hyperevm', name: 'HyperEVM', short: 'HYPE', color: '#50e3c2', native: 'HYPE', explorer: 'https://hyperevmscan.io', llama: 'hyperliquid',
           rpcs: ['https://rpc.hyperliquid.xyz/evm', 'https://hyperliquid.drpc.org', 'https://rpc.hypurrscan.io'] }
     ];
+    // ---------------------------------------------------------------- MODO TESTE (testnets)
+    // Mesmo formato das redes reais; servidores conferidos pelo workflow "Saldos pelo Tor".
+    // Moedas de teste não têm preço (priceKey null): nada entra no total em R$.
+    const TEST_CHAINS = [
+        { id: 80002, key: 'amoy', name: 'Polygon Amoy (teste)', short: 'tPOL', color: '#8247e5', native: 'POL', explorer: 'https://amoy.polygonscan.com', minTipGwei: 30, testnet: true,
+          faucet: 'https://faucet.polygon.technology',
+          rpcs: ['https://polygon-amoy-bor-rpc.publicnode.com', 'https://polygon-amoy.drpc.org', 'https://rpc-amoy.polygon.technology'] },
+        { id: 11155111, key: 'sepolia', name: 'Sepolia (Ethereum teste)', short: 'tETH', color: '#627eea', native: 'ETH', explorer: 'https://sepolia.etherscan.io', testnet: true,
+          faucet: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia',
+          rpcs: ['https://0xrpc.io/sep', 'https://ethereum-sepolia-rpc.publicnode.com', 'https://1rpc.io/sepolia', 'https://eth-sepolia.api.onfinality.io/public'] },
+        { id: 84532, key: 'base-sepolia', name: 'Base Sepolia (teste)', short: 'tBASE', color: '#0052ff', native: 'ETH', explorer: 'https://sepolia.basescan.org', testnet: true,
+          faucet: 'https://www.alchemy.com/faucets/base-sepolia',
+          rpcs: ['https://sepolia.base.org', 'https://base-sepolia-rpc.publicnode.com', 'https://base-sepolia.drpc.org'] },
+        { id: 421614, key: 'arbitrum-sepolia', name: 'Arbitrum Sepolia (teste)', short: 'tARB', color: '#28a0f0', native: 'ETH', explorer: 'https://sepolia.arbiscan.io', testnet: true,
+          faucet: 'https://www.alchemy.com/faucets/arbitrum-sepolia',
+          rpcs: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia-rpc.publicnode.com', 'https://arbitrum-sepolia.drpc.org'] },
+        { id: 11155420, key: 'op-sepolia', name: 'OP Sepolia (teste)', short: 'tOP', color: '#ff0420', native: 'ETH', explorer: 'https://sepolia-optimism.etherscan.io', testnet: true,
+          faucet: 'https://console.optimism.io/faucet',
+          rpcs: ['https://optimism-sepolia.drpc.org', 'https://sepolia.optimism.io', 'https://optimism-sepolia-rpc.publicnode.com'] },
+        { id: 11142220, key: 'celo-sepolia', name: 'Celo Sepolia (teste)', short: 'tCELO', color: '#35d07f', native: 'CELO', explorer: 'https://celo-sepolia.blockscout.com', testnet: true,
+          faucet: 'https://faucet.celo.org/celo-sepolia',
+          rpcs: ['https://forno.celo-sepolia.celo-testnet.org', 'https://celo-sepolia.drpc.org'] },
+        { id: 97, key: 'bnb-testnet', name: 'BNB testnet', short: 'tBNB', color: '#f0b90b', native: 'BNB', explorer: 'https://testnet.bscscan.com', testnet: true,
+          faucet: 'https://www.bnbchain.org/en/testnet-faucet',
+          rpcs: ['https://data-seed-prebsc-1-s1.bnbchain.org:8545', 'https://bsc-testnet.bnbchain.org', 'https://bsc-testnet.drpc.org', 'https://bsc-testnet-rpc.publicnode.com'] },
+        { id: 998, key: 'hyperevm-testnet', name: 'HyperEVM testnet', short: 'tHYPE', color: '#50e3c2', native: 'HYPE', explorer: 'https://testnet.purrsec.info', testnet: true,
+          faucet: 'https://app.hyperliquid-testnet.xyz/drip',
+          rpcs: ['https://rpc.hyperliquid-testnet.xyz/evm', 'https://hyperliquid-testnet.drpc.org'] }
+    ];
+    const nat = (symbol, name) => ({ symbol, name: `${name} (teste, sem valor)`, address: null, decimals: 18, isNative: true, priceKey: null });
+    const usdc = (address) => ({ symbol: 'USDC', name: 'USDC de teste (Circle, sem valor)', address, decimals: 6, priceKey: null });
+    const TEST_TOKENS = {
+        80002: [nat('POL', 'POL'), usdc('0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582')],
+        11155111: [nat('ETH', 'Ether'), usdc('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238')],
+        84532: [nat('ETH', 'Ether'), usdc('0x036CbD53842c5426634e7929541eC2318f3dCF7e')],
+        421614: [nat('ETH', 'Ether'), usdc('0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d')],
+        11155420: [nat('ETH', 'Ether'), usdc('0x5fd84259d66Cd46123540766Be93DFE6D43130D7')],
+        11142220: [nat('CELO', 'Celo')],
+        97: [nat('BNB', 'BNB')],
+        998: [nat('HYPE', 'HYPE')]
+    };
+    if (global.RDESK_TESTE) {
+        CHAINS.splice(0, CHAINS.length, ...TEST_CHAINS);
+    }
+
     // No app Android tudo sai pelo Tor. Alguns servidores recusam boa parte das saídas do Tor
     // (conferido pelo workflow "Saldos pelo Tor", tools/saldos-pelo-tor.mjs): ficam por último,
     // só como reserva. publicnode: desafio do Cloudflare em ~2 de 3 circuitos; mainnet.optimism.io: 403.
-    const RECUSAM_TOR = ['publicnode.com', '1rpc.io', 'mainnet.optimism.io'];
+    const RECUSAM_TOR = ['publicnode.com', '1rpc.io', 'mainnet.optimism.io', 'sepolia.optimism.io', 'rpc-amoy.polygon.technology'];
     // Reservas extras (conferidas pelo mesmo workflow) que não aceitam pedidos do site (sem CORS):
     // só no app Android, onde os pedidos saem pelo código nativo.
-    const RESERVAS_TOR = { 10: ['https://optimism-public.nodies.app'] };
+    const RESERVAS_TOR = {
+        10: ['https://optimism-public.nodies.app'],
+        80002: ['https://polygon-amoy-public.nodies.app'],
+        11155111: ['https://ethereum-sepolia-public.nodies.app']
+    };
     if (global.RDESK_NATIVE) {
         CHAINS.forEach((c) => {
             (RESERVAS_TOR[c.id] || []).forEach((u) => { if (!c.rpcs.includes(u)) c.rpcs.push(u); });
@@ -44,7 +93,9 @@
     }
 
     // Rede Bitcoin (não é EVM: tratada pelo módulo bitcoin.js)
-    const BITCOIN = { id: 'btc', key: 'bitcoin', name: 'Bitcoin', short: 'BTC', color: '#f7931a', native: 'BTC', explorer: 'https://mempool.space' };
+    const BITCOIN = global.RDESK_TESTE
+        ? { id: 'btc', key: 'bitcoin', name: 'Bitcoin testnet4', short: 'tBTC', color: '#f7931a', native: 'BTC', explorer: 'https://mempool.space/testnet4', testnet: true, faucet: 'https://mempool.space/testnet4/faucet' }
+        : { id: 'btc', key: 'bitcoin', name: 'Bitcoin', short: 'BTC', color: '#f7931a', native: 'BTC', explorer: 'https://mempool.space' };
 
     // priceKey: POL | ETH | BTC | CELO | USD | BRL (moedas pareadas) — define como o saldo vira R$
     const BUILTIN_TOKENS = {
@@ -100,6 +151,10 @@
             { symbol: 'USDC', name: 'USD Coin', address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', decimals: 18, priceKey: 'USD' }
         ]
     };
+    if (global.RDESK_TESTE) {
+        Object.keys(BUILTIN_TOKENS).forEach((k) => { delete BUILTIN_TOKENS[k]; });
+        Object.assign(BUILTIN_TOKENS, TEST_TOKENS);
+    }
 
     // Cores e glifos dos selos (letras e símbolos de moeda; não são logotipos oficiais)
     const TOKEN_STYLE = {
@@ -311,7 +366,7 @@
     }
 
     global.RdeskRegistry = {
-        CHAINS, BITCOIN, BUILTIN_TOKENS,
+        CHAINS, BITCOIN, BUILTIN_TOKENS, TESTE: Boolean(global.RDESK_TESTE), TEST_CHAINS, TEST_TOKENS,
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
         explorerTokenUrl, explorerAddressUrl, explorerTxUrl,

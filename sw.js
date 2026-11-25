@@ -22,6 +22,7 @@ const CORE_ASSETS = [
   './pinpad.js',
   './seed-grid.js',
   './anon.js',
+  './modo-teste.js',
   './vault-door.js',
   './lessons.js',
   './learn.js',

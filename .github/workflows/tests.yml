@@ -21,7 +21,7 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: for f in range-chart.js registry.js bitcoin.js pix.js vault-door.js updater.js version.js lessons.js learn.js sats-trail.js airgap.js pinpad.js seed-grid.js anon.js qr-scanner.js wallet-views.js onboarding.js wordlist-pt.js dash.js feel.js asset-info.js history.js ledger.js market.js pools.js relayer.js wallet-service.js defi-pix-service.js swap-picker.js app.js sw.js; do node --check "$f"; done
+      - run: for f in modo-teste.js range-chart.js registry.js bitcoin.js pix.js vault-door.js updater.js version.js lessons.js learn.js sats-trail.js airgap.js pinpad.js seed-grid.js anon.js qr-scanner.js wallet-views.js onboarding.js wordlist-pt.js dash.js feel.js asset-info.js history.js ledger.js market.js pools.js relayer.js wallet-service.js defi-pix-service.js swap-picker.js app.js sw.js; do node --check "$f"; done
       - run: npm run test:smoke
 
   fluxo:

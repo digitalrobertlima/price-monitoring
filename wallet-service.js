@@ -21,7 +21,8 @@
     const IDB_NAME = 'rdesk_vault_backup';
 
     const CHAIN_RPC_LISTS = Object.fromEntries(REG.CHAINS.map((c) => [c.id, c.rpcs]));
-    const POLYGON_RPCS = CHAIN_RPC_LISTS[137];
+    // Modo teste: não existe a Polygon real; o "padrão" vira a primeira rede de teste (Amoy)
+    const POLYGON_RPCS = CHAIN_RPC_LISTS[137] || REG.CHAINS[0].rpcs;
     const CHAIN_RPCS = Object.fromEntries(Object.entries(CHAIN_RPC_LISTS).map(([id, list]) => [id, list[0]]));
 
     const ERC20_ABI = [
@@ -483,7 +484,8 @@
     // A chave que protege a senha é derivada DENTRO do autenticador (extensão PRF do WebAuthn)
     // e só sai dele depois da digital/rosto. No aparelho fica apenas a senha cifrada.
     // No app Android a chave fica no chip seguro do celular (Keystore) e só abre com a digital/rosto.
-    const nativeBio = () => (window.RdeskNativeBio && window.RdeskNativeBio.available() ? window.RdeskNativeBio : null);
+    // Modo teste: a chave da digital no chip é a mesma do cofre real; lá a biometria fica desligada
+    const nativeBio = () => (!window.RDESK_TESTE && window.RdeskNativeBio && window.RdeskNativeBio.available() ? window.RdeskNativeBio : null);
     // Explica, em português, por que o celular não oferece a biometria ao app
     function nativeBioWhy() {
         const st = window.RdeskNativeBio?.status?.() || {};
@@ -506,6 +508,7 @@
     }
 
     function isBiometrySupported() {
+        if (window.RDESK_TESTE) return false;
         if (window.RDESK_NATIVE) return Boolean(nativeBio());
         return Boolean(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
     }
@@ -873,7 +876,7 @@
     // =========================================================================
     const BTC_GAP = 4; // quantos endereços novos ficam sempre preparados (e vigiados) à frente
     const btcHdOk = (acc) => acc && acc.type === 'seed';
-    const btcBase = (acc) => `m/84'/0'/${acc.hdIndex || 0}'`;
+    const btcBase = (acc) => `m/84'/${window.RdeskBitcoin?.COIN || 0}'/${acc.hdIndex || 0}'`; // modo teste: 1'
     // No cofre 1, pula os índices que já são o endereço antigo de outro cofre da mesma frase
     function btcSkip(acc) {
         if ((acc.hdIndex || 0) !== 0) return new Set();
@@ -1404,6 +1407,7 @@
         await refreshLiveMarketPrices();
         // Modo anônimo sem a Polygon marcada: não pergunta o saldo (o servidor veria o seu endereço)
         if (window.RdeskAnon && !window.RdeskAnon.chainAllowed(137)) return getActiveAccountBalances();
+        if (window.RDESK_TESTE) return getActiveAccountBalances(); // modo teste: não há Polygon real; os saldos vêm das redes de teste
 
         try {
             const provider = await getHealthyProvider(137);
@@ -2968,6 +2972,7 @@
     }
 
     function unitUsdFor(priceKey, chainId, address) {
+        if (window.RDESK_TESTE) return 0; // moedas de teste não valem nada
         const p = getNormalizedPricesObject();
         if (!priceKey) return address ? (state.prices.custom[`${chainId}:${String(address).toLowerCase()}`] || 0) : 0;
         if (priceKey === 'USD') return 1;
@@ -3391,7 +3396,7 @@
                             </span>
                         </span>
                         <span class="asset-right money">
-                            <strong>${b.hasPrice ? formatBRL(b.brlValue) : 'sem cotação'}</strong>
+                            <strong>${b.hasPrice ? formatBRL(b.brlValue) : (window.RDESK_TESTE ? 'teste · sem valor' : 'sem cotação')}</strong>
                             ${changeChip(b)}
                         </span>
                     </button>`).join('');
