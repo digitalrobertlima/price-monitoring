@@ -48,6 +48,12 @@ function curl(url, { body, timeout = 30 } = {}) {
     });
 }
 
+// O site (PWA) só pode usar servidores que aceitam pedidos de outra origem (CORS)
+function cors(url) {
+    const args = ['-sS', '-o', '/dev/null', '-D', '-', '--max-time', '30', '--socks5-hostname', `rdesk${Date.now()}c${++circuito}:x@${SOCKS}`, '-X', 'OPTIONS',
+        '-H', 'Origin: https://digitalrobertlima.github.io', '-H', 'Access-Control-Request-Method: POST', '-H', 'Access-Control-Request-Headers: content-type', url];
+    return new Promise((res) => execFile('curl', args, (err, out = '') => res(/access-control-allow-origin:\s*(\*|https:\/\/digitalrobertlima\.github\.io)/i.test(out))));
+}
 const pad = (a) => a.replace(/^0x/, '').toLowerCase().padStart(64, '0');
 async function rpcProva(url, chainId, token) {
     // Igual ao app: saldo nativo + saldo de um token (eth_call balanceOf) num pedido em lote
@@ -118,16 +124,17 @@ async function trabalhador() {
         let lote = true;
         if (!tentativas.some((x) => x.ok) && a.simples) { const s = await a.simples(); if (s.ok) { lote = false; tentativas.push(s); } }
         const oks = tentativas.filter((x) => x.ok);
-        res.push({ ...a, ok: oks.length, de: tentativas.length, lote, t: oks.length ? oks.reduce((s, x) => s + x.t, 0) / oks.length : null, motivo: tentativas.find((x) => !x.ok)?.motivo || '' });
-        console.log(`${oks.length ? '✅' : '❌'} ${a.grupo.padEnd(18)} ${a.nome.padEnd(48)} ${oks.length}/${tentativas.length} ${oks.length ? `${(res.at(-1).t).toFixed(1)}s` : ''} ${lote ? '' : '(sem lote)'} ${res.at(-1).motivo}`);
+        const site = a.simples && oks.length ? await cors(a.nome) : null;
+        res.push({ ...a, site, ok: oks.length, de: tentativas.length, lote, t: oks.length ? oks.reduce((s, x) => s + x.t, 0) / oks.length : null, motivo: tentativas.find((x) => !x.ok)?.motivo || '' });
+        console.log(`${oks.length ? '✅' : '❌'} ${a.grupo.padEnd(18)} ${a.nome.padEnd(48)} ${oks.length}/${tentativas.length} ${oks.length ? `${(res.at(-1).t).toFixed(1)}s` : ''} ${lote ? '' : '(sem lote)'} ${site === false ? '(sem CORS)' : ''} ${res.at(-1).motivo}`);
     }
 }
 await Promise.all(Array.from({ length: 6 }, trabalhador));
 
 const ordem = alvos.map((a) => a.nome);
 res.sort((a, b) => a.grupo.localeCompare(b.grupo) || (b.noApp - a.noApp) || ordem.indexOf(a.nome) - ordem.indexOf(b.nome));
-let md = `## Saldos pelo Tor (${RODADAS} circuitos por servidor)\n\n| Grupo | Servidor | No app | Funcionou | Tempo médio | Observação |\n|---|---|---|---|---|---|\n`;
-for (const r of res) md += `| ${r.grupo} | ${r.nome} | ${r.noApp ? `sim (${r.ordem || '·'})` : 'não'} | ${r.ok ? '✅' : '❌'} ${r.ok}/${r.de} | ${r.t ? `${r.t.toFixed(1)} s` : '—'} | ${[r.lote ? '' : 'só pedido simples', r.ok < r.de ? r.motivo : ''].filter(Boolean).join(' · ').replace(/\|/g, '/')} |\n`;
+let md = `## Saldos pelo Tor (${RODADAS} circuitos por servidor)\n\n| Grupo | Servidor | No app | Funcionou | Tempo médio | Site (CORS) | Observação |\n|---|---|---|---|---|---|---|\n`;
+for (const r of res) md += `| ${r.grupo} | ${r.nome} | ${r.noApp ? `sim (${r.ordem || '·'})` : 'não'} | ${r.ok ? '✅' : '❌'} ${r.ok}/${r.de} | ${r.t ? `${r.t.toFixed(1)} s` : '—'} | ${r.site === null ? '—' : r.site ? '✅' : '❌'} | ${[r.lote ? '' : 'só pedido simples', r.ok < r.de ? r.motivo : ''].filter(Boolean).join(' · ').replace(/\|/g, '/')} |\n`;
 console.log(`\n${md}`);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
 if (process.env.SAIDA_JSON) writeFileSync(process.env.SAIDA_JSON, JSON.stringify(res.map(({ prova, simples, ...r }) => r), null, 2));
