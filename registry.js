@@ -373,6 +373,7 @@
     function rankRpcs(chainId) {
         const c = CHAINS.find((x) => x.id === Number(chainId));
         if (!c || typeof fetch !== 'function') return Promise.resolve(c ? c.rpcs : []);
+        if (global.navigator && global.navigator.onLine === false) return Promise.resolve(c.rpcs); // sem internet: não pergunta nada
         const r = ranking[c.id];
         if (r && Date.now() - r.at < 600000) return r.p;
         const ms = global.RDESK_NATIVE ? 25000 : 6000;
