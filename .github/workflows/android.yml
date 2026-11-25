@@ -86,6 +86,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -tcpdump ${{ github.workspace }}/rede.pcap
           script: |
             adb logcat -c
+            adb shell svc power stayon true
+            adb shell locksettings set-pin 1379 || echo "::warning::nao deu para cadastrar PIN no emulador"
             nohup sudo tcpdump -i "$(ip route | awk '/^default/ {print $5; exit}')" -nn -s 0 -w /tmp/host.pcap 'not port 5037 and not port 5555 and not port 5554' > /tmp/tcpdump.log 2>&1 &
             sleep 5
             gradle -p android --no-daemon connectedReleaseAndroidTest || (adb logcat -d -s RDESKTEST:I RDESKBTC:V TorService:I AndroidRuntime:E > logcat.txt; exit 1)

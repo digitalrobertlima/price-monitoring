@@ -484,6 +484,17 @@
     // e só sai dele depois da digital/rosto. No aparelho fica apenas a senha cifrada.
     // No app Android a chave fica no chip seguro do celular (Keystore) e só abre com a digital/rosto.
     const nativeBio = () => (window.RdeskNativeBio && window.RdeskNativeBio.available() ? window.RdeskNativeBio : null);
+    // Explica, em português, por que o celular não oferece a biometria ao app
+    function nativeBioWhy() {
+        const st = window.RdeskNativeBio?.status?.() || {};
+        if (st.motivo === 'android-antigo') return 'A biometria no app precisa de Android 10 ou mais novo. Use a senha do cofre.';
+        if (st.fraca === 'ok' && st.forte !== 'ok' && st.bloqueio !== 'ok') return 'Seu celular só tem desbloqueio por rosto do tipo "fraco" (câmera comum), que o Android não deixa proteger chaves. Cadastre uma digital ou um PIN/padrão de bloqueio de tela nas configurações do Android e tente de novo.';
+        if (st.motivo === 'nada-cadastrado') return 'O Android diz que não há digital nem bloqueio de tela cadastrado. Cadastre um PIN, padrão ou digital em Configurações > Segurança e tente de novo.';
+        if (st.motivo === 'sensor-ocupado') return 'O sensor de digital está indisponível agora. Tente de novo em instantes.';
+        if (st.motivo === 'atualizacao') return 'O Android pede uma atualização de segurança antes de usar a biometria. Atualize o sistema e tente de novo.';
+        return `O Android não liberou a biometria para o app (${st.motivo || 'motivo desconhecido'}). Use a senha do cofre.`;
+    }
+
     function isBiometryRegistered() {
         try {
             const parsed = JSON.parse(localStorage.getItem(BIO_STORAGE_KEY) || 'null');
@@ -525,7 +536,7 @@
     async function registerDeviceBiometry(password) {
         if (window.RDESK_NATIVE) {
             const nb = nativeBio();
-            if (!nb) throw new Error('Este celular não tem digital ou rosto cadastrado. Cadastre nas configurações do Android e tente de novo.');
+            if (!nb) throw new Error(nativeBioWhy());
             if (!password) throw new Error('Desbloqueie o cofre com sua senha primeiro para ativar a biometria.');
             const r = await nb.encrypt(password);
             localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify({ version: 'android', ctB64: r.ct, ivB64: r.iv }));
@@ -1234,10 +1245,37 @@
         return new ethers.providers.StaticJsonRpcProvider(rpcUrl, { chainId: Number(chainId), name: NETWORK_NAMES[chainId] || 'unknown' });
     }
 
-    function getReadProvider(chainId = 137) {
+    // Provedor que troca sozinho de servidor quando um pedido falha por rede (fora do ar, limite de
+    // pedidos, bloqueio do Tor). Erros da própria rede (transação revertida etc.) não trocam.
+    const isNetErr = (e) => {
+        const status = Number(e?.status || e?.error?.status || 0);
+        if (status === 429 || status >= 500 || status === 403) return true;
+        return /missing response|bad response|timeout|failed to fetch|network|could not detect|SERVER_ERROR|TIMEOUT|abort|rate limit|too many requests|usage limit/i.test(String(e?.code || '') + ' ' + String(e?.message || e?.reason || ''));
+    };
+    function buildRotatingProvider(chainId, startIdx = 0) {
         const id = Number(chainId);
-        const list = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
-        return buildProvider(CHAIN_RPC_LISTS[id] ? id : 137, list[preferredRpcIndex[id] || 0]);
+        const urls = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
+        const inner = urls.map((u) => buildProvider(id, u));
+        const p = buildProvider(id, urls[startIdx % urls.length]);
+        let cur = startIdx % urls.length;
+        p.send = async function (method, params) {
+            let last;
+            for (let n = 0; n < inner.length; n++) {
+                const idx = (cur + n) % inner.length;
+                try {
+                    const r = await withTimeout(inner[idx].send(method, params), window.RDESK_NATIVE ? 30000 : 12000);
+                    if (idx !== cur) { cur = idx; preferredRpcIndex[id] = idx; }
+                    return r;
+                } catch (e) { last = e; if (!isNetErr(e)) throw e; }
+            }
+            throw last;
+        };
+        return p;
+    }
+
+    function getReadProvider(chainId = 137) {
+        const id = CHAIN_RPC_LISTS[Number(chainId)] ? Number(chainId) : 137;
+        return buildRotatingProvider(id, preferredRpcIndex[id] || 0);
     }
 
     function withTimeout(promise, ms) {
@@ -1297,9 +1335,9 @@
             const idx = (start + i) % list.length;
             const provider = buildProvider(id, list[idx]);
             try {
-                await withTimeout(provider.getBlockNumber(), 4500);
+                await withTimeout(provider.getBlockNumber(), window.RDESK_NATIVE ? 20000 : 4500);
                 preferredRpcIndex[id] = idx;
-                return provider;
+                return buildRotatingProvider(id, idx);
             } catch (e) {}
         }
         throw new Error('Nenhum servidor da rede respondeu. Verifique sua conexão e tente de novo.');

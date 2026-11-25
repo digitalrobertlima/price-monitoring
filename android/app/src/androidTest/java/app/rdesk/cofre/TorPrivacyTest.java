@@ -81,10 +81,15 @@ public class TorPrivacyTest {
             assertEquals("service worker", "bloqueado", sw.optString("v"));
 
             // 2b. biometria: responde sem travar e o cofre só oferece a digital se o celular tiver
-            JSONObject bio = obj(js(sc, "({nativo: RdeskNativeBio.available(), cofreOferece: RdeskWallet.isBiometrySupported(), registrada: RdeskWallet.isBiometryRegistered()})", 10_000));
-            assertEquals("o cofre só oferece digital quando o celular tem", bio.getJSONObject("v").optBoolean("nativo"), bio.getJSONObject("v").optBoolean("cofreOferece"));
+            JSONObject bio = obj(js(sc, "({nativo: RdeskNativeBio.available(), cofreOferece: RdeskWallet.isBiometrySupported(), registrada: RdeskWallet.isBiometryRegistered(), status: RdeskNativeBio.status()})", 10_000));
             Log.i(TAG, "biometria: " + bio);
             assertTrue("biometria quebrou: " + bio, bio.optBoolean("ok"));
+            JSONObject bv = bio.getJSONObject("v");
+            assertEquals("o cofre só oferece digital quando o celular tem", bv.optBoolean("nativo"), bv.optBoolean("cofreOferece"));
+            JSONObject bst = bv.optJSONObject("status");
+            assertTrue("diagnóstico da biometria vazio: " + bio, bst != null && bst.has("motivo"));
+            // Emulador com PIN de tela cadastrado (sem digital): o cofre tem que oferecer o desbloqueio
+            if ("ok".equals(bst.optString("bloqueio"))) assertTrue("com PIN de tela o app tem que oferecer a biometria: " + bio, bv.optBoolean("nativo"));
 
             // 3. Tor conecta
             JSONObject tor = obj(js(sc, "new Promise(r=>{const t=setInterval(()=>{const s=JSON.parse(RdeskNative.torState());if(s.state==='on'){clearInterval(t);r(s)}},1000)})", comPonte ? 480_000 : 300_000));

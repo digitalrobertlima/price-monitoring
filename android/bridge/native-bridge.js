@@ -180,6 +180,7 @@
     }
     global.RdeskNativeBio = {
         available: () => { try { return Boolean(N.bioAvailable()); } catch (e) { return false; } },
+        status: () => { try { return JSON.parse(N.bioStatus()); } catch (e) { return null; } },
         encrypt: (text) => call((id) => N.bioEncrypt(id, String(text))),
         decrypt: (ct, iv) => call((id) => N.bioDecrypt(id, String(ct), String(iv))).then((r) => r.text),
         forget: () => { try { N.bioForget(); } catch (e) { /* ok */ } }
