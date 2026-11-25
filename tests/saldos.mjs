@@ -32,6 +32,8 @@ try {
     const lote = balReqs.length ? JSON.parse(balReqs[0]) : null;
     check('todas as moedas da rede num pedido só (lote), não um por moeda', Array.isArray(lote) && lote.length === 8, lote ? `${lote.length} moedas no 1º pedido` : 'nenhum');
 
+    const ordem = await page.evaluate(() => window.RdeskRegistry.getChain(137).rpcs.map((u) => new URL(u).host));
+    check('saúde dos servidores: o que recusa vai para o fim da fila da Polygon', ordem.at(-1) === 'polygon-bor-rpc.publicnode.com' && ordem[0] !== 'polygon-bor-rpc.publicnode.com', ordem.join(' > '));
     await waitFn(page, () => document.querySelector('#sync-bar .sync-step') !== null, null, { timeout: 10000 }).catch(() => {});
     const steps = await page.$$eval('#sync-bar .sync-step', (els) => els.map((e) => `${e.className.replace('sync-step ', '')}:${e.textContent.trim()}`));
     check('barra de progresso mostra cada rede (Polygon, Ethereum, Base…)', steps.some((s) => /Polygon/.test(s)) && steps.some((s) => /Ethereum/.test(s)) && steps.length >= 6, steps.join(' | '));

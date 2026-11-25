@@ -1332,6 +1332,7 @@
     // Devolve um provedor que respondeu agora; lembra qual servidor está saudável.
     async function getHealthyProvider(chainId = 137) {
         const id = Number(chainId);
+        try { await Promise.race([REG.rankRpcs?.(id), new Promise((r) => setTimeout(r, window.RDESK_NATIVE ? 26000 : 6500))]); } catch (e) {}
         const list = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
         const start = preferredRpcIndex[id] || 0;
         for (let i = 0; i < list.length; i++) {
@@ -3128,6 +3129,9 @@
     // tenta o próximo da lista. No app Android (Tor) os prazos são maiores.
     const NATIVE = Boolean(window.RDESK_NATIVE);
     const readRpcIndex = {}; // servidor que respondeu na última leitura de saldos (separado do usado para enviar)
+    // A lista foi reordenada pela saúde dos servidores: os índices guardados apontariam para outro
+    window.addEventListener('rdesk:rpcs', (e) => { const id = e.detail?.chainId; delete readRpcIndex[id]; delete preferredRpcIndex[id]; });
+    const ranked = (id) => Promise.race([REG.rankRpcs ? REG.rankRpcs(id) : null, new Promise((r) => setTimeout(r, NATIVE ? 26000 : 6500))]).catch(() => {});
     async function rpcPost(url, body, ms) {
         const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
         const t = setTimeout(() => ctl?.abort(), ms);
@@ -3139,6 +3143,7 @@
     }
     const hexAmount = (hex, dec) => { if (!/^0x[0-9a-f]*$/i.test(String(hex))) throw new Error('resposta inválida'); return parseFloat(ethers.utils.formatUnits(ethers.BigNumber.from(hex === '0x' ? '0x0' : hex), dec)) || 0; };
     async function readChainBalances(chainId, addr, onTry) {
+        await ranked(chainId);
         const list = CHAIN_RPC_LISTS[chainId] || [];
         const tokens = CHAIN_TOKENS[chainId] || [];
         const data = `0x70a08231${addr.replace(/^0x/, '').toLowerCase().padStart(64, '0')}`;
