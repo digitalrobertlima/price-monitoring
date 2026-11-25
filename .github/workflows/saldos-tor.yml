@@ -1,0 +1,40 @@
+name: Saldos pelo Tor
+
+# Confere, saindo pelo Tor como o app Android, cada servidor de saldo e de cotação.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/**', 'feat/**', 'ci/**']
+    paths: ['registry.js', 'tools/saldos-pelo-tor.mjs', '.github/workflows/saldos-tor.yml']
+  schedule:
+    - cron: '17 9 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  tor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tor
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq tor
+          sudo systemctl start tor || sudo tor --RunAsDaemon 1
+          for i in $(seq 1 60); do
+            if curl -s --max-time 20 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then echo "Tor pronto"; exit 0; fi
+            sleep 5
+          done
+          exit 1
+      - name: Testar cada servidor
+        env:
+          SAIDA_JSON: saldos-tor.json
+        run: node tools/saldos-pelo-tor.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saldos-tor
+          path: saldos-tor.json

@@ -180,6 +180,7 @@
     }
     global.RdeskNativeBio = {
         available: () => { try { return Boolean(N.bioAvailable()); } catch (e) { return false; } },
+        status: () => { try { return JSON.parse(N.bioStatus()); } catch (e) { return null; } },
         encrypt: (text) => call((id) => N.bioEncrypt(id, String(text))),
         decrypt: (ct, iv) => call((id) => N.bioDecrypt(id, String(ct), String(iv))).then((r) => r.text),
         forget: () => { try { N.bioForget(); } catch (e) { /* ok */ } }
@@ -210,9 +211,17 @@
         return (btcSt.dados.txs || []).filter((t) => (t.vout || []).some((o) => o.scriptpubkey_address === a) || (t.vin || []).some((i) => i.prevout && i.prevout.scriptpubkey_address === a))
             .sort((x, y) => (y.status.block_time || 9e12) - (x.status.block_time || 9e12));
     }
+    // Altura e hash do bloco de partida: tenta vários servidores (pelo Tor, um deles pode limitar)
+    const BTC_INFO = ['https://mempool.emzy.de/api', 'https://mempool.bitcoin-austria.at/api', 'https://blockstream.info/api'];
+    async function btcInfo(path, ok) {
+        let last;
+        for (const h of BTC_INFO) {
+            try { const t = (await (await fetch(h + path)).text()).trim(); if (ok(t)) return t; last = new Error(t.slice(0, 60)); } catch (e) { last = e; }
+        }
+        throw last || new Error('sem resposta');
+    }
     async function birthday(year) {
-        const tipRes = await fetch('https://blockstream.info/api/blocks/tip/height');
-        const tip = Number(await tipRes.text());
+        const tip = Number(await btcInfo('/blocks/tip/height', (t) => /^\d+$/.test(t)));
         let h;
         if (year === 'novo') h = tip - 6;
         else {
@@ -220,7 +229,7 @@
             h = Math.floor(840000 + (ts - 1713571200) / 600) - 2016; // ~1 bloco a cada 10 min, com folga de 2 semanas
         }
         h = Math.max(481824, Math.min(h, tip - 6)); // no mínimo a ativação do SegWit (endereços bc1)
-        const hash = (await (await fetch(`https://blockstream.info/api/block-height/${h}`)).text()).trim();
+        const hash = await btcInfo(`/block-height/${h}`, (t) => /^[0-9a-f]{64}$/.test(t));
         if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error('sem hash do bloco');
         return { height: h, hash };
     }

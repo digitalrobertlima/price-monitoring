@@ -34,12 +34,61 @@ final class BioVault {
 
     BioVault(Activity act) { this.act = act; }
 
+    // Android 11+: digital/rosto forte OU o bloqueio de tela do celular (PIN, padrão, senha).
+    // Nos dois casos a chave do chip só abre depois da verificação (CryptoObject).
+    private static int authenticators() {
+        return BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
+    }
+
     boolean available() {
+        try { return availableOrThrow(); } catch (Exception e) { return false; }
+    }
+
+    private boolean availableOrThrow() {
         if (Build.VERSION.SDK_INT < 29) return false;
         BiometricManager bm = act.getSystemService(BiometricManager.class);
         if (bm == null) return false;
-        if (Build.VERSION.SDK_INT >= 30) return bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS;
+        if (Build.VERSION.SDK_INT >= 30) return bm.canAuthenticate(authenticators()) == BiometricManager.BIOMETRIC_SUCCESS;
         return bm.canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
+    private static String why(int code) {
+        switch (code) {
+            case BiometricManager.BIOMETRIC_SUCCESS: return "ok";
+            case BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED: return "nada-cadastrado";
+            case BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE: return "sem-sensor";
+            case BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE: return "sensor-ocupado";
+            default:
+                if (Build.VERSION.SDK_INT >= 31 && code == BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED) return "atualizacao";
+                return "codigo-" + code;
+        }
+    }
+
+    /** Diagnóstico para a tela: o que o celular oferece e por que não dá, quando não dá. */
+    JSONObject status() {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("sdk", Build.VERSION.SDK_INT);
+            if (Build.VERSION.SDK_INT < 29) { o.put("ok", false); o.put("motivo", "android-antigo"); return o; }
+            BiometricManager bm = act.getSystemService(BiometricManager.class);
+            if (bm == null) { o.put("ok", false); o.put("motivo", "sem-sensor"); return o; }
+            if (Build.VERSION.SDK_INT >= 30) {
+                o.put("forte", why(bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)));
+                o.put("fraca", why(bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)));
+                o.put("bloqueio", why(bm.canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL)));
+                int all = bm.canAuthenticate(authenticators());
+                o.put("ok", all == BiometricManager.BIOMETRIC_SUCCESS);
+                o.put("motivo", why(all));
+            } else {
+                int c = bm.canAuthenticate();
+                o.put("forte", why(c));
+                o.put("ok", c == BiometricManager.BIOMETRIC_SUCCESS);
+                o.put("motivo", why(c));
+            }
+        } catch (Exception e) {
+            try { o.put("ok", false); o.put("motivo", "erro"); o.put("erro", e.getClass().getSimpleName() + ": " + e.getMessage()); } catch (Exception ignored) { }
+        }
+        return o;
     }
 
     private SecretKey key(boolean create) throws Exception {
@@ -57,7 +106,7 @@ final class BioVault {
                 .setKeySize(256)
                 .setUserAuthenticationRequired(true)
                 .setInvalidatedByBiometricEnrollment(true);
-        if (Build.VERSION.SDK_INT >= 30) b.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG);
+        if (Build.VERSION.SDK_INT >= 30) b.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG | KeyProperties.AUTH_DEVICE_CREDENTIAL);
         if (strongBox && Build.VERSION.SDK_INT >= 28) b.setIsStrongBoxBacked(true);
         KeyGenerator kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
         kg.init(b.build());
@@ -81,7 +130,7 @@ final class BioVault {
     /** Cifra a senha do cofre: pede a digital, devolve {ct, iv}. */
     void encrypt(String plain, Done cb) {
         act.runOnUiThread(() -> {
-            if (!available()) { cb.done(err("Este celular não tem biometria forte cadastrada.")); return; }
+            if (!available()) { cb.done(err("Este celular não tem digital, rosto forte ou bloqueio de tela cadastrado.")); return; }
             Cipher c;
             try {
                 forget(); // cada ativação usa uma chave nova
@@ -125,11 +174,15 @@ final class BioVault {
 
     private void prompt(String title, Cipher cipher, Step step, Done cb) {
         if (Build.VERSION.SDK_INT < 29) { cb.done(err("Biometria precisa de Android 10 ou mais novo.")); return; }
-        BiometricPrompt.Builder pb = new BiometricPrompt.Builder(act)
-                .setTitle(title)
-                .setSubtitle("Use a digital ou o rosto")
-                .setNegativeButton("Usar a senha", act.getMainExecutor(), (d, w) -> cb.done(err("Cancelado. Use a senha.")));
-        if (Build.VERSION.SDK_INT >= 30) pb.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+        BiometricPrompt.Builder pb = new BiometricPrompt.Builder(act).setTitle(title);
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Com o bloqueio de tela permitido, o Android mostra o próprio botão "Usar PIN/padrão"
+            pb.setSubtitle("Use a digital, o rosto ou o bloqueio de tela do celular");
+            pb.setAllowedAuthenticators(authenticators());
+        } else {
+            pb.setSubtitle("Use a digital ou o rosto")
+              .setNegativeButton("Usar a senha", act.getMainExecutor(), (d, w) -> cb.done(err("Cancelado. Use a senha.")));
+        }
         pb.setConfirmationRequired(false);
         BiometricPrompt bp = pb.build();
         bp.authenticate(new BiometricPrompt.CryptoObject(cipher), new CancellationSignal(), act.getMainExecutor(),

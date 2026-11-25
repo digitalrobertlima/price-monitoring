@@ -65,6 +65,8 @@ final class Bridge {
 
     @JavascriptInterface public boolean bioAvailable() { return bio().available(); }
 
+    @JavascriptInterface public String bioStatus() { return bio().status().toString(); }
+
     @JavascriptInterface public void bioEncrypt(int id, String plain) { bio().encrypt(plain, r -> deliver(id, r)); }
 
     @JavascriptInterface public void bioDecrypt(int id, String ct, String iv) { bio().decrypt(ct, iv, r -> deliver(id, r)); }

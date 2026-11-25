@@ -190,16 +190,19 @@
     const fetchJson = (url) => fetch(url, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
     // Dólar em reais: tenta três fontes independentes, na ordem.
+    // Pelo Tor (app Android) a AwesomeAPI recusa: lá começa pela open.er-api.
     async function fetchUsdBrl() {
-        const a = await fetchJson('https://economia.awesomeapi.com.br/last/USD-BRL');
-        let v = parseFloat(a?.USDBRL?.bid);
-        if (v > 2 && v < 20) return v;
-        const b = await fetchJson('https://open.er-api.com/v6/latest/USD');
-        v = parseFloat(b?.rates?.BRL);
-        if (v > 2 && v < 20) return v;
-        const c = await fetchJson('https://api.frankfurter.app/latest?from=USD&to=BRL');
-        v = parseFloat(c?.rates?.BRL);
-        return v > 2 && v < 20 ? v : null;
+        const fontes = [
+            ['https://economia.awesomeapi.com.br/last/USD-BRL', (j) => j?.USDBRL?.bid],
+            ['https://open.er-api.com/v6/latest/USD', (j) => j?.rates?.BRL],
+            ['https://api.frankfurter.dev/v1/latest?base=USD&symbols=BRL', (j) => j?.rates?.BRL]
+        ];
+        if (window.RDESK_NATIVE) fontes.push(fontes.shift());
+        for (const [url, pick] of fontes) {
+            const v = parseFloat(pick(await fetchJson(url)));
+            if (v > 2 && v < 20) return v;
+        }
+        return null;
     }
 
     let pricesInFlight = null;
@@ -481,6 +484,17 @@
     // e só sai dele depois da digital/rosto. No aparelho fica apenas a senha cifrada.
     // No app Android a chave fica no chip seguro do celular (Keystore) e só abre com a digital/rosto.
     const nativeBio = () => (window.RdeskNativeBio && window.RdeskNativeBio.available() ? window.RdeskNativeBio : null);
+    // Explica, em português, por que o celular não oferece a biometria ao app
+    function nativeBioWhy() {
+        const st = window.RdeskNativeBio?.status?.() || {};
+        if (st.motivo === 'android-antigo') return 'A biometria no app precisa de Android 10 ou mais novo. Use a senha do cofre.';
+        if (st.fraca === 'ok' && st.forte !== 'ok' && st.bloqueio !== 'ok') return 'Seu celular só tem desbloqueio por rosto do tipo "fraco" (câmera comum), que o Android não deixa proteger chaves. Cadastre uma digital ou um PIN/padrão de bloqueio de tela nas configurações do Android e tente de novo.';
+        if (st.motivo === 'nada-cadastrado') return 'O Android diz que não há digital nem bloqueio de tela cadastrado. Cadastre um PIN, padrão ou digital em Configurações > Segurança e tente de novo.';
+        if (st.motivo === 'sensor-ocupado') return 'O sensor de digital está indisponível agora. Tente de novo em instantes.';
+        if (st.motivo === 'atualizacao') return 'O Android pede uma atualização de segurança antes de usar a biometria. Atualize o sistema e tente de novo.';
+        return `O Android não liberou a biometria para o app (${st.motivo || 'motivo desconhecido'}). Use a senha do cofre.`;
+    }
+
     function isBiometryRegistered() {
         try {
             const parsed = JSON.parse(localStorage.getItem(BIO_STORAGE_KEY) || 'null');
@@ -522,7 +536,7 @@
     async function registerDeviceBiometry(password) {
         if (window.RDESK_NATIVE) {
             const nb = nativeBio();
-            if (!nb) throw new Error('Este celular não tem digital ou rosto cadastrado. Cadastre nas configurações do Android e tente de novo.');
+            if (!nb) throw new Error(nativeBioWhy());
             if (!password) throw new Error('Desbloqueie o cofre com sua senha primeiro para ativar a biometria.');
             const r = await nb.encrypt(password);
             localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify({ version: 'android', ctB64: r.ct, ivB64: r.iv }));
@@ -1231,10 +1245,37 @@
         return new ethers.providers.StaticJsonRpcProvider(rpcUrl, { chainId: Number(chainId), name: NETWORK_NAMES[chainId] || 'unknown' });
     }
 
-    function getReadProvider(chainId = 137) {
+    // Provedor que troca sozinho de servidor quando um pedido falha por rede (fora do ar, limite de
+    // pedidos, bloqueio do Tor). Erros da própria rede (transação revertida etc.) não trocam.
+    const isNetErr = (e) => {
+        const status = Number(e?.status || e?.error?.status || 0);
+        if (status === 429 || status >= 500 || status === 403) return true;
+        return /missing response|bad response|timeout|failed to fetch|network|could not detect|SERVER_ERROR|TIMEOUT|abort|rate limit|too many requests|usage limit/i.test(String(e?.code || '') + ' ' + String(e?.message || e?.reason || ''));
+    };
+    function buildRotatingProvider(chainId, startIdx = 0) {
         const id = Number(chainId);
-        const list = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
-        return buildProvider(CHAIN_RPC_LISTS[id] ? id : 137, list[preferredRpcIndex[id] || 0]);
+        const urls = CHAIN_RPC_LISTS[id] || POLYGON_RPCS;
+        const inner = urls.map((u) => buildProvider(id, u));
+        const p = buildProvider(id, urls[startIdx % urls.length]);
+        let cur = startIdx % urls.length;
+        p.send = async function (method, params) {
+            let last;
+            for (let n = 0; n < inner.length; n++) {
+                const idx = (cur + n) % inner.length;
+                try {
+                    const r = await withTimeout(inner[idx].send(method, params), window.RDESK_NATIVE ? 30000 : 12000);
+                    if (idx !== cur) { cur = idx; preferredRpcIndex[id] = idx; }
+                    return r;
+                } catch (e) { last = e; if (!isNetErr(e)) throw e; }
+            }
+            throw last;
+        };
+        return p;
+    }
+
+    function getReadProvider(chainId = 137) {
+        const id = CHAIN_RPC_LISTS[Number(chainId)] ? Number(chainId) : 137;
+        return buildRotatingProvider(id, preferredRpcIndex[id] || 0);
     }
 
     function withTimeout(promise, ms) {
@@ -1294,9 +1335,9 @@
             const idx = (start + i) % list.length;
             const provider = buildProvider(id, list[idx]);
             try {
-                await withTimeout(provider.getBlockNumber(), 4500);
+                await withTimeout(provider.getBlockNumber(), window.RDESK_NATIVE ? 20000 : 4500);
                 preferredRpcIndex[id] = idx;
-                return provider;
+                return buildRotatingProvider(id, idx);
             } catch (e) {}
         }
         throw new Error('Nenhum servidor da rede respondeu. Verifique sua conexão e tente de novo.');
@@ -2954,21 +2995,27 @@
             }
         }
 
-        const usdBrl = getNormalizedPricesObject().usdBrl;
+        const key = acc ? acc.address.toLowerCase() : '';
+        const snap = state.balanceSnap?.[key];
+        // Antes da cotação ao vivo chegar, usa o dólar do momento em que o saldo foi salvo
+        const usdBrl = !state.prices.usdBrlLive && snap?.usdBrl > 0 ? snap.usdBrl : getNormalizedPricesObject().usdBrl;
         const arr = (list || []).map((b) => {
+            const saved = Boolean(b.saved);
             if (b.chainId === 'dash') {
-                const u = b.amount * unitUsdFor('DASH');
-                return { chainId: 'dash', symbol: 'DASH', amount: b.amount, pending: b.pending || 0, usdValue: u, brlValue: u * usdBrl, address: null, name: 'Dash', hasPrice: unitUsdFor('DASH') > 0 };
+                const unit = unitWithSnap(key, b, unitUsdFor('DASH'));
+                const u = b.amount * unit;
+                return { chainId: 'dash', symbol: 'DASH', amount: b.amount, pending: b.pending || 0, usdValue: u, brlValue: u * usdBrl, address: null, name: 'Dash', hasPrice: unit > 0, saved };
             }
             if (b.chainId === 'btc') {
-                const usdBtc = b.amount * unitUsdFor('BTC');
-                return { chainId: 'btc', symbol: 'BTC', amount: b.amount, pending: b.pending || 0, usdValue: usdBtc, brlValue: usdBtc * usdBrl, address: null, hasPrice: unitUsdFor('BTC') > 0 };
+                const unit = unitWithSnap(key, b, unitUsdFor('BTC'));
+                const usdBtc = b.amount * unit;
+                return { chainId: 'btc', symbol: 'BTC', amount: b.amount, pending: b.pending || 0, usdValue: usdBtc, brlValue: usdBtc * usdBrl, address: null, hasPrice: unit > 0, saved };
             }
             const meta = (CHAIN_TOKENS[b.chainId] || []).find((t) => t.symbol === b.symbol);
             if (!meta) return null; // moeda removida da lista
-            const unit = unitUsdFor(meta.priceKey, b.chainId, meta.address);
+            const unit = unitWithSnap(key, b, unitUsdFor(meta.priceKey, b.chainId, meta.address));
             const usdValue = b.amount * unit;
-            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl, address: meta.address || null, isCustom: Boolean(meta.isCustom), name: meta.name || b.symbol, hasPrice: unit > 0 };
+            return { chainId: b.chainId, symbol: b.symbol, amount: b.amount, usdValue, brlValue: usdValue * usdBrl, address: meta.address || null, isCustom: Boolean(meta.isCustom), name: meta.name || b.symbol, hasPrice: unit > 0, saved };
         });
 
         // Mantém as propriedades antigas (pol, wpol, usdt0, totalUsd...) por compatibilidade
@@ -2983,80 +3030,243 @@
         chainKick = refreshChainBalancesForActive().then(() => notifyAccountChanged(true)).catch(() => {}).finally(() => { chainKick = null; });
         return chainKick;
     }
+    // ---------------------------------------------------------------- saldo salvo + progresso
+    // Ao abrir, mostra o último saldo lido (marcado como "salvo") enquanto a rede atualiza.
+    // Fica só neste aparelho; no modo anônimo nada é guardado. "Apagar tudo" remove (prefixo rdesk).
+    const SNAP_KEY = 'rdesk_saldos_salvos_v1';
+    state.balanceSnap = {}; // { [addrLower]: { at, units: { 'chain:SYM': usd }, usdBrl } }
+    function readSnaps() { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || '{}') || {}; } catch (e) { return {}; } }
+    function loadBalanceSnapshots() {
+        if (window.RdeskAnon?.isOn()) return;
+        const all = readSnaps();
+        Object.entries(all).forEach(([k, v]) => {
+            if (!v || !Array.isArray(v.list)) return;
+            if (!state.chainBalances[k]) state.chainBalances[k] = v.list.map((b) => ({ ...b, saved: true }));
+            state.balanceSnap[k] = { at: v.at, units: v.units || {}, usdBrl: v.usdBrl };
+        });
+    }
+    function saveBalanceSnapshot(key, list) {
+        if (window.RdeskAnon?.isOn()) { try { localStorage.removeItem(SNAP_KEY); } catch (e) {} return; }
+        const units = {};
+        const usdBrl = state.prices.usdBrlLive ? getNormalizedPricesObject().usdBrl : state.balanceSnap[key]?.usdBrl;
+        list.forEach((b) => {
+            const k = `${b.chainId}:${b.symbol}`;
+            const u = liveUnitFor(b);
+            units[k] = u > 0 ? u : (state.balanceSnap[key]?.units?.[k] || 0);
+        });
+        const at = Date.now();
+        state.balanceSnap[key] = { at, units, usdBrl };
+        try {
+            const all = readSnaps();
+            all[key] = { at, usdBrl, units, list: list.map(({ chainId, symbol, amount, pending }) => ({ chainId, symbol, amount, pending: pending || 0 })) };
+            // só as carteiras que ainda existem
+            const keep = new Set(state.accounts.map((a) => a.address.toLowerCase()));
+            Object.keys(all).forEach((k) => { if (!keep.has(k)) delete all[k]; });
+            localStorage.setItem(SNAP_KEY, JSON.stringify(all));
+        } catch (e) {}
+    }
+    function liveUnitFor(b) {
+        if (b.chainId === 'btc') return unitUsdFor('BTC');
+        if (b.chainId === 'dash') return unitUsdFor('DASH');
+        const meta = (CHAIN_TOKENS[b.chainId] || []).find((t) => t.symbol === b.symbol);
+        return meta ? unitUsdFor(meta.priceKey, b.chainId, meta.address) : 0;
+    }
+    // Preço da moeda: ao vivo; se ainda não chegou, o do momento em que o saldo foi salvo
+    function unitWithSnap(key, b, live) {
+        if (live > 0) return live;
+        return Number(state.balanceSnap[key]?.units?.[`${b.chainId}:${b.symbol}`]) || 0;
+    }
+
+    // Progresso da atualização (barra embaixo do saldo): uma etapa por rede
+    state.sync = null; // { addr, startedAt, steps: [{ id, label, status: 'wait'|'ok'|'fail', server, ms }], done }
+    function syncEmit() { try { window.dispatchEvent(new CustomEvent('rdesk:sync', { detail: state.sync })); } catch (e) {} renderSyncBar(); }
+    function syncStep(id, patch) {
+        const st = state.sync?.steps.find((x) => x.id === id);
+        if (st) { Object.assign(st, patch); syncEmit(); }
+    }
+    const fmtHour = (t) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    function renderSyncBar() {
+        const card = document.getElementById('balance-card');
+        if (!card) return;
+        let el = document.getElementById('sync-bar');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'sync-bar'; el.className = 'sync-bar'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+            const meta = card.querySelector('.balance-meta');
+            card.insertBefore(el, meta || null);
+        }
+        const acc = getActiveAccount();
+        const key = acc?.address.toLowerCase();
+        const s = state.sync && acc && state.sync.addr === key ? state.sync : null;
+        const snap = key ? state.balanceSnap[key] : null;
+        const anySaved = key ? (state.chainBalances[key] || []).some((b) => b.saved) : false;
+        if (!s && !anySaved) { el.hidden = true; return; }
+        el.hidden = false;
+        const steps = s ? s.steps : [];
+        const ok = steps.filter((x) => x.status === 'ok').length, fail = steps.filter((x) => x.status === 'fail').length;
+        const total = steps.length || 1;
+        const pct = s ? Math.round(((ok + fail) / total) * 100) : 100;
+        const running = s && !s.done;
+        let head;
+        if (running) head = anySaved && snap ? `💾 Mostrando o saldo salvo às ${fmtHour(snap.at)} · atualizando pela rede (${ok + fail}/${total})` : `Atualizando saldos pela rede (${ok + fail}/${total})`;
+        else if (fail || anySaved) head = `⚠️ ${fail} ${fail === 1 ? 'rede não respondeu' : 'redes não responderam'}: ${fail === 1 ? 'ela mostra' : 'elas mostram'} o saldo salvo${snap ? ` às ${fmtHour(snap.at)}` : ''}. Tento de novo em instantes.`;
+        else head = `✓ Saldos atualizados às ${fmtHour(s.finishedAt || Date.now())}`;
+        const ico = { wait: '<span class="sync-spin" aria-hidden="true"></span>', ok: '✓', fail: '✗' };
+        el.className = `sync-bar${running ? ' running' : ''}${!running && (fail || anySaved) ? ' warn' : ''}${!running && !fail && !anySaved ? ' done' : ''}`;
+        el.innerHTML = `<div class="sync-head">${esc(head)}</div>
+            <div class="sync-track"><div class="sync-fill" style="width:${pct}%"></div></div>
+            <div class="sync-steps">${steps.map((x) => `<span class="sync-step ${x.status}" title="${esc(x.status === 'ok' ? `${x.label}: lido${x.server ? ` em ${x.server}` : ''}${x.ms ? ` (${(x.ms / 1000).toFixed(1)} s)` : ''}` : x.status === 'fail' ? `${x.label}: ${x.why || 'sem resposta'}; mostrando o saldo salvo` : `${x.label}: buscando${x.server ? ` em ${x.server}` : ''}…`)}">${ico[x.status] || ''} ${esc(x.label)}</span>`).join('')}</div>`;
+        if (!running && !fail && !anySaved) { clearTimeout(renderSyncBar.t); renderSyncBar.t = setTimeout(() => { if (state.sync?.done && !state.sync.steps.some((x) => x.status === 'fail')) el.hidden = true; }, 6000); }
+    }
+
+    // Lê todas as moedas de uma rede num pedido só (lote JSON-RPC). Se o servidor falhar ou recusar,
+    // tenta o próximo da lista. No app Android (Tor) os prazos são maiores.
+    const NATIVE = Boolean(window.RDESK_NATIVE);
+    const readRpcIndex = {}; // servidor que respondeu na última leitura de saldos (separado do usado para enviar)
+    async function rpcPost(url, body, ms) {
+        const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const t = setTimeout(() => ctl?.abort(), ms);
+        try {
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store', signal: ctl?.signal });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return JSON.parse(await r.text());
+        } finally { clearTimeout(t); }
+    }
+    const hexAmount = (hex, dec) => { if (!/^0x[0-9a-f]*$/i.test(String(hex))) throw new Error('resposta inválida'); return parseFloat(ethers.utils.formatUnits(ethers.BigNumber.from(hex === '0x' ? '0x0' : hex), dec)) || 0; };
+    async function readChainBalances(chainId, addr, onTry) {
+        const list = CHAIN_RPC_LISTS[chainId] || [];
+        const tokens = CHAIN_TOKENS[chainId] || [];
+        const data = `0x70a08231${addr.replace(/^0x/, '').toLowerCase().padStart(64, '0')}`;
+        const calls = tokens.map((tk, i) => ({ jsonrpc: '2.0', id: i + 1, method: tk.isNative ? 'eth_getBalance' : 'eth_call', params: tk.isNative ? [addr, 'latest'] : [{ to: tk.address, data }, 'latest'] }));
+        const got = {};
+        const start = readRpcIndex[chainId] || 0;
+        let why = '';
+        for (let n = 0; n < list.length && Object.keys(got).length < tokens.length; n++) {
+            const idx = (start + n) % list.length, url = list[idx];
+            const host = (() => { try { return new URL(url).host; } catch (e) { return url; } })();
+            onTry?.(host);
+            const pending = calls.filter((c) => got[c.id] === undefined);
+            const t0 = Date.now();
+            try {
+                let res;
+                try {
+                    res = await rpcPost(url, pending, NATIVE ? 30000 : 9000);
+                    if (!Array.isArray(res)) throw new Error('sem lote');
+                } catch (e) {
+                    if (/abort/i.test(String(e?.name || e?.message))) throw e;
+                    // servidor sem pedido em lote: um por vez (em paralelo)
+                    res = await Promise.all(pending.map((c) => rpcPost(url, c, NATIVE ? 30000 : 9000).catch(() => null)));
+                }
+                res.forEach((r) => {
+                    if (!r || r.error || r.result === undefined) return;
+                    const tk = tokens[Number(r.id) - 1];
+                    if (!tk) return;
+                    try { got[r.id] = hexAmount(r.result, tk.decimals); } catch (e) {}
+                });
+                if (Object.keys(got).length) { readRpcIndex[chainId] = idx; onTry?.(host, Date.now() - t0, true); }
+                else why = 'o servidor respondeu sem saldos';
+            } catch (e) { why = /abort/i.test(String(e?.name || e?.message)) ? 'demorou demais' : String(e?.message || e).slice(0, 60); }
+        }
+        return { results: tokens.map((tk, i) => (got[i + 1] !== undefined ? { chainId, symbol: tk.symbol, amount: got[i + 1], ok: true } : { chainId, symbol: tk.symbol, amount: 0, ok: false })), why };
+    }
+
     async function refreshChainBalancesForActive() {
         const acc = getActiveAccount();
         if (!acc || typeof ethers === 'undefined') return;
 
         const addr = acc.address;
-        const jobs = [];
+        const key = addr.toLowerCase();
+        const jobs = []; // cada job devolve uma lista de resultados
+        const steps = [];
+        const chainName = (id) => REG.getChain(id)?.name || String(id);
 
         Object.keys(CHAIN_TOKENS).forEach((cid) => {
             const chainId = Number(cid);
             if (window.RdeskAnon && !window.RdeskAnon.chainAllowed(chainId)) return; // modo anônimo: só as redes escolhidas
-            const provider = getReadProvider(chainId);
-            CHAIN_TOKENS[chainId].forEach((tk) => {
-                jobs.push((async () => {
-                    try {
-                        let raw;
-                        if (tk.isNative) {
-                            raw = await provider.getBalance(addr);
-                        } else {
-                            const c = new ethers.Contract(tk.address, ERC20_ABI, provider);
-                            raw = await c.balanceOf(addr);
-                        }
-                        return { chainId, symbol: tk.symbol, amount: parseFloat(ethers.utils.formatUnits(raw, tk.decimals)) || 0, ok: true };
-                    } catch (e) {
-                        return { chainId, symbol: tk.symbol, amount: 0, ok: false };
-                    }
-                })());
-            });
+            if (!(CHAIN_TOKENS[chainId] || []).length) return;
+            const id = `evm:${chainId}`;
+            steps.push({ id, label: chainName(chainId), status: 'wait' });
+            jobs.push({ id, run: async () => {
+                const t0 = Date.now();
+                const r = await readChainBalances(chainId, addr, (host, ms, ok) => syncStep(id, ok ? { server: host } : { server: host }));
+                const allOk = r.results.every((x) => x.ok);
+                syncStep(id, allOk ? { status: 'ok', ms: Date.now() - t0 } : { status: 'fail', why: r.results.some((x) => x.ok) ? 'algumas moedas não responderam' : (r.why || 'nenhum servidor respondeu') });
+                return r.results;
+            } });
         });
 
         // Bitcoin nativo (endereço próprio, derivado da mesma frase)
         if (acc.btcAddress && window.RdeskBitcoin && (!window.RdeskAnon || window.RdeskAnon.chainAllowed('btc'))) {
-            jobs.push((async () => {
+            steps.push({ id: 'btc', label: 'Bitcoin', status: 'wait' });
+            jobs.push({ id: 'btc', run: async () => {
+                const t0 = Date.now();
                 // Lê todos os endereços do cofre (endereço novo a cada recebimento) e soma
                 const list = btcScanList(acc);
                 const got = await Promise.all(list.map((a) => window.RdeskBitcoin.fetchBalance(a).then((b) => [a, b]).catch(() => [a, null])));
                 const ok = got.filter(([, b]) => b);
-                if (!ok.length) return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false };
-                if (ok.length < got.length) return { chainId: 'btc', symbol: 'BTC', amount: 0, ok: false }; // parcial: mantém o último total
+                const fail = (why) => { syncStep('btc', { status: 'fail', why }); return [{ chainId: 'btc', symbol: 'BTC', amount: 0, ok: false }]; };
+                if (!ok.length) return fail('os servidores de Bitcoin não responderam');
+                if (ok.length < got.length) return fail(`${got.length - ok.length} de ${got.length} endereços não responderam`); // parcial: mantém o último total
                 const per = {};
                 ok.forEach(([a, b]) => { per[a] = b; });
                 Object.assign(state.btcPerAddr, per);
                 if (btcMarkUsage(acc, per)) persistVaultToStorage().catch(() => {});
                 const total = ok.reduce((s, [, b]) => s + b.totalSats, 0), pend = ok.reduce((s, [, b]) => s + b.pendingSats, 0);
-                return { chainId: 'btc', symbol: 'BTC', amount: total / 1e8, pending: pend / 1e8, ok: true };
-            })());
+                syncStep('btc', { status: 'ok', ms: Date.now() - t0, server: window.RdeskNativeBtc?.covers?.(list[0]) ? 'rede Bitcoin (sem servidor)' : '' });
+                return [{ chainId: 'btc', symbol: 'BTC', amount: total / 1e8, pending: pend / 1e8, ok: true }];
+            } });
         }
 
         // Dash (endereço próprio, mesma chave)
         if (acc.dashAddress && window.RdeskDash && (!window.RdeskAnon || window.RdeskAnon.chainAllowed('dash'))) {
-            jobs.push(window.RdeskDash.fetchBalance(acc.dashAddress)
-                .then((b) => ({ chainId: 'dash', symbol: 'DASH', amount: b.totalDuffs / 1e8, pending: b.pendingDuffs / 1e8, ok: true }))
-                .catch(() => ({ chainId: 'dash', symbol: 'DASH', amount: 0, ok: false })));
+            steps.push({ id: 'dash', label: 'Dash', status: 'wait' });
+            jobs.push({ id: 'dash', run: async () => {
+                const t0 = Date.now();
+                try {
+                    const b = await window.RdeskDash.fetchBalance(acc.dashAddress);
+                    syncStep('dash', { status: 'ok', ms: Date.now() - t0 });
+                    return [{ chainId: 'dash', symbol: 'DASH', amount: b.totalDuffs / 1e8, pending: b.pendingDuffs / 1e8, ok: true }];
+                } catch (e) {
+                    syncStep('dash', { status: 'fail', why: 'os servidores da Dash não responderam' });
+                    return [{ chainId: 'dash', symbol: 'DASH', amount: 0, ok: false }];
+                }
+            } });
         }
 
-        // Cada saldo chega no seu tempo: um servidor lento não segura os outros (antes, um RPC travado
-        // atrasava até o Bitcoin). Se uma consulta falhar ou demorar demais, mantém o último saldo conhecido.
-        const key = addr.toLowerCase();
+        state.sync = { addr: key, startedAt: Date.now(), steps, done: false };
+        syncEmit();
+
+        // Cada saldo chega no seu tempo: um servidor lento não segura os outros.
+        // Se uma consulta falhar ou demorar demais, mantém o último saldo conhecido (marcado como salvo).
         const previous = state.chainBalances[key] || [];
         const cur = previous.map((p) => ({ ...p }));
         const put = (r) => {
             if (!r || r.chainId === undefined) return;
             const i = cur.findIndex((p) => p.chainId === r.chainId && p.symbol === r.symbol);
             const old = i >= 0 ? cur[i] : null;
-            const entry = r.ok ? { chainId: r.chainId, symbol: r.symbol, amount: r.amount, pending: r.pending || 0 } : { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0 };
+            const entry = r.ok ? { chainId: r.chainId, symbol: r.symbol, amount: r.amount, pending: r.pending || 0 }
+                : { chainId: r.chainId, symbol: r.symbol, amount: old ? old.amount : 0, pending: old?.pending || 0, saved: Boolean(old) };
             if (i >= 0) cur[i] = entry; else cur.push(entry);
         };
-        const LIMIT = 12000;
-        const capped = jobs.map((j) => Promise.race([j, new Promise((res) => setTimeout(() => res(null), LIMIT))]).then(put).catch(() => {}));
-        // Mostra o que já chegou depois de alguns segundos, sem esperar o mais lento
-        const early = setTimeout(() => { if (getActiveAccount()?.address === addr) { state.chainBalances[key] = cur.map((p) => ({ ...p })); notifyAccountChanged(true); } }, 2500);
+        const show = () => { if (getActiveAccount()?.address === addr) { state.chainBalances[key] = cur.map((p) => ({ ...p })); notifyAccountChanged(true); } };
+        const LIMIT = NATIVE ? 90000 : 25000;
+        const capped = jobs.map((j) => Promise.race([j.run(), new Promise((res) => setTimeout(() => res(null), LIMIT))])
+            .then((rs) => {
+                if (!rs) { syncStep(j.id, { status: 'fail', why: 'demorou demais' }); return; }
+                rs.forEach(put);
+                show(); // mostra cada rede assim que chega
+            }).catch(() => syncStep(j.id, { status: 'fail' })));
         await Promise.all(capped);
-        clearTimeout(early);
         state.chainBalances[key] = cur;
+        state.sync.done = true; state.sync.finishedAt = Date.now();
+        // Salva o que foi lido agora (o que falhou continua com o valor salvo anterior)
+        if (cur.some((b) => !b.saved)) saveBalanceSnapshot(key, cur);
+        syncEmit();
     }
+
+    loadBalanceSnapshots();
+    // Ligou o modo anônimo: apaga na hora os saldos salvos
+    window.addEventListener('rdesk:anon', (e) => { if (e.detail?.on) { try { localStorage.removeItem(SNAP_KEY); } catch (er) {} } });
 
     async function refreshBalancesCompat() {
         await refreshAllAccountsBalances();
@@ -3111,6 +3321,7 @@
 
         set('hero-total-brl', formatBRL(totalUsd * prices.usdBrl));
         window.RdeskHistory?.renderBalance?.(); // valor na moeda de referência e variação em 24 h
+        renderSyncBar();
         const earningEl = document.getElementById('hero-breakdown');
         if (earningEl) {
             earningEl.hidden = !(lpUsd > 0);
@@ -3175,7 +3386,7 @@
                             ${REG.tokenOnChainBadge(b.symbol, b.chainId, 38)}
                             <span class="asset-names">
                                 <strong>${esc(friendlyTokenName(b))}</strong>
-                                <span class="asset-meta money">${esc(formatAmount(b.amount, b.symbol))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}</span>
+                                <span class="asset-meta money">${esc(formatAmount(b.amount, b.symbol))} ${esc(b.symbol)} · ${esc(REG.getChain(b.chainId)?.name || '')}${b.saved ? ' <span class="saved-tag" title="Valor salvo da última leitura; a rede ainda está atualizando">💾 salvo</span>' : ''}</span>
                                 ${window.RdeskAssetInfo ? window.RdeskAssetInfo.tag(b) : ''}
                             </span>
                         </span>
@@ -3287,6 +3498,7 @@
         refreshPrices: refreshLiveMarketPrices,
         getPriceConfidence: (chainId, address) => state.prices.confidence[`${chainId}:${String(address || '').toLowerCase()}`],
         getBalances: getBalancesArray,
+        getSyncState: () => (state.sync ? JSON.parse(JSON.stringify(state.sync)) : null),
         getBalance: getSingleTokenBalance,
         getTokenBalance: getSingleTokenBalance,
         refreshBalances: refreshBalancesCompat,

@@ -9,7 +9,11 @@
     'use strict';
 
     // No app Android (pelo Tor) o blockstream responde melhor: vem primeiro
-    const API_HOSTS = global.RDESK_NATIVE ? ['https://blockstream.info/api', 'https://mempool.space/api'] : ['https://mempool.space/api', 'https://blockstream.info/api'];
+    // Pelo Tor (app Android), mempool.space não responde e o blockstream limita pedidos; estes
+    // espelhos do mempool responderam em todos os circuitos (workflow "Saldos pelo Tor").
+    const API_HOSTS = global.RDESK_NATIVE
+        ? ['https://mempool.emzy.de/api', 'https://mempool.bitcoin-austria.at/api', 'https://blockstream.info/api', 'https://mempool.space/api']
+        : ['https://mempool.space/api', 'https://blockstream.info/api', 'https://mempool.emzy.de/api'];
     const DUST_SATS = 294;          // abaixo disso um troco P2WPKH não é aceito pela rede
     const MAX_FEE_RATE = 500;       // sat/vB — trava contra taxa absurda
     const SEQUENCE = 0xfffffffd;    // permite acelerar depois (RBF)

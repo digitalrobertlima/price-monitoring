@@ -66,6 +66,7 @@ try {
     check('ficha da moeda: data do contrato, carteiras e aviso de que a idade da rede não é a da moeda', /2 de outubro de 2020/.test(facts) && /180\.000/.test(facts) && /não é a idade desta moeda/.test(facts), facts.replace(/\s+/g, ' ').slice(0, 300));
 
     // ------------------------------------------------------------ livro-caixa: BNB entra no extrato e toca som de dinheiro
+    await waitFn(page, () => window.RdeskWallet.getSyncState?.()?.done, null, { timeout: 60000 }).catch(() => {}); // todas as redes já responderam (ou desistiram)
     const led = await page.evaluate(async () => {
         const W = window.RdeskWallet;
         const real = W.getBalances.bind(W);
