@@ -108,6 +108,7 @@
     const prazo = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('o servidor demorou demais')), PRAZO))]);
     async function withRpcs(chainId, fn) {
         let last;
+        try { await Promise.race([REG().rankRpcs?.(chainId), new Promise((r) => setTimeout(r, global.RDESK_NATIVE ? 26000 : 6500))]); } catch (e) {}
         try { return await prazo(fn(provider(chainId))); } catch (e) { last = e; }
         for (const url of (REG().getChain(chainId)?.rpcs || [])) {
             await new Promise((r) => setTimeout(r, 250));
@@ -160,7 +161,9 @@
                 });
                 await inChunks(ids, (idBn) => (async () => {
                     const id = idBn.toString();
-                    const p = await nfpm.positions(id);
+                    // uma posição com erro de servidor tenta de novo pela lista; se ainda falhar, as outras seguem
+                    const p = await nfpm.positions(id).catch(() => withRpcs(chainId, (pr) => new (E().Contract)(UNI[chainId].nfpm, ABI.nfpm, pr).positions(id))).catch(() => null);
+                    if (!p) return;
                     const liquidity = Number(p.liquidity.toString());
                     const [m0, m1] = await Promise.all([tokenMeta(chainId, p.token0), tokenMeta(chainId, p.token1)]);
                     const pool = await poolInfo(chainId, p.token0, p.token1, Number(p.fee)).catch(() => null);

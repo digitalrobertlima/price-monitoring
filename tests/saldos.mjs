@@ -19,7 +19,7 @@ try {
     const a = await openApp(ctx, url, chain, { rpcDown: /polygon-bor-rpc\.publicnode\.com/ });
     const page = a.page;
     const balReqs = [];
-    page.on('request', (r) => { const d = r.postData() || ''; if (/polygon\.drpc\.org/.test(r.url()) && /eth_getBalance/.test(d) && /0x70a08231/.test(d)) balReqs.push(d); });
+    page.on('request', (r) => { const d = r.postData() || ''; if (/polygon|matic|\/\/poly\./.test(r.url()) && !/publicnode/.test(r.url()) && /eth_getBalance/.test(d) && /0x70a08231/.test(d)) balReqs.push(d); });
     await importWalletViaUi(page);
     await page.evaluate(() => window.RdeskWallet.refreshBalances());
     await waitFn(page, () => {
@@ -28,10 +28,12 @@ try {
     }, null, { timeout: 40000 }).catch(() => {});
     const bals = await page.evaluate(() => window.RdeskWallet.getBalances().filter((x) => x.chainId === 137).map((x) => `${x.symbol}=${x.amount}`).join(' '));
     check('1º servidor da Polygon recusando: o saldo vem do servidor seguinte', /POL=50\b/.test(bals) && /USDC=100\b/.test(bals), bals);
-    check('o servidor de reserva foi usado de fato', a.external.some((u) => /polygon\.drpc\.org/.test(u)), a.external.filter((u) => /polygon|drpc/.test(u)).slice(0, 4).join(' '));
+    check('um servidor de reserva foi usado de fato', a.external.some((u) => /polygon\.drpc\.org|poly\.api\.pocket|matic\.quiknode|1rpc\.io\/matic/.test(u)), a.external.filter((u) => /polygon|drpc/.test(u)).slice(0, 4).join(' '));
     const lote = balReqs.length ? JSON.parse(balReqs[0]) : null;
     check('todas as moedas da rede num pedido só (lote), não um por moeda', Array.isArray(lote) && lote.length === 8, lote ? `${lote.length} moedas no 1º pedido` : 'nenhum');
 
+    const ordem = await page.evaluate(() => window.RdeskRegistry.getChain(137).rpcs.map((u) => new URL(u).host));
+    check('saúde dos servidores: o que recusa vai para o fim da fila da Polygon', ordem.at(-1) === 'polygon-bor-rpc.publicnode.com' && ordem[0] !== 'polygon-bor-rpc.publicnode.com', ordem.join(' > '));
     await waitFn(page, () => document.querySelector('#sync-bar .sync-step') !== null, null, { timeout: 10000 }).catch(() => {});
     const steps = await page.$$eval('#sync-bar .sync-step', (els) => els.map((e) => `${e.className.replace('sync-step ', '')}:${e.textContent.trim()}`));
     check('barra de progresso mostra cada rede (Polygon, Ethereum, Base…)', steps.some((s) => /Polygon/.test(s)) && steps.some((s) => /Ethereum/.test(s)) && steps.length >= 6, steps.join(' | '));

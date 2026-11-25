@@ -365,7 +365,47 @@
         return (brl / (unitUsd * usdBrl)).toFixed(places).replace(/\.?0+$/, '');
     }
 
+    // ---------------------------------------------------------------- saúde dos servidores
+    // Pergunta só "qual o último bloco?" (nenhum endereço) a todos os servidores de uma rede ao
+    // mesmo tempo e reordena a lista: quem respondeu, do mais rápido ao mais lento; quem falhou, no fim.
+    // A lista é a mesma usada pelo app todo (saldos, envio, fundos). Refeito a cada 10 minutos.
+    const ranking = {};
+    function rankRpcs(chainId) {
+        const c = CHAINS.find((x) => x.id === Number(chainId));
+        if (!c || typeof fetch !== 'function') return Promise.resolve(c ? c.rpcs : []);
+        if (global.navigator && global.navigator.onLine === false) return Promise.resolve(c.rpcs); // sem internet: não pergunta nada
+        const r = ranking[c.id];
+        if (r && Date.now() - r.at < 600000) return r.p;
+        const ms = global.RDESK_NATIVE ? 25000 : 6000;
+        const p = Promise.all(c.rpcs.slice().map(async (url) => {
+            const t0 = Date.now();
+            const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const to = setTimeout(() => ctl?.abort(), ms);
+            try {
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}', cache: 'no-store', signal: ctl?.signal });
+                const j = JSON.parse(await res.text());
+                if (!res.ok || !/^0x[0-9a-f]+$/i.test(j.result || '')) throw new Error('resposta ruim');
+                return { url, ok: true, ms: Date.now() - t0, block: parseInt(j.result, 16) };
+            } catch (e) { return { url, ok: false, ms: Infinity }; } finally { clearTimeout(to); }
+        })).then((res) => {
+            // Servidor muito atrás dos outros (bloco velho) também vai para o fim
+            const top = Math.max(0, ...res.filter((x) => x.ok).map((x) => x.block));
+            res.forEach((x) => { if (x.ok && top - x.block > 50) x.ok = false; });
+            const order = res.slice().sort((a, b) => (b.ok - a.ok) || (a.ms - b.ms)).map((x) => x.url);
+            if (res.some((x) => x.ok)) {
+                c.rpcs.splice(0, c.rpcs.length, ...order);
+                try { global.dispatchEvent?.(new CustomEvent('rdesk:rpcs', { detail: { chainId: c.id, saude: res } })); } catch (e) {}
+            }
+            ranking[c.id].saude = res;
+            return c.rpcs;
+        });
+        ranking[c.id] = { at: Date.now(), p };
+        return p;
+    }
+    const rpcHealth = (chainId) => ranking[Number(chainId)]?.saude || null;
+
     global.RdeskRegistry = {
+        rankRpcs, rpcHealth,
         CHAINS, BITCOIN, BUILTIN_TOKENS, TESTE: Boolean(global.RDESK_TESTE), TEST_CHAINS, TEST_TOKENS,
         getChain, getTokens, findToken,
         loadCustomTokens, inspectTokenContract, addCustomToken, removeCustomToken,
