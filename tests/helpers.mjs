@@ -115,12 +115,12 @@ function candles(n, stepSec, base) {
 
 // Descobre a rede pelo endereço do servidor RPC.
 function chainIdFromRpcUrl(u) {
-    if (/polygon|matic/i.test(u)) return 137;
+    if (/polygon|matic|\/\/poly\./i.test(u)) return 137;
     if (/arb/i.test(u)) return 42161;
     if (/base/i.test(u)) return 8453;
     if (/optimism/i.test(u)) return 10;
     if (/celo/i.test(u)) return 42220;
-    if (/ethereum-rpc|eth\.drpc/i.test(u)) return 1;
+    if (/ethereum-rpc|eth\.drpc|mevblocker|eth\.api\.pocket/i.test(u)) return 1;
     return null;
 }
 
@@ -139,7 +139,7 @@ export async function mockNetwork(page, chains, opts = {}) {
         const text = (body, status = 200) => route.fulfill({ status, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body });
 
         // Bitcoin (API estilo Esplora)
-        if (/mempool\.space\/api|blockstream\.info\/api/.test(u)) {
+        if (/mempool\.space\/api|blockstream\.info\/api|mempool\.emzy\.de\/api|mempool\.bitcoin-austria\.at\/api/.test(u)) {
             const btc = opts.btc;
             if (!btc) return route.abort();
             if (/\/v1\/fees\/recommended/.test(u)) return json(btc.fees);
@@ -160,6 +160,9 @@ export async function mockNetwork(page, chains, opts = {}) {
         }
 
         if (req.method() === 'POST') {
+            // Servidor fora do ar / bloqueando (ex.: Cloudflare recusando o Tor)
+            if (opts.rpcDown && opts.rpcDown.test(u)) return text('<html>Just a moment...</html>', 403);
+            if (opts.rpcHang && opts.rpcHang.test(u)) return; // nunca responde
             const chain = map[chainIdFromRpcUrl(u)];
             if (!chain) return route.abort();
             // Simula servidor instável (como a Rabby devolvendo "bad response" ao esperar a confirmação)

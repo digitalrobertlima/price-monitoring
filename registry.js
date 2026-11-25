@@ -12,25 +12,26 @@
     // Ordem = ordem de exibição
     const CHAINS = [
         { id: 137, key: 'polygon', name: 'Polygon', short: 'POL', color: '#8247e5', native: 'POL', explorer: 'https://polygonscan.com', llama: 'polygon', minTipGwei: 30,
-          rpcs: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.drpc.org', 'https://1rpc.io/matic'] },
+          rpcs: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.drpc.org', 'https://poly.api.pocket.network', 'https://rpc-mainnet.matic.quiknode.pro', 'https://1rpc.io/matic'] },
         { id: 1, key: 'ethereum', name: 'Ethereum', short: 'ETH', color: '#627eea', native: 'ETH', explorer: 'https://etherscan.io', llama: 'ethereum',
-          rpcs: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'] },
+          rpcs: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org', 'https://rpc.mevblocker.io', 'https://eth.api.pocket.network'] },
         { id: 8453, key: 'base', name: 'Base', short: 'BASE', color: '#0052ff', native: 'ETH', explorer: 'https://basescan.org', llama: 'base',
-          rpcs: ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'] },
+          rpcs: ['https://mainnet.base.org', 'https://base-rpc.publicnode.com', 'https://base.drpc.org', 'https://base.meowrpc.com'] },
         { id: 42161, key: 'arbitrum', name: 'Arbitrum', short: 'ARB', color: '#28a0f0', native: 'ETH', explorer: 'https://arbiscan.io', llama: 'arbitrum',
-          rpcs: ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com'] },
+          rpcs: ['https://arb1.arbitrum.io/rpc', 'https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.drpc.org'] },
         { id: 10, key: 'optimism', name: 'Optimism', short: 'OP', color: '#ff0420', native: 'ETH', explorer: 'https://optimistic.etherscan.io', llama: 'optimism',
-          rpcs: ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com'] },
+          rpcs: ['https://mainnet.optimism.io', 'https://optimism-rpc.publicnode.com', 'https://optimism.drpc.org', 'https://optimism-public.nodies.app'] },
         { id: 42220, key: 'celo', name: 'Celo', short: 'CELO', color: '#35d07f', native: 'CELO', explorer: 'https://celoscan.io', llama: 'celo',
           rpcs: ['https://forno.celo.org', 'https://celo.drpc.org'] },
         { id: 56, key: 'bnb', name: 'BNB Chain', short: 'BNB', color: '#f0b90b', native: 'BNB', explorer: 'https://bscscan.com', llama: 'bsc',
-          rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-rpc.publicnode.com', 'https://bsc.drpc.org'] },
+          rpcs: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-rpc.publicnode.com', 'https://bsc-dataseed1.binance.org', 'https://bsc.meowrpc.com', 'https://bsc.drpc.org'] },
         { id: 999, key: 'hyperevm', name: 'HyperEVM', short: 'HYPE', color: '#50e3c2', native: 'HYPE', explorer: 'https://hyperevmscan.io', llama: 'hyperliquid',
-          rpcs: ['https://rpc.hyperliquid.xyz/evm', 'https://hyperliquid.drpc.org'] }
+          rpcs: ['https://rpc.hyperliquid.xyz/evm', 'https://hyperliquid.drpc.org', 'https://rpc.hypurrscan.io'] }
     ];
-    // No app Android tudo sai pelo Tor. Alguns servidores recusam conexões vindas do Tor
-    // (testado no emulador): ficam por último, só como reserva.
-    const RECUSAM_TOR = ['ethereum-rpc.publicnode.com', 'bsc-rpc.publicnode.com', '1rpc.io'];
+    // No app Android tudo sai pelo Tor. Alguns servidores recusam boa parte das saídas do Tor
+    // (conferido pelo workflow "Saldos pelo Tor", tools/saldos-pelo-tor.mjs): ficam por último,
+    // só como reserva. publicnode: desafio do Cloudflare em ~2 de 3 circuitos; mainnet.optimism.io: 403.
+    const RECUSAM_TOR = ['publicnode.com', '1rpc.io', 'mainnet.optimism.io'];
     if (global.RDESK_NATIVE) {
         CHAINS.forEach((c) => {
             const bad = (u) => RECUSAM_TOR.some((h) => u.includes(h));

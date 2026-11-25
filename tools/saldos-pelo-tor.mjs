@@ -101,7 +101,7 @@ const cot = [
     ['Binance', 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', (t) => JSON.parse(t).price],
     ['AwesomeAPI', 'https://economia.awesomeapi.com.br/last/USD-BRL', (t) => JSON.parse(t).USDBRL],
     ['open.er-api', 'https://open.er-api.com/v6/latest/USD', (t) => JSON.parse(t).rates],
-    ['Frankfurter', 'https://api.frankfurter.app/latest?from=USD&to=BRL', (t) => JSON.parse(t).rates],
+    ['Frankfurter', 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=BRL', (t) => JSON.parse(t).rates],
     ['BCB PTAX', "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@i,dataFinalCotacao=@f)?@i='11-01-2026'&@f='11-20-2026'&$format=json&$top=1", (t) => JSON.parse(t).value],
     ['Blockscout Polygon', `https://polygon.blockscout.com/api/v2/addresses/${ADDR}`, (t) => JSON.parse(t).hash]
 ];
