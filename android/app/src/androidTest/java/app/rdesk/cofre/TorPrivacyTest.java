@@ -25,7 +25,8 @@ import static org.junit.Assert.fail;
  * - a saída para a internet é mesmo pelo Tor (check.torproject.org);
  * - caminhos diferentes por endereço;
  * - o WebView não consegue sair por fora (XHR, imagem, WebSocket bloqueados);
- * - relatório de quais serviços do app aceitam conexões vindas do Tor.
+ * - relatório de quais serviços do app aceitam conexões vindas do Tor;
+ * - o app BRLS abre de dentro do APK e lê a Polygon pela rede (Tor) da Caixa Forte.
  */
 @RunWith(AndroidJUnit4.class)
 public class TorPrivacyTest {
@@ -108,6 +109,17 @@ public class TorPrivacyTest {
 
             assertEquals("ponte em uso", ponte, tor.getJSONObject("v").optString("ponte"));
             if (comPonte) return; // com ponte basta provar que conecta e sai pelo Tor
+
+            // 6a. App BRLS dentro da carteira: abre de dentro do APK (sem baixar nada) e lê a Polygon pelo Tor da Caixa Forte.
+            //     Carteira de mentira só para abrir a janela (endereço público, sem chave).
+            JSONObject brls = obj(js(sc, "(async()=>{const real=window.RdeskWallet;window.RdeskWallet={address:'0x2F8Fe2689411Bb336301AD4f2DC4077D433F43d1',isLocked:()=>false,isWatchOnly:()=>false,onAccountChange:()=>()=>{},openModal(){}};"
+                    + "try{RdeskApps.abrir('brls');const ifr=document.querySelector('iframe.app-frame');if(!ifr)throw new Error('sem janela');"
+                    + "const fim=Date.now()+240000;while(Date.now()<fim&&RdeskApps.redeOk()<3)await new Promise(r=>setTimeout(r,1000));"
+                    + "return {src:ifr.src,redeOk:RdeskApps.redeOk()};}finally{RdeskApps.fechar();window.RdeskWallet=real;}})()", 300_000));
+            Log.i(TAG, "BRLS dentro da carteira: " + brls);
+            assertTrue("BRLS não abriu: " + brls, brls.optBoolean("ok"));
+            assertTrue("BRLS sem tor=ponte: " + brls, brls.getJSONObject("v").optString("src").contains("tor=ponte"));
+            assertTrue("BRLS não leu a Polygon pelo Tor: " + brls, brls.getJSONObject("v").optInt("redeOk") >= 3);
 
             // 6. relatório: quais serviços do app aceitam o Tor
             String[][] probes = {

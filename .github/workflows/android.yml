@@ -31,6 +31,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Versão fixada da carteira BRLS (app dentro da carteira)
+        run: |
+          REF=$(grep -oE '^[0-9a-f]{40}' android/brls.txt | head -1)
+          [ -n "$REF" ] || { echo "android/brls.txt sem o commit do BRLS"; exit 1; }
+          echo "BRLS_REF=$REF" >> "$GITHUB_ENV"
+          echo "BRLS_SRC=$GITHUB_WORKSPACE/brls-src" >> "$GITHUB_ENV"
+          echo "BRLS no APK: digitalrobertlima/xBRL@$REF"
+
+      - name: Baixar a carteira BRLS (código aberto, versão fixada)
+        uses: actions/checkout@v4
+        with:
+          repository: digitalrobertlima/xBRL
+          ref: ${{ env.BRLS_REF }}
+          path: brls-src
+          persist-credentials: false
+          sparse-checkout: wallet
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -118,7 +135,7 @@ jobs:
           LEAK=""
           for f in /tmp/host.pcap rede.pcap; do
             [ -s "$f" ] || continue
-            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com dns.google sipa.be bluematt.me petertodd.net bitcoinstats.com sprovoost.nl; do
+            for h in coins.llama.fi coingecko.com publicnode.com drpc.org 1rpc.io polygon-rpc.com digitalrobertlima.github.io mainnet.base.org arbitrum.io bnbchain.org forno.celo.org hyperliquid.xyz mempool.space blockstream.info blockscout.com olinda.bcb.gov.br li.quest insight.dash.org torproject.org example.com dns.google sipa.be bluematt.me petertodd.net bitcoinstats.com sprovoost.nl; do
               if strings -n 6 "$f" | grep -qi "$h"; then echo "VAZOU em $f: $h apareceu fora do Tor"; LEAK=1; fi
             done
           done
@@ -187,6 +204,8 @@ jobs:
           - Certificado de assinatura (SHA-256): \`$CERT\`. Toda versão futura terá **o mesmo** certificado.
 
           **Build reproduzível:** o CI compila o app duas vezes, do zero, e confere que os APKs são idênticos byte a byte (fora a assinatura). Qualquer pessoa pode repetir: \`bash android/tools/preparar.sh && RDESK_SEM_ASSINATURA=1 gradle -p android assembleRelease\` e comparar com \`apksigcopier compare\`.
+
+          **App BRLS dentro da carteira:** vai dentro do APK (digitalrobertlima/xBRL, commit \`$BRLS_REF\`) e a rede dele passa pelo Tor da Caixa Forte.
 
           **Testado no emulador antes de publicar:** o Tor conecta, a saída é pelo Tor (check.torproject.org) e a captura de rede não mostra nenhum serviço do app fora do Tor.
 

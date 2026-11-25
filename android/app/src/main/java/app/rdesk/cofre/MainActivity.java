@@ -33,6 +33,8 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
+import androidx.webkit.ServiceWorkerClientCompat;
+import androidx.webkit.ServiceWorkerControllerCompat;
 import androidx.webkit.WebSettingsCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewFeature;
@@ -43,6 +45,9 @@ import java.util.Collections;
 public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
     static final String START = "https://" + HOST + "/assets/www/index.html";
+    /** Apps de confiança que abrem dentro da carteira: os arquivos vêm DE DENTRO do APK, na origem oficial. */
+    static final String APP_HOST = "digitalrobertlima.github.io";
+    static final String APP_PATH = "/xBRL/wallet/";
     private static final int REQ_CAMERA = 11;
     private static final int REQ_NOTIF = 12;
     private static final int REQ_FILE = 13;
@@ -51,6 +56,7 @@ public class MainActivity extends Activity {
     TorManager tor;
     Bridge bridge;
     private WebViewAssetLoader loader;
+    private AppAssets brls;
     private PermissionRequest pendingCamera;
     private ValueCallback<Uri[]> fileCallback;
     private int pendingNotifId = -1;
@@ -97,6 +103,8 @@ public class MainActivity extends Activity {
                 .setDomain(HOST)
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
+        brls = new AppAssets(getAssets(), "brls/");
+        blockServiceWorkers();
 
         tor = new TorManager(this, st -> { if (bridge != null) bridge.pushTorState(st); });
         TorNet net = new TorNet(tor);
@@ -123,6 +131,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Service worker não existe aqui dentro (nem do app da carteira): os arquivos já estão no APK. */
+    private void blockServiceWorkers() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE)
+                || !WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) return;
+        ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(new ServiceWorkerClientCompat() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebResourceRequest req) { return blocked(); }
+        });
+    }
+
     private void load() {
         if (loaded) return;
         loaded = true;
@@ -144,8 +162,15 @@ public class MainActivity extends Activity {
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
             Uri u = req.getUrl();
+            String path = u.getPath() == null ? "" : u.getPath();
             if ("https".equals(u.getScheme()) && HOST.equals(u.getHost())) {
+                if (path.startsWith("/assets/brls/")) return blocked(); // o app da carteira nunca roda na origem do cofre
                 WebResourceResponse r = loader.shouldInterceptRequest(u);
+                return r != null ? r : blocked();
+            }
+            // BRLS: servido de dentro do APK na origem dele (separada do cofre). A rede dele vem pela Caixa Forte (Tor).
+            if ("https".equals(u.getScheme()) && APP_HOST.equals(u.getHost()) && path.startsWith(APP_PATH)) {
+                WebResourceResponse r = brls.open(path.substring(APP_PATH.length()));
                 return r != null ? r : blocked();
             }
             return blocked(); // nada sai do WebView direto: só pela ponte, pelo Tor
