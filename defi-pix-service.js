@@ -1237,20 +1237,41 @@
         // servidores da Polygon ao mesmo tempo (vale a primeira resposta). Grupos pequenos: servidores
         // públicos limitam o gás de uma consulta, e um grupo grande demais é recusado inteiro.
         const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
-        const rpcs = (REG.getChain(137)?.rpcs || []);
+        // App Android (Tor): cada pedido leva bem mais tempo e alguns servidores recusam o Tor.
+        // Então: espera mais, pergunta só aos 2 servidores que estão respondendo (os mais rápidos na
+        // última medição) e não refaz rota por rota quando o problema foi só demora.
+        const tor = Boolean(window.RDESK_NATIVE);
+        const ESPERA = tor ? 30000 : 9000;
+        let rpcs = (REG.getChain(137)?.rpcs || []);
+        if (tor) {
+            await Promise.race([Promise.resolve(REG.rankRpcs?.(137)), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
+            const saude = REG.rpcHealth?.(137);
+            const bons = saude ? saude.filter((x) => x.ok).sort((a, b) => a.ms - b.ms).map((x) => x.url) : [];
+            rpcs = (bons.length ? bons : rpcs).slice(0, 2);
+        }
         const providers = rpcs.map((url) => new ethers.providers.StaticJsonRpcProvider(url, 137));
         const runGroup = async (group) => {
             const payload = group.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }));
-            const attempts = providers.map((p, i) => withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(payload, { gasLimit: 15000000 }), 9000)
+            let demoras = 0;
+            const attempts = providers.map((p, i) => withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(payload, { gasLimit: 15000000 }), ESPERA)
                 .then((res) => ({ res, i })));
-            attempts.forEach((pr, i) => pr.catch((err) => console.debug('[cotação] servidor', i, 'falhou:', String(err && (err.reason || err.message)).slice(0, 120))));
-            const won = await firstSuccess(attempts);
+            attempts.forEach((pr, i) => pr.catch((err) => {
+                if (/tempo esgotado/.test(String(err && err.message))) demoras++;
+                console.debug('[cotação] servidor', i, 'falhou:', String(err && (err.reason || err.message)).slice(0, 120));
+            }));
+            let won;
+            try { won = await firstSuccess(attempts); } catch (err) {
+                await Promise.resolve(); // deixa as contagens de "demora" acontecerem
+                const e = new Error('cotação falhou');
+                e.soDemora = demoras === providers.length;
+                throw e;
+            }
             return won.res.map((r, k) => { if (!r.success) return null; try { return decodeOut(group[k], r.returnData); } catch (e) { return null; } });
         };
         // Uma rota sozinha, com teto de gás: pool quase sem liquidez faz o simulador da Uniswap gastar
         // gás sem fim, e isso derrubava o grupo inteiro.
         const runSingle = async (c) => {
-            const attempts = providers.map((p) => withTimeout(p.call({ to: QUOTER_V2, data: c.data, gasLimit: 3000000 }), 9000));
+            const attempts = providers.map((p) => withTimeout(p.call({ to: QUOTER_V2, data: c.data, gasLimit: 3000000 }), ESPERA));
             try { return decodeOut(c, await firstSuccess(attempts)); } catch (e) { return null; }
         };
         const runAll = async (cands, size) => {
@@ -1260,8 +1281,11 @@
             const out = [];
             for (let gi = 0; gi < groups.length; gi++) {
                 if (settled[gi].status === 'fulfilled') out.push(...settled[gi].value);
+                // Só demora (rede lenta): refazer rota por rota só multiplicaria a espera
+                else if (settled[gi].reason && settled[gi].reason.soDemora) out.push(...groups[gi].map(() => null));
                 else out.push(...(await Promise.all(groups[gi].map(runSingle))));
             }
+            if (out.every((x) => x == null) && settled.every((r) => r.status === 'rejected')) throw new Error('rede indisponível');
             return out;
         };
         const started = Date.now();
@@ -1382,7 +1406,7 @@
 
         // Caso 2: Polygon -> Uniswap V3 (melhor rota)
         if (f.fromChain === 137 && f.toChain === 137) {
-            setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : 'Buscando a melhor rota…');
+            setOut(sameForm ? e.out.value : '…', sameForm ? e.info.textContent : (window.RDESK_NATIVE ? 'Buscando a melhor rota pelo Tor… (até 30 s)' : 'Buscando a melhor rota…'));
             let route;
             const cfU = REG.creatorFee();
             const creatorFeeRaw = cfU.active ? rawIn.mul(cfU.rateBps).div(10000) : ethers.constants.Zero;
