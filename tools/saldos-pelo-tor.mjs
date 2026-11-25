@@ -93,21 +93,24 @@ for (const c of REG.CHAINS) {
 }
 // Testnets (modo teste): RPCs e a moeda de teste conhecida de cada rede (USDC de teste da Circle)
 const TESTNETS = [
-    [80002, 'Polygon Amoy', ['https://rpc-amoy.polygon.technology', 'https://polygon-amoy.drpc.org', 'https://polygon-amoy-bor-rpc.publicnode.com', 'https://polygon-amoy.api.onfinality.io/public'], '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', 'https://amoy.polygonscan.com'],
-    [11155111, 'Sepolia', ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.drpc.org', 'https://rpc.sepolia.org', 'https://eth-sepolia.api.onfinality.io/public', 'https://sepolia.gateway.tenderly.co'], '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', 'https://sepolia.etherscan.io'],
+    [80002, 'Polygon Amoy', ['https://polygon-amoy.drpc.org', 'https://polygon-amoy-bor-rpc.publicnode.com', 'https://rpc-amoy.polygon.technology', 'https://rpc.ankr.com/polygon_amoy', 'https://polygon-amoy.gateway.tenderly.co', 'https://polygon-amoy-public.nodies.app'], '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582', 'https://amoy.polygonscan.com'],
+    [11155111, 'Sepolia', ['https://ethereum-sepolia-rpc.publicnode.com', 'https://1rpc.io/sepolia', 'https://ethereum-sepolia-public.nodies.app', 'https://0xrpc.io/sep', 'https://rpc.ankr.com/eth_sepolia', 'https://sepolia.gateway.tenderly.co', 'https://eth-sepolia.api.onfinality.io/public', 'https://ethereum-sepolia.rpc.subquery.network/public'], '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', 'https://sepolia.etherscan.io'],
     [84532, 'Base Sepolia', ['https://sepolia.base.org', 'https://base-sepolia.drpc.org', 'https://base-sepolia-rpc.publicnode.com'], '0x036CbD53842c5426634e7929541eC2318f3dCF7e', 'https://sepolia.basescan.org'],
     [421614, 'Arbitrum Sepolia', ['https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia.drpc.org', 'https://arbitrum-sepolia-rpc.publicnode.com'], '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', 'https://sepolia.arbiscan.io'],
     [11155420, 'OP Sepolia', ['https://sepolia.optimism.io', 'https://optimism-sepolia.drpc.org', 'https://optimism-sepolia-rpc.publicnode.com'], '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', 'https://sepolia-optimism.etherscan.io'],
     [11142220, 'Celo Sepolia', ['https://forno.celo-sepolia.celo-testnet.org', 'https://celo-sepolia.drpc.org'], null, 'https://celo-sepolia.blockscout.com'],
-    [44787, 'Celo Alfajores', ['https://alfajores-forno.celo-testnet.org'], null, 'https://celo-alfajores.blockscout.com'],
     [97, 'BNB testnet', ['https://data-seed-prebsc-1-s1.bnbchain.org:8545', 'https://bsc-testnet.drpc.org', 'https://bsc-testnet-rpc.publicnode.com', 'https://bsc-testnet.bnbchain.org'], null, 'https://testnet.bscscan.com'],
-    [998, 'HyperEVM testnet', ['https://rpc.hyperliquid-testnet.xyz/evm', 'https://hyperliquid-testnet.drpc.org'], null, 'https://testnet.purrsec.info']
+    [998, 'HyperEVM testnet', ['https://rpc.hyperliquid-testnet.xyz/evm', 'https://hyperliquid-testnet.drpc.org'], null, 'https://testnet.hyperevmscan.io']
 ];
 for (const [id, nome, rpcs, tk, exp] of TESTNETS) {
     rpcs.forEach((u) => alvos.push({ grupo: `T ${nome}`, nome: u, noApp: false, prova: () => rpcProva(u, id, tk || '0x0000000000000000000000000000000000000000'), simples: () => rpcSimples(u, id) }));
     if (tk) alvos.push({ grupo: `T ${nome}`, nome: `${tk.slice(0, 8)}… é USDC?`, noApp: false, prova: async () => {
-        const r = await curl(rpcs[0], { body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: tk, data: '0x95d89b41' }, 'latest'] }) });
-        try { const h = JSON.parse(r.text).result || ''; const txt = Buffer.from(h.slice(130), 'hex').toString('utf8').replace(/\0/g, ''); return /USDC/.test(txt) ? { ok: true, t: r.t } : { ok: false, t: r.t, motivo: `símbolo: ${txt || h.slice(0, 20)}` }; } catch (e) { return { ok: false, t: r.t, motivo: 'erro' }; }
+        let last = { ok: false, t: 0, motivo: 'nenhum RPC respondeu' };
+        for (const u of rpcs) {
+            const r = await curl(u, { body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: tk, data: '0x95d89b41' }, 'latest'] }) });
+            try { const h = JSON.parse(r.text).result || ''; if (!h) continue; const txt = Buffer.from(h.slice(130), 'hex').toString('utf8').replace(/\0/g, ''); return /USDC/.test(txt) ? { ok: true, t: r.t } : { ok: false, t: r.t, motivo: `símbolo: ${txt || h.slice(0, 20)}` }; } catch (e) { /* próximo */ }
+        }
+        return last;
     } });
     alvos.push({ grupo: `T ${nome}`, nome: `explorador ${exp}`, noApp: false, prova: () => getProva(exp, () => true) });
 }
