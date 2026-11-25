@@ -5,7 +5,7 @@
    - Gráfico do patrimônio na tela inicial, com entradas e saídas marcadas,
      reconstruído dia a dia com preços históricos; o último ponto é o valor
      ao vivo e se move junto com as cotações.
-   - Moeda de referência (régua): Bitcoin por padrão; Real (BRZ), Dólar ou
+   - Moeda de referência (régua): Real (BRLS) por padrão; Bitcoin, Dólar ou
      Ether. Lucro, gráfico e variação de cada moeda são medidos nela.
    ========================================================================= */
 (function (global) {
@@ -26,6 +26,7 @@
         '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { symbol: 'USDC.e', decimals: 6, kind: 'USD' },
         '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': { symbol: 'DAI', decimals: 18, kind: 'USD' },
         [BRZ]: { symbol: 'BRZ', decimals: 18, kind: 'BRL' },
+        '0x3f5fd15e3d5250ae6700bfd8f1adb6b74afca1d4': { symbol: 'BRLS', decimals: 18, kind: 'BRL' }, // Real Soberano
         [BRLA]: { symbol: 'BRLA', decimals: 18, kind: 'BRL' },
         [WETH]: { symbol: 'WETH', decimals: 18, kind: 'ETH' },
         [WBTC]: { symbol: 'WBTC', decimals: 8, kind: 'BTC' }
@@ -33,7 +34,8 @@
 
     const REFS = {
         BTC: { id: 'BTC', name: 'Bitcoin', unit: 'BTC', llama: 'coingecko:bitcoin', hint: 'Mostra se você ficou mais rico ou mais pobre em bitcoins.' },
-        BRL: { id: 'BRL', name: 'Real (BRZ)', unit: 'BRZ', llama: `polygon:${BRZ}`, hint: 'Mostra tudo em reais. O real perde valor frente ao dólar com o tempo.' },
+        // BRLS (Real Soberano) vale R$ 1 por contrato; o histórico de preço do real vem do BRZ, que segue o mesmo R$ 1.
+        BRL: { id: 'BRL', name: 'Real (BRLS)', unit: 'BRLS', llama: `polygon:${BRZ}`, hint: 'Mostra tudo em reais, no BRLS (Real Soberano: 1 BRLS = R$ 1). O real perde valor frente ao dólar com o tempo.' },
         USD: { id: 'USD', name: 'Dólar (USDT)', unit: 'US$', llama: 'coingecko:tether', hint: 'Mostra tudo em dólares.' },
         ETH: { id: 'ETH', name: 'Ether', unit: 'ETH', llama: 'coingecko:ethereum', hint: 'Mostra se você ficou mais rico ou mais pobre em ether.' }
     };
@@ -58,7 +60,7 @@
         progress: '',
         savedAt: 0,
         error: '',
-        ref: 'BTC',
+        ref: 'BRL', // padrão: tudo em reais (BRLS); dá para trocar por Bitcoin, Dólar ou Ether
         change24: {}, // llamaKey -> % (ex.: -1.2)
         change24At: 0,
         filter: 'ALL',
@@ -215,7 +217,7 @@
         const sign = opts.sign && v > 0 ? '+' : (v < 0 ? '−' : '');
         const a = Math.abs(v);
         if (ref === 'USD') return `${sign}US$ ${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        if (ref === 'BRL') return `${sign}${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BRZ`;
+        if (ref === 'BRL') return `${sign}${a.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BRLS`;
         // Bitcoin sempre com 8 casas (0,00000000); Ether com 6
         const digits = ref === 'BTC' ? 8 : 6;
         const txt = a.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -1098,7 +1100,7 @@
             <div class="ob-menu ref-picker">
                 <h2>Comparar com qual moeda?</h2>
                 <p class="muted-sm">É a sua régua: o gráfico, o lucro e a variação de cada moeda passam a mostrar se você ganhou ou perdeu <strong>em relação a ela</strong>.</p>
-                ${Object.values(REFS).map((r) => `<button type="button" data-ref="${r.id}" class="${r.id === st.ref ? 'on' : ''}" aria-pressed="${r.id === st.ref}"><span>${r.id === 'BTC' ? '₿' : r.id === 'BRL' ? 'R$' : r.id === 'USD' ? '$' : 'Ξ'}</span><span class="ref-txt"><strong>${esc(r.name)}${r.id === 'BTC' ? ' (padrão)' : ''}</strong><small>${esc(r.hint)}</small></span></button>`).join('')}
+                ${Object.values(REFS).map((r) => `<button type="button" data-ref="${r.id}" class="${r.id === st.ref ? 'on' : ''}" aria-pressed="${r.id === st.ref}"><span>${r.id === 'BTC' ? '₿' : r.id === 'BRL' ? 'R$' : r.id === 'USD' ? '$' : 'Ξ'}</span><span class="ref-txt"><strong>${esc(r.name)}${r.id === 'BRL' ? ' (padrão)' : ''}</strong><small>${esc(r.hint)}</small></span></button>`).join('')}
             </div>`);
         el?.querySelectorAll('[data-ref]').forEach((b) => { b.onclick = () => { setRef(b.getAttribute('data-ref')); document.getElementById('ob-root').replaceChildren(); }; });
     }

@@ -15,7 +15,7 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Controle total no Render.** O gráfico responde ao toque (arrastar, pinça, tocar para ver o preço) e a faixa tem alças azuis para arrastar; também dá para digitar mínimo e máximo ou usar os atalhos Estreita/Média/Larga.
 - Sem Pix: a carteira não transaciona em Pix, e a interface não sugere isso.
 - **Extrato:** todas as transações da rede Polygon desde a primeira, agrupadas por dia e em linguagem simples (Recebeu, Enviou, Trocou, Colocou para render…). Cada linha abre o detalhe, o link do explorador e a opção de mudar como ela entra na conta do lucro.
-- **Moeda de referência (régua):** Bitcoin por padrão; dá para trocar por Real (BRZ), Dólar ou Ether. O lucro, o gráfico e a variação de 24 h de cada moeda são medidos nela.
+- **Moeda de referência (régua):** Real (BRLS — Real Soberano, 1 BRLS = R$ 1) por padrão; dá para trocar por Bitcoin, Dólar ou Ether. O lucro, o gráfico e a variação de 24 h de cada moeda são medidos nela.
 - **Gráfico do patrimônio na tela inicial:** reconstruído dia a dia com os preços de cada dia, com entradas e saídas marcadas; o último ponto é o valor ao vivo.
 - **Lucro desde a 1ª transação:** tem hoje + tudo que você tirou − tudo que você colocou, cada valor convertido pela cotação do dia em que aconteceu.
 
@@ -43,6 +43,10 @@ O redesenho de novembro/2026 segue o que a pesquisa de usabilidade mostra:
 - **Cotações em tempo real:** atualizadas a cada 10 s, com fontes de reserva para o dólar; quando nenhuma responde, a tela avisa que os valores são aproximados.
 - **Troca:** Uniswap V3 na Polygon procurando a melhor tarifa e rotas em dois saltos (ex.: POL → USDT → BRLA numa só transação); bloqueia trocas que perderiam mais de 10% para o mercado. Seta de inverter troca rede, moeda e quantidade. Outras redes e pontes via LI.FI.
 - **Ícones:** são selos gerados pela própria app (letra/símbolo e cor), não os logotipos oficiais.
+
+## Fundo com qualquer moeda (v48.1)
+
+Na criação de posição, cada lado tem a opção **“Outra moeda: colar o contrato…”**: o app lê nome e casas decimais direto da blockchain, mostra o saldo e marca o símbolo com o início do endereço se já existir uma moeda com o mesmo nome (para não confundir com a oficial).
 
 ## Apps dentro da carteira (v48)
 
