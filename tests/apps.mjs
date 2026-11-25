@@ -32,4 +32,12 @@ const seg = await A._tratar(app, pedido('brls_segredo', ['0x' + outro.publicKey.
 const esperado = new ethers.utils.SigningKey(outro.privateKey).computeSharedSecret(carteira.publicKey);
 check('segredo da conversa bate dos dois lados (ECDH)', seg === esperado);
 check('recusa chave malformada', !!(await recusa(pedido('brls_segredo', ['0x1234']))));
+// v48.2: rede do app pelo APK (Tor). Só GET/POST, nunca a origem do próprio cofre.
+globalThis.location = { origin: 'https://appassets.androidplatform.net' };
+globalThis.fetch = async (url, init) => ({ status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify({ url, metodo: init.method, corpo: init.body ?? null }) });
+const ok = await A._rede({ url: 'https://polygon.drpc.org', method: 'POST', headers: { 'content-type': 'application/json', cookie: 'x' }, corpo: '{"id":1}' });
+check('rede do app: repassa o pedido e devolve a resposta', ok.status === 200 && JSON.parse(ok.corpo).corpo === '{"id":1}' && ok.conteudo === 'application/json');
+check('rede do app: recusa métodos fora de GET/POST', !!(await A._rede({ url: 'https://polygon.drpc.org', method: 'DELETE' })).erro);
+check('rede do app: recusa a origem do próprio cofre', !!(await A._rede({ url: 'https://appassets.androidplatform.net/assets/www/index.html' })).erro);
+check('rede do app: recusa endereço que não é http(s)', !!(await A._rede({ url: 'file:///etc/passwd' })).erro);
 finish();

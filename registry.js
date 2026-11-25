@@ -106,7 +106,7 @@
             { symbol: 'USDC', name: 'USD Coin', address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', decimals: 6, priceKey: 'USD' },
             { symbol: 'BRZ', name: 'Brazilian Digital Token', address: '0x4eD141110F6EeeAbA9A1df36d8c26f684d2475Dc', decimals: 18, priceKey: 'BRL' },
             { symbol: 'BRLA', name: 'BRLA Digital', address: '0xE6A537a407488807F0bbeb0038B79004f19DDDFb', decimals: 18, priceKey: 'BRL' },
-            { symbol: 'BRLS', name: 'Real Soberano (1 BRLS = R$ 1)', address: '0x3F5FD15e3D5250AE6700Bfd8f1aDb6b74afcA1d4', decimals: 18, priceKey: 'BRL' },
+            { symbol: 'BRLS', name: 'Real Soberano (BRLS)', address: '0x3F5FD15e3D5250AE6700Bfd8f1aDb6b74afcA1d4', decimals: 18, priceKey: 'BRL' },
             { symbol: 'WETH', name: 'Ether embrulhado', address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18, priceKey: 'ETH' },
             { symbol: 'WBTC', name: 'Bitcoin pareado (token, não é BTC nativo)', address: '0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6', decimals: 8, priceKey: 'BTC' }
         ],

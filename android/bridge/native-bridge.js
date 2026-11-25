@@ -319,6 +319,10 @@
     global.__rdeskBack = function () {
         const ob = document.getElementById('ob-root');
         if (ob && ob.children.length) { ob.replaceChildren(); return true; }
+        // App aberto dentro da carteira (BRLS): primeiro recusa a confirmação pendente, depois fecha o app
+        const conf = document.querySelector('.app-confirm [data-r="0"]');
+        if (conf) { conf.click(); return true; }
+        if (global.RdeskApps && global.RdeskApps.estaAberto()) { global.RdeskApps.fechar(); return true; }
         const modals = [...document.querySelectorAll('.st-modal, .open[role="dialog"], #rdesk-mw-overlay.open')];
         const top = modals[modals.length - 1];
         if (top) {

@@ -10,6 +10,12 @@
 //   app → aqui  { brls: 1, tipo: "pedido", id, method, params, descricao }
 //   aqui → app  { brls: 1, tipo: "resposta", id, result | erro }
 //   aqui → app  { brls: 1, tipo: "conta", endereco }   (trocou de carteira)
+// No app Android (Tor embutido), a janela do app não tem internet. Ela pede a rede por aqui:
+//   app → aqui  { brls: 1, tipo: "rede", id, url, method, headers, corpo }
+//   aqui → app  { brls: 1, tipo: "rede-resposta", id, status, conteudo, corpo } | { ..., erro }
+//   app → aqui  { brls: 1, tipo: "copiar", texto }
+// O pedido sai pelo fetch da Caixa Forte, que no APK é a ponte nativa: Tor, um caminho por endereço.
+// Os arquivos do app vêm de dentro do APK (mesma origem oficial), nunca baixados na hora.
 // Só fala com a janela do app aberto e com a origem cadastrada abaixo.
 // =====================================================================
 (function (global) {
@@ -33,6 +39,7 @@
     if (global.__RDESK_APPS_TESTE__) Object.assign(APPS[0], global.__RDESK_APPS_TESTE__);
 
     const W = () => global.RdeskWallet;
+    const NATIVO = () => !!global.RDESK_NATIVE; // dentro do app Android: rede só pelo Tor
     const E = () => global.ethers;
     let aberto = null; // { app, overlay, iframe, ouvir, desligarConta, contratos }
 
@@ -80,7 +87,7 @@
                 <strong>${app.icone} ${esc(app.nome)}</strong>
                 <span class="app-frame-conta">${esc(curto(w.address))}</span>
             </div>
-            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte" allow="camera; clipboard-read; clipboard-write; web-share" referrerpolicy="no-referrer"></iframe>`;
+            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte${NATIVO() ? '&tor=ponte' : ''}" allow="camera; clipboard-read; clipboard-write; web-share" referrerpolicy="no-referrer"></iframe>`;
         document.body.appendChild(overlay);
         document.body.classList.add('app-frame-aberto');
         const iframe = overlay.querySelector('iframe');
@@ -91,7 +98,17 @@
             if (!aberto || ev.source !== iframe.contentWindow || ev.origin !== app.origem) return;
             const d = ev.data;
             if (!d || d.brls !== 1) return;
-            if (d.tipo === 'ola') enviar({ tipo: 'ponte', endereco: W().address, chainId: app.chainId, nome: 'Caixa Forte' });
+            if (d.tipo === 'ola') enviar({ tipo: 'ponte', endereco: W().address, chainId: app.chainId, nome: 'Caixa Forte', rede: NATIVO() });
+            if (d.tipo === 'rede' && NATIVO()) {
+                rede(d).then((r) => {
+                    if (aberto?.iframe !== iframe) return;
+                    if (!r.erro && r.status === 200) aberto.redeOk++;
+                    enviar({ tipo: 'rede-resposta', id: d.id, ...r });
+                });
+            }
+            if (d.tipo === 'copiar' && NATIVO() && typeof d.texto === 'string') {
+                navigator.clipboard?.writeText(d.texto.slice(0, 4000)).then(() => avisar('Copiado. A área de transferência se apaga sozinha em 60 s.'), () => {});
+            }
             if (d.tipo === 'pedido') {
                 tratar(app, d)
                     .then((result) => enviar({ tipo: 'resposta', id: d.id, result }))
@@ -100,7 +117,7 @@
         };
         global.addEventListener('message', ouvir);
         const desligarConta = W().onAccountChange?.(() => { if (aberto && aberto.iframe === iframe) enviar({ tipo: 'conta', endereco: W().address }); });
-        aberto = { app, overlay, iframe, ouvir, desligarConta, contratos: null };
+        aberto = { app, overlay, iframe, ouvir, desligarConta, contratos: null, redeOk: 0 };
         carregarContratos(app);
     }
 
@@ -121,6 +138,32 @@
             for (const [k, nome] of Object.entries(app.nomesContratos)) if (j[k]) mapa[String(j[k]).toLowerCase()] = nome;
             if (aberto && aberto.app === app) aberto.contratos = mapa;
         } catch (e) { /* sem nomes: mostra o endereço */ }
+    }
+
+    // ---------- rede do app (só no APK: a janela do app não tem internet) ----------
+    // Passa pelo fetch daqui, que no APK é a ponte nativa (Tor). Só GET/POST, com limites de tamanho e tempo.
+    async function rede(d) {
+        try {
+            const url = new URL(String(d.url || ''));
+            if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('endereço inválido');
+            if (url.origin === global.location.origin) throw new Error('endereço inválido');
+            const method = String(d.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'POST') throw new Error('pedido não suportado');
+            const corpo = d.corpo == null ? undefined : String(d.corpo);
+            if (corpo && corpo.length > 512 * 1024) throw new Error('pedido grande demais');
+            const headers = {};
+            for (const k of ['content-type', 'accept']) if (d.headers && typeof d.headers[k] === 'string') headers[k] = d.headers[k].slice(0, 100);
+            const ctl = new AbortController();
+            const t = setTimeout(() => ctl.abort(), 60000);
+            try {
+                const r = await fetch(url.href, { method, headers, body: method === 'POST' ? corpo : undefined, signal: ctl.signal });
+                const texto = await r.text();
+                if (texto.length > 4 * 1024 * 1024) throw new Error('resposta grande demais');
+                return { status: r.status, conteudo: r.headers.get('content-type') || '', corpo: texto };
+            } finally { clearTimeout(t); }
+        } catch (e) {
+            return { erro: String((e && e.message) || e || 'falha na rede').slice(0, 200) };
+        }
     }
 
     // ---------- pedidos do app ----------
@@ -239,7 +282,7 @@
         else alert(texto);
     }
 
-    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, _tratar: tratar };
+    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, redeOk: () => (aberto ? aberto.redeOk : 0), _tratar: tratar, _rede: rede };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarCartao);
     else pintarCartao();
