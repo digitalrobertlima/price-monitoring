@@ -261,6 +261,8 @@
             await W().confirmTx(await wr.deposit({ value: E().utils.parseUnits(String(wrapNative.toFixed(18)).replace(/0+$/, '').replace(/\.$/, ''), 18) }), chainId);
         }
         const nfpmAddr = UNI[chainId].nfpm;
+        // Saldo de verdade, lido agora na rede (o da tela pode estar atrasado, ex.: logo depois de outra posição)
+        await conferirSaldos(plan, owner, wrapNative);
         if (plan.params.amount0Desired.gt(0)) await approveExact(signer, chainId, plan.params.token0, nfpmAddr, plan.params.amount0Desired);
         if (plan.params.amount1Desired.gt(0)) await approveExact(signer, chainId, plan.params.token1, nfpmAddr, plan.params.amount1Desired);
         const nfpm = new (E().Contract)(nfpmAddr, ABI.nfpm, signer);
@@ -268,9 +270,44 @@
         const calls = [];
         if (plan.create) calls.push(I.encodeFunctionData('createAndInitializePoolIfNecessary', [plan.params.token0, plan.params.token1, plan.params.fee, plan.create.sqrtPriceX96]));
         calls.push(I.encodeFunctionData('mint', [plan.params]));
+        // Simula antes de enviar: se a Uniswap recusar, diz o motivo em português em vez de "cannot estimate gas"
+        try {
+            if (calls.length === 1) await nfpm.callStatic.mint(plan.params, { from: owner });
+            else await nfpm.callStatic.multicall(calls, { from: owner });
+        } catch (e) { throw new Error(motivoUniswap(e, plan)); }
         const tx = calls.length === 1 ? await nfpm.mint(plan.params) : await nfpm.multicall(calls);
         await W().confirmTx(tx, chainId);
         return tx.hash;
+    }
+    // Confere na rede se a carteira tem cada moeda que a posição vai puxar (com o que será embrulhado).
+    async function conferirSaldos(plan, owner, wrapNative = 0) {
+        const chainId = plan.chainId;
+        const faltas = [];
+        for (const [m, need] of [[plan.m0, plan.params.amount0Desired], [plan.m1, plan.params.amount1Desired]]) {
+            if (!need || need.isZero()) continue;
+            let tem;
+            try { tem = await withRpcs(chainId, (p) => new (E().Contract)(m.address, ABI.erc20, p).balanceOf(owner)); } catch (e) { continue; } // sem leitura: a simulação ainda confere
+            const vaiEmbrulhar = WRAPPED[chainId] && m.address.toLowerCase() === WRAPPED[chainId].address.toLowerCase() && wrapNative > 0
+                ? E().utils.parseUnits(wrapNative.toFixed(18).replace(/0+$/, '').replace(/\.$/, ''), 18) : E().constants.Zero;
+            if (tem.add(vaiEmbrulhar).lt(need)) {
+                const f = (v) => Number(E().utils.formatUnits(v, m.decimals)).toLocaleString('pt-BR', { maximumFractionDigits: 6 });
+                faltas.push(`${m.symbol}: você tem ${f(tem.add(vaiEmbrulhar))}, a posição precisa de ${f(need)}`);
+            }
+        }
+        if (faltas.length) throw new Error(`Saldo insuficiente — ${faltas.join('; ')}. Diminua a quantidade e tente de novo (nada foi enviado).`);
+    }
+    // Traduz a recusa da Uniswap (o "cannot estimate gas" esconde o motivo de verdade)
+    function motivoUniswap(e, plan) {
+        const txt = [e?.reason, e?.error?.message, e?.error?.data?.message, e?.data?.message, e?.message].filter(Boolean).join(' | ');
+        const nomes = `${plan.m0.symbol} ou ${plan.m1.symbol}`;
+        if (/\bSTF\b|transfer amount exceeds|insufficient|exceeds balance|TRANSFER_FROM_FAILED/i.test(txt)) return `A Uniswap não conseguiu puxar ${nomes} da sua carteira: o saldo ou a autorização não cobre a quantidade. Diminua um pouco e tente de novo (nada foi enviado).`;
+        if (/Price slippage check/i.test(txt)) return 'O preço do fundo mudou enquanto você conferia. Revise a posição de novo (nada foi enviado).';
+        if (/Transaction too old/i.test(txt)) return 'A posição demorou demais para ser enviada. Revise de novo (nada foi enviado).';
+        if (/\bTLU\b|\bTLM\b|\bTUM\b|tick/i.test(txt)) return 'Faixa de preço inválida para este fundo. Escolha outra faixa (nada foi enviado).';
+        if (/blacklist|blocked|frozen|paused|pausable/i.test(txt)) return `A emissora de ${nomes} bloqueou esta movimentação (moeda pausada ou carteira bloqueada). Nada foi enviado.`;
+        if (/insufficient funds/i.test(txt)) return 'Falta POL para pagar a taxa da rede.';
+        const curto = String(e?.reason || e?.error?.message || '').replace(/^execution reverted:?\s*/i, '').slice(0, 120);
+        return `A Uniswap recusou abrir a posição${curto ? ` (${curto})` : ''}. Nada foi enviado.`;
     }
     async function collect(pos) {
         const signer = await W().getSigner(pos.chainId);
@@ -415,7 +452,7 @@
             <p class="muted-sm">Risco: se o preço sair da faixa, a posição para de render e fica toda numa moeda só. Fundo novo, com pouca gente, rende pouco. Use só uma parte do dinheiro.</p>`);
         if (!el) return;
         const $ = (s) => el.querySelector(s);
-        const st = { fee: 3000, width: '8', pool: null, plan: null, seq: 0, extras: [], ladoColar: 'a', anterior: { a: '', b: '' } };
+        const st = { fee: 3000, width: '8', pool: null, plan: null, seq: 0, extras: [], ladoColar: 'a', anterior: { a: '', b: '' }, vivos: {} };
         const COLAR = '__colar';
         const todos = () => [...tokensFor(chainId), ...st.extras.filter((t) => t.chainId === chainId)];
         const num2 = (s) => { const v = REG().parseBRL(String(s || '').trim()); return v === null ? NaN : v; };
@@ -434,6 +471,18 @@
             if (!t) return null;
             if (t.isNative) return { symbol: t.wrapOf.symbol, address: t.wrapOf.address, decimals: 18, priceKey: t.priceKey, native: t.symbol };
             return { symbol: t.symbol, address: t.address, decimals: t.decimals, priceKey: t.priceKey, isCustom: t.isCustom };
+        };
+        // Lê na rede o saldo das moedas escolhidas (no máximo a cada 15 s por moeda)
+        const atualizarSaldosVivos = async (cid, metas) => {
+            const dono = W().getAddress();
+            await Promise.all(metas.filter((m) => m && m.address && !m.native).map(async (m) => {
+                const k = `${cid}:${m.address.toLowerCase()}`;
+                if (st.vivos[k] && Date.now() - st.vivos[k].em < 15000) return;
+                try {
+                    const v = await withRpcs(cid, (p) => new (E().Contract)(m.address, ABI.erc20, p).balanceOf(dono));
+                    st.vivos[k] = { v: Number(E().utils.formatUnits(v, m.decimals)), em: Date.now() };
+                } catch (e) { /* sem leitura: usa o saldo da lista */ }
+            }));
         };
         const syms = () => { el.querySelectorAll('[data-sym-a]').forEach((x) => { x.textContent = $('#pl-a').value; }); el.querySelectorAll('[data-sym-b]').forEach((x) => { x.textContent = $('#pl-b').value; }); };
         const marketPrice = () => { // B por A pelo preço de mercado (para fundo novo)
@@ -496,7 +545,12 @@
                 try {
                     const plan = await planMint({ chainId, tokenA: A, tokenB: B, fee: st.fee, fullRange: st.width === 'full', minPrice: num2($('#pl-min').value), maxPrice: num2($('#pl-max').value), amountA: amt, initialPrice: num2($('#pl-init').value), owner: W().getAddress() });
                     st.plan = plan;
+                    // Saldo lido na rede (guardado por 15 s); o da lista pode estar atrasado logo depois de outra posição
+                    await atualizarSaldosVivos(chainId, [A, B]);
                     const bal = (sym) => {
+                        const meta = metaOf(sym);
+                        const vivo = meta?.address && !meta.native && st.vivos[`${chainId}:${meta.address.toLowerCase()}`];
+                        if (vivo && Date.now() - vivo.em < 15000) return vivo.v;
                         const ex = st.extras.find((t) => t.chainId === chainId && t.symbol === sym);
                         if (ex) return ex.saldo || 0;
                         return Number((W().getBalances() || []).find((b) => b.chainId === chainId && b.symbol === sym)?.amount || 0);
@@ -508,7 +562,7 @@
                     out.innerHTML = `<div class="pl-need"><span>Você coloca</span><strong>${num(needA)} ${esc($('#pl-a').value)} + ${num(needB)} ${esc($('#pl-b').value)}</strong><small class="money">${plan.usd > 0 ? '≈ ' + esc(brl(plan.usd)) : 'sem cotação para mostrar em reais'}</small></div>
                         ${plan.inRange ? '' : '<p class="warn-text">O preço de hoje está fora desta faixa: a posição começa parada (sem render) e entra com uma moeda só.</p>'}
                         ${plan.create ? '<p class="warn-text">Você vai criar este fundo. Confira o preço inicial com calma.</p>' : ''}
-                        ${short ? `<p class="warn-text">Falta ${esc(short === A ? $('#pl-a').value : $('#pl-b').value)} na carteira para essa quantidade.</p>` : ''}`;
+                        ${short ? `<p class="warn-text">Falta ${esc(short === A ? $('#pl-a').value : $('#pl-b').value)}: você tem ${num(short === A ? haveA : haveB)} e esta posição precisa de ${num(short === A ? needA : needB)}. Diminua a quantidade.</p>` : ''}`;
                     go.disabled = Boolean(short);
                 } catch (e) { out.innerHTML = `<p class="warn-text">${esc(e.message)}</p>`; }
             }, 250);
