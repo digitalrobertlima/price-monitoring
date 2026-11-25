@@ -74,12 +74,12 @@
     }
 
     // Fluxo completo: cota, mostra, assina e entrega ao relayer
-    async function sendGasless({ to, amountText, confirm = global.confirm }) {
+    async function sendGasless({ to, amountText, confirm = (t) => global.RdeskSlide.confirmarTexto(t, { titulo: 'Enviar sem taxa da rede', chave: ['semtaxa', to, amountText] }) }) {
         if (!configured()) throw new Error('Envio sem taxa da rede ainda não está ligado.');
         const valueRaw = E().utils.parseUnits(String(amountText).replace(',', '.'), CONFIG.decimals);
         const q = await quote(valueRaw);
         const fmt = (v) => E().utils.formatUnits(v, CONFIG.decimals);
-        if (!confirm(`Enviar ${fmt(valueRaw)} ${CONFIG.symbol} para:\n\n${to}\n\nTaxa do serviço: ${fmt(q.fee)} ${CONFIG.symbol} (você não precisa de moeda da rede).\n\nConfira o endereço. Este envio não pode ser desfeito.`)) return null;
+        if (!(await confirm(`Enviar ${fmt(valueRaw)} ${CONFIG.symbol} para:\n\n${to}\n\nTaxa do serviço: ${fmt(q.fee)} ${CONFIG.symbol} (você não precisa de moeda da rede).\n\nConfira o endereço. Este envio não pode ser desfeito.`))) return null;
         const signer = await global.RdeskWallet.getSigner(Number(CONFIG.chainId));
         const bundle = await signTransfer({ signer, to, valueRaw, fee: q.fee, feeRecipient: q.feeRecipient, validSeconds: q.validSeconds });
         return relay(bundle);

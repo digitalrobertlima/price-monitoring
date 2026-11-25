@@ -194,7 +194,7 @@
                 const gas = tx.gas ? E().BigNumber.from(tx.gas) : null;
                 const signer = await w.getSigner(app.chainId);
                 const precoGas = await signer.provider.getGasPrice().catch(() => null);
-                const ok = await confirmar(app, {
+                return confirmarEFazer(app, {
                     titulo: 'Confirmar no app',
                     pedido: d.descricao || 'Operação no contrato',
                     contrato: tx.to,
@@ -202,11 +202,14 @@
                         valor.gt(0) ? ['Sai da sua carteira', `${fmtPol(valor)} POL`] : null,
                         gas && precoGas ? ['Taxa da rede (no máximo)', `${fmtPol(gas.mul(precoGas))} POL`] : null,
                     ],
-                    botao: 'Confirmar e enviar',
+                    botao: 'Deslize para enviar',
+                    chave: ['app', app.id, tx.to, tx.data || '0x', valor.toString()],
+                    enviando: 'Enviando para a rede… não feche o app',
+                    pronto: 'Enviado',
+                }, async () => {
+                    const enviado = await signer.sendTransaction({ to: tx.to, data: tx.data || '0x', value: valor, ...(gas ? { gasLimit: gas } : {}) });
+                    return enviado.hash;
                 });
-                if (!ok) throw erro(4001, 'Você recusou na Caixa Forte.');
-                const enviado = await signer.sendTransaction({ to: tx.to, data: tx.data || '0x', value: valor, ...(gas ? { gasLimit: gas } : {}) });
-                return enviado.hash;
             }
             case 'eth_signTypedData_v4': {
                 if (String(p[0] || '').toLowerCase() !== eu) throw erro(4100, 'O pedido veio para outra carteira.');
@@ -214,22 +217,22 @@
                 const tipos = { ...dados.types };
                 delete tipos.EIP712Domain;
                 if (Number(dados.domain?.chainId) !== app.chainId) throw erro(4001, 'Assinatura para outra rede: recusada.');
-                const ok = await confirmar(app, {
-                    titulo: 'Assinar (não gasta nada)',
+                const signer = await w.getSigner(app.chainId);
+                return confirmarEFazer(app, {
+                    titulo: 'Assinar (não gasta nada agora)',
                     pedido: d.descricao || 'Autorização assinada',
                     contrato: dados.domain?.verifyingContract,
                     linhas: [['O que é', dados.primaryType === 'Permit' ? 'Autorização de uso de moeda (valor exato)' : 'Ação que outra pessoa vai enviar por você']],
-                    botao: 'Assinar',
-                });
-                if (!ok) throw erro(4001, 'Você recusou na Caixa Forte.');
-                const signer = await w.getSigner(app.chainId);
-                return signer._signTypedData(dados.domain, tipos, dados.message);
+                    botao: 'Deslize para assinar',
+                    chave: ['assinar', app.id, JSON.stringify(dados.message)],
+                    enviando: 'Assinando…',
+                    pronto: 'Assinado',
+                }, () => signer._signTypedData(dados.domain, tipos, dados.message));
             }
             case 'personal_sign': {
-                const ok = await confirmar(app, { titulo: 'Assinar mensagem', pedido: d.descricao || 'Assinatura de texto', linhas: [], botao: 'Assinar' });
-                if (!ok) throw erro(4001, 'Você recusou na Caixa Forte.');
                 const signer = await w.getSigner(app.chainId);
-                return signer.signMessage(E().utils.arrayify(p[0]));
+                return confirmarEFazer(app, { titulo: 'Assinar mensagem', pedido: d.descricao || 'Assinatura de texto', linhas: [], botao: 'Deslize para assinar', enviando: 'Assinando…', pronto: 'Assinado' },
+                    () => signer.signMessage(E().utils.arrayify(p[0])));
             }
             case 'brls_chavePublica':
             case 'brls_segredo': {
@@ -247,34 +250,37 @@
         }
     }
 
-    // ---------- confirmação ----------
-    function confirmar(app, o) {
-        return new Promise((resolve) => {
-            const nomeContrato = o.contrato ? (aberto?.contratos?.[String(o.contrato).toLowerCase()] || 'Contrato') : '';
-            const m = document.createElement('div');
-            m.className = 'modal-overlay app-confirm';
-            m.style.display = 'flex';
-            m.setAttribute('role', 'dialog');
-            m.setAttribute('aria-modal', 'true');
-            m.innerHTML = `
-                <div class="modal-sheet">
-                    <div class="modal-top"><h3>${esc(o.titulo)}</h3></div>
-                    <p class="app-confirm-de">${app.icone} <strong>${esc(app.nome)}</strong> pede:</p>
-                    <p class="app-confirm-pedido">${esc(o.pedido)}</p>
-                    <div class="receipt-summary-box">
-                        ${o.contrato ? `<div class="rcp-line"><span>Onde</span><strong>${esc(nomeContrato)}<br><small>${esc(o.contrato)}</small></strong></div>` : ''}
-                        ${(o.linhas || []).filter(Boolean).map(([a, b]) => `<div class="rcp-line"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}
-                        <div class="rcp-line"><span>Carteira</span><strong>${esc(curto(W().address))}</strong></div>
-                    </div>
-                    <button type="button" class="btn-primary" data-r="1">${esc(o.botao)}</button>
-                    <button type="button" class="btn-text" data-r="0">Recusar</button>
-                </div>`;
-            document.body.appendChild(m);
-            const fim = (v) => { m.remove(); resolve(v); };
-            m.querySelector('[data-r="1"]').addEventListener('click', () => fim(true));
-            m.querySelector('[data-r="0"]').addEventListener('click', () => fim(false));
-            m.querySelector('[data-r="1"]').focus();
-        });
+    // ---------- confirmação: deslizar, nunca um clique ----------
+    // Abre a folha (uma por vez), mostra o que o app pede e só segue se a pessoa deslizar até o fim.
+    // Depois disso a folha fica travada em "Enviando…" até a rede responder, para ninguém mandar duas vezes.
+    // Pedido igual a um que saiu há pouco (mesmo contrato, dados e valor): aviso grande antes.
+    async function confirmar(app, o) {
+        const nomeContrato = o.contrato ? (aberto?.contratos?.[String(o.contrato).toLowerCase()] || 'Contrato') : '';
+        const corpo = `
+            <p class="app-confirm-de">${app.icone} <strong>${esc(app.nome)}</strong> pede:</p>
+            <p class="app-confirm-pedido">${esc(o.pedido)}</p>
+            <div class="receipt-summary-box">
+                ${o.contrato ? `<div class="rcp-line"><span>Onde</span><strong>${esc(nomeContrato)}<br><small>${esc(o.contrato)}</small></strong></div>` : ''}
+                ${(o.linhas || []).filter(Boolean).map(([a, b]) => `<div class="rcp-line"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}
+                <div class="rcp-line"><span>Carteira</span><strong>${esc(curto(W().address))}</strong></div>
+            </div>`;
+        return global.RdeskSlide.pedir({ titulo: o.titulo, corpo, chave: o.chave, rotulo: o.botao, classe: 'app-confirm' });
+    }
+
+    /** Confirma, faz a ação e mostra o resultado na própria folha. Recusou → erro 4001. */
+    async function confirmarEFazer(app, o, acao) {
+        const c = await confirmar(app, o);
+        if (!c) throw erro(4001, 'Você recusou na Caixa Forte.');
+        c.enviando(o.enviando || 'Enviando… não feche o app');
+        try {
+            const r = await acao();
+            c.pronto(o.pronto || 'Feito');
+            return r;
+        } catch (e) {
+            const msg = global.RdeskWallet?.friendlyTxError ? global.RdeskWallet.friendlyTxError(e, { native: 'POL' }) : String(e?.message || e);
+            c.falhou(String(msg).replace(/<[^>]*>/g, '').slice(0, 200));
+            throw e;
+        }
     }
 
     function avisar(texto) {

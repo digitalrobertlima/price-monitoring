@@ -1,7 +1,7 @@
 // Fluxo completo de dinheiro contra a Polygon simulada (tests/mock-chain.mjs), com cliques reais:
 // importar carteira -> piloto automático abre pool -> colher tarifas -> rebalancear -> encerrar.
 // Confere as transações que a app realmente assina.
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, USD_BRL, waitFn } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, TEST_MNEMONIC, POL_USD, USD_BRL, waitFn, deslizar } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 
 const OWNER = ethers.Wallet.fromMnemonic(TEST_MNEMONIC).address.toLowerCase();
@@ -28,7 +28,7 @@ async function confirmReceipt(titleRe) {
     const title = await page.textContent('#rcp-title');
     const body = (await page.innerText('#modal-receipt')).replace(/\s+/g, ' ');
     check(`recibo antes de assinar: ${title}`, titleRe.test(title), body.slice(0, 230));
-    await page.click('#btn-rcp-confirm');
+    await deslizar(page, '#modal-receipt');
 }
 // Espera a rede ficar parada (nenhuma transação nova por alguns segundos) depois de pelo menos `min` transações.
 async function waitTxsSettled(mark, min, timeoutMs = 240000) {
@@ -254,7 +254,8 @@ try {
     await page.selectOption('#swap-from-token', 'USDT');
     await page.selectOption('#swap-to-token', 'BRZ');
     await page.fill('#swap-amount-in', '5');
-    await waitFn(page, () => /Sem liquidez|pool|Uniswap/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 30000 });
+    // Espera o resultado DESTE par (o texto da cotação anterior ainda diz "Uniswap" por um instante)
+    await waitFn(page, () => /Sem liquidez/.test(document.getElementById('swap-quote-info').textContent) && document.getElementById('swap-amount-out').value === '--', null, { timeout: 45000 }).catch(() => {});
     await page.waitForTimeout(1200);
     const thin = { out: await page.inputValue('#swap-amount-out'), info: await page.textContent('#swap-quote-info') };
     mark = idle();

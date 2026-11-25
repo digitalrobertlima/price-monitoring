@@ -2,7 +2,7 @@
 // conferências de segurança antes de assinar e todas as taxas em reais. Rede e serviços simulados.
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, unlockViaDoor, TEST_MNEMONIC, USD_BRL, ROOT } from './helpers.mjs';
+import { startStaticServer, launch, openApp, importWalletViaUi, check, finish, waitFn, unlockViaDoor, TEST_MNEMONIC, USD_BRL, ROOT, deslizar } from './helpers.mjs';
 import { MockChain, ADDR, ethers } from './mock-chain.mjs';
 import { buildPsbt, decodeTx } from './psbt.mjs';
 
@@ -108,7 +108,7 @@ try {
     check('recibo: taxa da rede Bitcoin em sat e em reais, taxa do serviço em reais e aviso de custódia',
         /1\.400 sat ≈ R\$/.test(rcp) && rcp.includes(brl(0.80 + 0.55)) && /fica com o LayerSwap/.test(rcp) && /devolve/.test(rcp), rcp.slice(0, 400));
     await page.screenshot({ path: 'tests/artifacts-btcswap-recibo.png' });
-    await page.click('#btn-rcp-confirm');
+    await deslizar(page, '#modal-receipt');
     await waitFn(page, () => /Bitcoin enviado|rro|Cancel/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 30000 });
     const fb1 = await page.innerText('#swap-feedback');
     const sent = btc.broadcasts[0] ? decodeTx(btc.broadcasts[0]) : null;
@@ -148,7 +148,7 @@ try {
         check('recibo da ida para o Bitcoin: taxas em reais e aviso de custódia', rcp2.includes(brl(0.75 + 0.70)) && /≈ R\$ 0,11 em POL/.test(rcp2) && /fica com o Relay/.test(rcp2), rcp2.slice(0, 300));
     const beforeConfirm = lifiCalls.length;
     const realBefore = lifiCalls.some((c) => c.toAddress === FRESH_BTC || String(c.fromAddress).toLowerCase() === OWNER.toLowerCase());
-    await page.click('#btn-rcp-confirm');
+    await deslizar(page, '#modal-receipt');
     await waitFn(page, () => /chega|rro/i.test(document.getElementById('swap-feedback').textContent), null, { timeout: 60000 });
     const lifiTx = (polygon.lifiCalls || []).at(-1);
     const realAfter = lifiCalls.slice(beforeConfirm).filter((c) => c.toAddress === FRESH_BTC && String(c.fromAddress).toLowerCase() === OWNER.toLowerCase());
