@@ -35,6 +35,7 @@
         '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { symbol: 'USDC.e', decimals: 6, kind: 'USD' },
         '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': { symbol: 'DAI', decimals: 18, kind: 'USD' },
         '0x4ed141110f6eeeaba9a1df36d8c26f684d2475dc': { symbol: 'BRZ', decimals: 18, kind: 'BRL' },
+        '0x3f5fd15e3d5250ae6700bfd8f1adb6b74afca1d4': { symbol: 'BRLS', decimals: 18, kind: 'BRL' },
         '0xe6a537a407488807f0bbeb0038b79004f19dddfb': { symbol: 'BRLA', decimals: 18, kind: 'BRL' },
         '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': { symbol: 'WETH', decimals: 18, kind: 'ETH' },
         '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6': { symbol: 'WBTC', decimals: 8, kind: 'BTC' }
@@ -1811,7 +1812,7 @@
             buyContainer.replaceChildren();
             let unitBrl = usdBrl;
             if (buySym === 'POL') unitBrl = (prices.POL || 0.088) * usdBrl;
-            else if (buySym === 'BRZ' || buySym === 'BRLA') unitBrl = 1.0;
+            else if (buySym === 'BRZ' || buySym === 'BRLA' || buySym === 'BRLS') unitBrl = 1.0;
 
             const rankedBuy = PIX_RAILS.map(r => {
                 const netBrlAfterFees = Math.max(0, (buyBrl - r.fixedBrl) * (1 - r.spreadPct));
@@ -1847,7 +1848,7 @@
             sellContainer.replaceChildren();
             let unitBrl = usdBrl;
             if (sellSym === 'POL' || sellSym === 'WPOL') unitBrl = (prices.POL || 0.088) * usdBrl;
-            else if (sellSym === 'BRZ' || sellSym === 'BRLA') unitBrl = 1.0;
+            else if (sellSym === 'BRZ' || sellSym === 'BRLA' || sellSym === 'BRLS') unitBrl = 1.0;
 
             const grossBrl = sellAmt * unitBrl;
             const visibleRails = PIX_RAILS.filter(r => !defiState.pixOnlyNoKyc || r.noKyc);

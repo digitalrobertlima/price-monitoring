@@ -117,7 +117,7 @@ try {
     const picker = (await page.innerText('.ref-picker')).replace(/\s+/g, ' ');
     const squeezed = await page.$$eval('.ref-picker .ref-txt', (els) => els.some((e) => e.getBoundingClientRect().width < 200));
     check('opções da régua com texto em largura normal (sem espremer)', !squeezed);
-    check('escolher a régua: Bitcoin (padrão), Real (BRZ), Dólar e Ether, com explicação', ['Bitcoin (padrão)', 'Real (BRZ)', 'Dólar (USDT)', 'Ether'].every((s) => picker.includes(s)), picker.slice(0, 160));
+    check('escolher a régua: Real (BRLS) (padrão), Bitcoin, Dólar e Ether, com explicação', ['Real (BRLS) (padrão)', 'Bitcoin', 'Dólar (USDT)', 'Ether'].every((s) => picker.includes(s)), picker.slice(0, 160));
     const polRow = () => page.innerText('#wallet-assets-list [data-asset-symbol="POL"]');
     const usdtRow = () => page.innerText('#wallet-assets-list [data-asset-chain="137"][data-asset-symbol="USDT"]');
     await page.click('.ref-picker [data-ref="BTC"]');
@@ -128,7 +128,7 @@ try {
     await page.click('#btn-ref-picker');
     await page.click('.ref-picker [data-ref="BRL"]');
     await page.waitForTimeout(300);
-    check('frente ao Real (BRZ): o dólar sobe quando o real cai (+1,01%)', /\+1,01%/.test(await usdtRow()), (await usdtRow()).replace(/\s+/g, ' '));
+    check('frente ao Real (BRLS): o dólar sobe quando o real cai (+1,01%)', /\+1,01%/.test(await usdtRow()), (await usdtRow()).replace(/\s+/g, ' '));
     check('régua escolhida fica salva', await ui(() => localStorage.getItem('rdesk_ref_currency_v1')) === 'BRL');
     await ui(() => window.RdeskHistory.setRef('BTC'));
 

@@ -92,6 +92,29 @@ try {
     const brzPerUsdc = brzIs0 ? 1 / humanP : humanP;
     check('preço inicial gravado no fundo = o que você digitou (5,4 BRZ por USDC)', Math.abs(brzPerUsdc - 5.4) / 5.4 < 0.001, brzPerUsdc.toFixed(5));
 
+    // ------------------------------------------------------------ 2b. moeda colada pelo contrato (v48.1)
+    const NOVA = '0x1111111111111111111111111111111111111111';
+    chain.registerToken(NOVA, { symbol: 'BRLS', name: 'Real Soberano', decimals: 18 });
+    chain.fundToken(NOVA, OWNER, 30);
+    await page.evaluate(() => window.RdeskPools.openNew({ chainId: 137, a: 'USDC', b: 'BRZ' }));
+    await page.waitForSelector('#pl-b');
+    await page.selectOption('#pl-b', '__colar');
+    check('opção "colar o contrato" abre o campo do contrato', !(await page.locator('#pl-colar').isHidden()));
+    await page.fill('#pl-colar-end', '0x123');
+    await page.click('#pl-colar-ok');
+    check('contrato inválido: explica o erro', /não é um contrato válido/.test(await page.innerText('#pl-colar-msg')));
+    await page.fill('#pl-colar-end', NOVA);
+    await page.click('#pl-colar-ok');
+    await waitFn(page, () => document.getElementById('pl-colar')?.hidden, null, { timeout: 15000 }).catch(() => {});
+    const bVal = await page.$eval('#pl-b', (e) => e.value);
+    check('moeda colada entra na lista com o símbolo lido da blockchain', /^BRLS/.test(bVal), bVal);
+    await page.selectOption('#pl-a', '__colar');
+    await page.fill('#pl-colar-end', ADDR.BRLA);
+    await page.click('#pl-colar-ok');
+    await waitFn(page, () => document.getElementById('pl-colar')?.hidden, null, { timeout: 15000 }).catch(() => {});
+    check('colar o contrato de uma moeda já conhecida só seleciona ela (sem duplicar)', (await page.$eval('#pl-a', (e) => e.value)) === 'BRLA');
+    await page.click('#pl-back');
+
     // ------------------------------------------------------------ 3. lista em todas as redes + tirar tudo
     await page.waitForSelector('#pl-list .pl-card', { timeout: 20000 }).catch(() => {});
     const cards = await page.locator('#pl-list .pl-card').count();

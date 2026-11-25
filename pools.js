@@ -393,6 +393,13 @@
                 <label class="field-label">Moeda A<select id="pl-a" class="field-input"></select></label>
                 <label class="field-label">Moeda B<select id="pl-b" class="field-input"></select></label>
             </div>
+            <div id="pl-colar" class="pl-colar" hidden>
+                <label class="field-label">Contrato da moeda (<span id="pl-colar-lado">A</span>) nesta rede
+                    <input type="text" id="pl-colar-end" class="field-input" placeholder="0x…" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+                <button type="button" class="btn-soft" id="pl-colar-ok">Usar esta moeda</button>
+                <p class="muted-sm">O app lê o nome e as casas decimais direto da blockchain. Confira o contrato numa fonte oficial: qualquer pessoa consegue criar uma moeda com o mesmo nome de outra.</p>
+                <div id="pl-colar-msg" class="pl-msg" role="status"></div>
+            </div>
             <label class="field-label">Taxa do fundo (quanto cada troca paga)</label>
             <div class="chip-group" id="pl-fees">${FEES.map((f) => `<button type="button" class="chip" data-fee="${f.fee}">${f.label}<small>${esc(f.hint)}</small></button>`).join('')}</div>
             <div id="pl-poolinfo" class="pl-poolinfo muted-sm"></div>
@@ -408,18 +415,22 @@
             <p class="muted-sm">Risco: se o preço sair da faixa, a posição para de render e fica toda numa moeda só. Fundo novo, com pouca gente, rende pouco. Use só uma parte do dinheiro.</p>`);
         if (!el) return;
         const $ = (s) => el.querySelector(s);
-        const st = { fee: 3000, width: '8', pool: null, plan: null, seq: 0 };
+        const st = { fee: 3000, width: '8', pool: null, plan: null, seq: 0, extras: [], ladoColar: 'a', anterior: { a: '', b: '' } };
+        const COLAR = '__colar';
+        const todos = () => [...tokensFor(chainId), ...st.extras.filter((t) => t.chainId === chainId)];
         const num2 = (s) => { const v = REG().parseBRL(String(s || '').trim()); return v === null ? NaN : v; };
-        const fillTokens = () => {
-            const toks = tokensFor(chainId);
+        const fillTokens = (selA, selB) => {
+            const toks = todos();
             const opt = (t, sel) => `<option value="${esc(t.symbol)}" ${t.symbol === sel ? 'selected' : ''}>${esc(t.symbol)}${t.isNative ? ' (embrulha sozinho)' : ''}</option>`;
-            const defA = prefill.a || toks.find((t) => t.isNative)?.symbol || toks[0]?.symbol;
-            const defB = prefill.b || toks.find((t) => /USDC|USDT/.test(t.symbol) && t.symbol !== defA)?.symbol || toks[1]?.symbol;
-            $('#pl-a').innerHTML = toks.map((t) => opt(t, defA)).join('');
-            $('#pl-b').innerHTML = toks.map((t) => opt(t, defB)).join('');
+            const defA = selA || prefill.a || toks.find((t) => t.isNative)?.symbol || toks[0]?.symbol;
+            const defB = selB || prefill.b || toks.find((t) => /USDC|USDT/.test(t.symbol) && t.symbol !== defA)?.symbol || toks[1]?.symbol;
+            const colar = `<option value="${COLAR}">➕ Outra moeda: colar o contrato…</option>`;
+            $('#pl-a').innerHTML = toks.map((t) => opt(t, defA)).join('') + colar;
+            $('#pl-b').innerHTML = toks.map((t) => opt(t, defB)).join('') + colar;
+            st.anterior = { a: $('#pl-a').value, b: $('#pl-b').value };
         };
         const metaOf = (sym) => {
-            const t = tokensFor(chainId).find((x) => x.symbol === sym);
+            const t = todos().find((x) => x.symbol === sym);
             if (!t) return null;
             if (t.isNative) return { symbol: t.wrapOf.symbol, address: t.wrapOf.address, decimals: 18, priceKey: t.priceKey, native: t.symbol };
             return { symbol: t.symbol, address: t.address, decimals: t.decimals, priceKey: t.priceKey, isCustom: t.isCustom };
@@ -485,7 +496,11 @@
                 try {
                     const plan = await planMint({ chainId, tokenA: A, tokenB: B, fee: st.fee, fullRange: st.width === 'full', minPrice: num2($('#pl-min').value), maxPrice: num2($('#pl-max').value), amountA: amt, initialPrice: num2($('#pl-init').value), owner: W().getAddress() });
                     st.plan = plan;
-                    const bal = (sym) => Number((W().getBalances() || []).find((b) => b.chainId === chainId && b.symbol === sym)?.amount || 0);
+                    const bal = (sym) => {
+                        const ex = st.extras.find((t) => t.chainId === chainId && t.symbol === sym);
+                        if (ex) return ex.saldo || 0;
+                        return Number((W().getBalances() || []).find((b) => b.chainId === chainId && b.symbol === sym)?.amount || 0);
+                    };
                     const needA = plan.m0.address.toLowerCase() === A.address.toLowerCase() ? plan.amt0 : plan.amt1;
                     const needB = plan.m0.address.toLowerCase() === A.address.toLowerCase() ? plan.amt1 : plan.amt0;
                     const haveA = bal($('#pl-a').value) + (A.native ? bal(A.symbol) : 0), haveB = bal($('#pl-b').value) + (B.native ? bal(B.symbol) : 0);
@@ -501,7 +516,55 @@
         fillTokens(); syms();
         $('#pl-back').onclick = () => open();
         $('#pl-chain').onchange = () => { chainId = Number($('#pl-chain').value); prefill = {}; fillTokens(); $('#pl-init').value = ''; loadPool(); };
-        $('#pl-a').onchange = $('#pl-b').onchange = () => { $('#pl-init').value = ''; loadPool(); };
+        const aoEscolher = (lado) => () => {
+            const sel = $(`#pl-${lado}`);
+            if (sel.value === COLAR) {
+                st.ladoColar = lado;
+                $('#pl-colar-lado').textContent = lado.toUpperCase();
+                $('#pl-colar').hidden = false;
+                $('#pl-colar-msg').textContent = '';
+                sel.value = st.anterior[lado];
+                $('#pl-colar-end').focus();
+                return;
+            }
+            st.anterior[lado] = sel.value;
+            $('#pl-init').value = '';
+            loadPool();
+        };
+        $('#pl-a').onchange = aoEscolher('a');
+        $('#pl-b').onchange = aoEscolher('b');
+        $('#pl-colar-ok').onclick = async () => {
+            const msg = $('#pl-colar-msg');
+            const end = $('#pl-colar-end').value.trim();
+            if (!E().utils.isAddress(end)) { msg.textContent = 'Isso não é um contrato válido (começa com 0x e tem 42 caracteres).'; return; }
+            msg.textContent = 'Lendo a moeda na blockchain…';
+            try {
+                const endereco = E().utils.getAddress(end);
+                const ja = todos().find((t) => (t.address || '').toLowerCase() === endereco.toLowerCase());
+                let simbolo;
+                if (ja) simbolo = ja.symbol;
+                else {
+                    const m = await tokenMeta(chainId, endereco);
+                    if (!(m.decimals >= 0 && m.decimals <= 36)) throw new Error('casas decimais inválidas');
+                    simbolo = m.symbol || 'MOEDA';
+                    if (todos().some((t) => t.symbol === simbolo)) simbolo = `${simbolo}·${endereco.slice(2, 6)}`; // não confunde com uma oficial
+                    let saldo = 0;
+                    try {
+                        const c = new (E().Contract)(endereco, ABI.erc20, provider(chainId));
+                        saldo = Number(E().utils.formatUnits(await c.balanceOf(W().address), m.decimals));
+                    } catch (e) { /* sem saldo lido */ }
+                    st.extras.push({ chainId, symbol: simbolo, address: endereco, decimals: m.decimals, isCustom: true, colada: true, saldo });
+                }
+                const lado = st.ladoColar;
+                fillTokens(lado === 'a' ? simbolo : $('#pl-a').value, lado === 'b' ? simbolo : $('#pl-b').value);
+                $('#pl-colar').hidden = true;
+                $('#pl-colar-end').value = '';
+                $('#pl-init').value = '';
+                loadPool();
+            } catch (e) {
+                msg.textContent = 'Não consegui ler uma moeda nesse contrato nesta rede. Confira o endereço e a rede.';
+            }
+        };
         el.querySelectorAll('#pl-fees [data-fee]').forEach((b) => { b.onclick = () => { st.fee = Number(b.dataset.fee); $('#pl-init').value = ''; loadPool(); }; });
         el.querySelectorAll('#pl-widths [data-w]').forEach((b) => { b.onclick = () => { st.width = b.dataset.w; applyWidth(); preview(); }; });
         ['#pl-min', '#pl-max', '#pl-amt'].forEach((s) => $(s).addEventListener('input', preview));

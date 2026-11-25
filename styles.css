@@ -3065,3 +3065,21 @@ body.modo-teste .balance-card { outline: 2px dashed rgba(249, 115, 22, .55); out
 /* modo teste: o que não existe nas redes de teste some da tela */
 body.modo-teste .nav-tab-btn[data-tab="pixswap"], body.modo-teste .nav-tab-btn[data-tab="earn"], body.modo-teste #btn-action-swap,
 body.modo-teste .ob-menu [data-m="pix"], body.modo-teste .ob-menu [data-m="render"], body.modo-teste .ob-menu [data-m="airgap"] { display: none !important; }
+
+/* ---------- Apps dentro da carteira (v48) ---------- */
+.apps-card .app-item { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px; margin-top: 10px; border-radius: 16px; border: 1px solid var(--border, rgba(255,255,255,.12)); background: var(--bg-elevated, rgba(255,255,255,.04)); color: inherit; cursor: pointer; }
+.apps-card .app-ico { font-size: 28px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; background: #0A2118; flex: none; }
+.apps-card .app-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.apps-card .app-txt small { opacity: .75; line-height: 1.35; }
+.apps-card .app-ir { font-weight: 700; color: var(--accent, #F7931A); }
+.app-frame-overlay { position: fixed; inset: 0; z-index: 900; display: flex; flex-direction: column; background: #0A2118; }
+.app-frame-bar { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; background: var(--bg-surface, #111); border-bottom: 1px solid rgba(255,255,255,.1); }
+.app-frame-bar strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.app-frame-voltar { border: 0; background: none; color: inherit; font-weight: 700; font-size: 15px; padding: 8px; cursor: pointer; }
+.app-frame-conta { font-family: ui-monospace, monospace; font-size: 12px; opacity: .7; }
+.app-frame { flex: 1; width: 100%; border: 0; background: #0A2118; }
+body.app-frame-aberto { overflow: hidden; }
+.app-confirm { z-index: 950; }
+.app-confirm .app-confirm-de { margin: 4px 0; }
+.app-confirm .app-confirm-pedido { font-size: 18px; font-weight: 700; margin: 4px 0 12px; }
+.app-confirm .rcp-line small { font-family: ui-monospace, monospace; font-size: 11px; opacity: .7; word-break: break-all; }
