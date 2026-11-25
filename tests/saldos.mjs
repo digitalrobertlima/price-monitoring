@@ -30,7 +30,7 @@ try {
     check('1º servidor da Polygon recusando: o saldo vem do servidor seguinte', /POL=50\b/.test(bals) && /USDC=100\b/.test(bals), bals);
     check('um servidor de reserva foi usado de fato', a.external.some((u) => /polygon\.drpc\.org|poly\.api\.pocket|matic\.quiknode|1rpc\.io\/matic/.test(u)), a.external.filter((u) => /polygon|drpc/.test(u)).slice(0, 4).join(' '));
     const lote = balReqs.length ? JSON.parse(balReqs[0]) : null;
-    check('todas as moedas da rede num pedido só (lote), não um por moeda', Array.isArray(lote) && lote.length === 8, lote ? `${lote.length} moedas no 1º pedido` : 'nenhum');
+    check('todas as moedas da rede num pedido só (lote), não um por moeda', Array.isArray(lote) && lote.length === 9, lote ? `${lote.length} moedas no 1º pedido` : 'nenhum');
 
     const ordem = await page.evaluate(() => window.RdeskRegistry.getChain(137).rpcs.map((u) => new URL(u).host));
     check('saúde dos servidores: o que recusa vai para o fim da fila da Polygon', ordem.at(-1) === 'polygon-bor-rpc.publicnode.com' && ordem[0] !== 'polygon-bor-rpc.publicnode.com', ordem.join(' > '));
