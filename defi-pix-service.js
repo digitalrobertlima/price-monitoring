@@ -1227,7 +1227,109 @@
         if (balEl) balEl.textContent = `${(found ? found.amount : 0).toLocaleString('pt-BR', { maximumFractionDigits: 6 })} ${f.fromSym}`;
     }
 
-    // Procura a melhor rota na Uniswap V3 da Polygon: direto em cada faixa de tarifa e, se preciso, em dois saltos.
+    // ---------- descoberta de rotas ----------
+    const UNI_FACTORY = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
+    // Moedas por onde uma troca pode passar (as que existirem na lista da Polygon + estas, fixas)
+    const PONTES_SIMBOLOS = ['WPOL', 'USDT', 'USDC', 'USDC.e', 'WETH', 'BRZ', 'BRLA', 'BRL1', 'BRLS', 'DAI', 'WBTC'];
+    const PONTES_FIXAS = [
+        '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC.e (antigo, ainda com muito dinheiro)
+        '0x5C067C80C00eCd2345b05E83A3e758eF799C40B5', // BRL1
+    ];
+    const factoryIface = new ethers.utils.Interface(['function getPool(address,address,uint24) view returns (address)']);
+    const poolLiqIface = new ethers.utils.Interface(['function liquidity() view returns (uint128)']);
+    const fundosCache = {}; // conjunto de moedas → { em, fundos }
+
+    /** Caminhos de `de` até `para` (até `max` trocas) pelos fundos dados; os mais curtos primeiro. */
+    function caminhosEntre(de, para, fundos, max = 3) {
+        const low = (x) => x.toLowerCase();
+        const viz = new Map();
+        fundos.forEach((f) => [[f.a, f.b], [f.b, f.a]].forEach(([x, y]) => {
+            if (!viz.has(low(x))) viz.set(low(x), []);
+            viz.get(low(x)).push({ para: y, fee: f.fee });
+        }));
+        const out = [];
+        const andar = (tokens, fees) => {
+            const atual = tokens[tokens.length - 1];
+            if (low(atual) === low(para)) { out.push({ tokens, fees }); return; }
+            if (fees.length >= max) return;
+            (viz.get(low(atual)) || []).forEach((v) => {
+                if (tokens.some((t) => low(t) === low(v.para))) return;
+                andar([...tokens, v.para], [...fees, v.fee]);
+            });
+        };
+        andar([de], []);
+        return out.sort((a, b) => a.fees.length - b.fees.length);
+    }
+
+    async function fundosComDinheiro(moedas, providers, ESPERA) {
+        const chave = moedas.map((m) => m.toLowerCase()).sort().join(',');
+        const c = fundosCache[chave];
+        if (c && !window.__RDESK_SEM_CACHE_FUNDOS__ && Date.now() - c.em < 300000) return c.fundos; // fundos mudam devagar: 5 min
+        const pares = [];
+        for (let i = 0; i < moedas.length; i++) for (let j = i + 1; j < moedas.length; j++) SWAP_FEE_TIERS.forEach((fee) => pares.push({ a: moedas[i], b: moedas[j], fee }));
+        const multi = async (calls) => {
+            const attempts = providers.map((p) => withTimeout(new ethers.Contract(MULTICALL3, MULTICALL3_ABI, p).callStatic.aggregate3(calls, { gasLimit: 30000000 }), ESPERA));
+            return firstSuccess(attempts);
+        };
+        const r1 = await multi(pares.map((p) => ({ target: UNI_FACTORY, allowFailure: true, callData: factoryIface.encodeFunctionData('getPool', [p.a, p.b, p.fee]) })));
+        const existem = [];
+        r1.forEach((r, i) => {
+            if (!r.success) return;
+            try {
+                const end = factoryIface.decodeFunctionResult('getPool', r.returnData)[0];
+                if (end && end !== ethers.constants.AddressZero) existem.push({ ...pares[i], pool: end });
+            } catch (e) { /* resposta estranha: ignora */ }
+        });
+        let fundos = [];
+        if (existem.length) {
+            const r2 = await multi(existem.map((p) => ({ target: p.pool, allowFailure: true, callData: poolLiqIface.encodeFunctionData('liquidity') })));
+            fundos = existem.filter((p, i) => {
+                if (!r2[i] || !r2[i].success) return false;
+                try { return poolLiqIface.decodeFunctionResult('liquidity', r2[i].returnData)[0].gt(0); } catch (e) { return false; }
+            });
+        }
+        fundosCache[chave] = { em: Date.now(), fundos };
+        return fundos;
+    }
+
+    async function rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA) {
+        const moedas = [];
+        const add = (a) => { if (a && ethers.utils.isAddress(a) && !moedas.some((m) => m.toLowerCase() === a.toLowerCase())) moedas.push(ethers.utils.getAddress(a)); };
+        add(addrIn); add(addrOut);
+        PONTES_SIMBOLOS.forEach((sym) => { const m = getTokenMeta(137, sym); if (m) add(uniswapAddress(m)); });
+        PONTES_FIXAS.forEach(add);
+        const fundos = await fundosComDinheiro(moedas, providers, ESPERA);
+        if (!fundos.length) return null;
+        const caminhos = caminhosEntre(addrIn, addrOut, fundos, 3).slice(0, 40);
+        if (!caminhos.length) return { candidatos: 0, melhor: null }; // nenhum fundo com dinheiro liga as duas moedas
+        const cands = caminhos.map((c) => {
+            const hops = c.fees.map((fee, i) => ({ tokenIn: c.tokens[i], fee, tokenOut: c.tokens[i + 1] }));
+            const tipos = [], vals = [];
+            c.tokens.forEach((t, i) => { tipos.push('address'); vals.push(t); if (i < c.fees.length) { tipos.push('uint24'); vals.push(c.fees[i]); } });
+            return { hops, data: quoterIface.encodeFunctionData('quoteExactInput', [ethers.utils.solidityPack(tipos, vals), rawIn]) };
+        });
+        const res = await runAll(cands, 2);
+        // Melhor saída; cada troca a mais só vale se pagar pelo menos 0,3% a mais (menos contratos, menos risco)
+        const nota = (out, hops) => out.mul(10000).div(10000 + 30 * (hops - 1));
+        let melhor = null;
+        res.forEach((out, i) => {
+            if (!out || out.isZero()) return;
+            const n = nota(out, cands[i].hops.length);
+            if (!melhor || n.gt(melhor.nota)) melhor = { nota: n, out, hops: cands[i].hops };
+        });
+        if (!melhor) return { candidatos: cands.length, melhor: null };
+        return { candidatos: cands.length, melhor: { rawOut: melhor.out, hops: melhor.hops, label: rotuloRota(melhor.hops) } };
+    }
+
+    function rotuloRota(hops) {
+        const symbolOf = (addr) => (REG.findToken(137, addr)?.symbol || (addr.toLowerCase() === PONTES_FIXAS[0].toLowerCase() ? 'USDC.e' : addr.toLowerCase() === PONTES_FIXAS[1].toLowerCase() ? 'BRL1' : REG.shortAddress(addr)));
+        const taxas = hops.map((h) => feeLabel(h.fee)).join(' + ');
+        if (hops.length === 1) return `Uniswap V3 direto (tarifa ${taxas})`;
+        return `Uniswap V3 via ${hops.slice(0, -1).map((h) => symbolOf(h.tokenOut)).join(' → ')} (${taxas})`;
+    }
+
+    // Procura a melhor rota na Uniswap V3 da Polygon: descobre os fundos e cota todos os caminhos de até 3 trocas.
+    // Se a descoberta falhar (rede ruim), cai nas rotas fixas: direto em cada faixa de tarifa e dois saltos.
     async function quotePolygonUniswap(fromMeta, toMeta, rawIn) {
         const addrIn = uniswapAddress(fromMeta), addrOut = uniswapAddress(toMeta);
         const best = { out: ethers.constants.Zero, hops: null };
@@ -1236,7 +1338,8 @@
         // Rotas candidatas vão em poucas consultas agrupadas (Multicall3), cada uma enviada a todos os
         // servidores da Polygon ao mesmo tempo (vale a primeira resposta). Grupos pequenos: servidores
         // públicos limitam o gás de uma consulta, e um grupo grande demais é recusado inteiro.
-        const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.hops.length === 1 ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
+        const SEL_SINGLE = quoterIface.getSighash('quoteExactInputSingle');
+        const decodeOut = (c, ret) => quoterIface.decodeFunctionResult(c.data.slice(0, 10) === SEL_SINGLE ? 'quoteExactInputSingle' : 'quoteExactInput', ret).amountOut;
         // App Android (Tor): cada pedido leva bem mais tempo e alguns servidores recusam o Tor.
         // Então: espera mais, pergunta só aos 2 servidores que estão respondendo (os mais rápidos na
         // última medição) e não refaz rota por rota quando o problema foi só demora.
@@ -1289,6 +1392,21 @@
             return out;
         };
         const started = Date.now();
+
+        // Descoberta automática: lê na fábrica da Uniswap quais fundos existem (e têm dinheiro) entre as
+        // moedas da troca e as moedas "ponte" da Polygon, e cota TODOS os caminhos de até 3 trocas.
+        // Ex.: BRLS → BRLA → USDT → POL. Quando entrar um fundo novo (BRLS/POL, BRLS/USDC…), ele aparece sozinho.
+        try {
+            const auto = await rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA);
+            if (auto && auto.melhor) {
+                console.debug('[cotação] descoberta:', auto.candidatos, 'caminhos em', Date.now() - started, 'ms');
+                return auto.melhor;
+            }
+            // Fundos lidos, mas nenhum caminho com dinheiro liga as duas moedas: não adianta tentar as fixas
+            if (auto && auto.candidatos === 0) return null;
+        } catch (err) {
+            console.debug('[cotação] descoberta falhou, usando as rotas fixas:', String(err && err.message).slice(0, 120));
+        }
 
         const directCands = SWAP_FEE_TIERS.map((fee) => ({
             hops: [{ tokenIn: addrIn, fee, tokenOut: addrOut }],
@@ -1698,8 +1816,10 @@
                     method = 'exactInputSingle';
                     args = [{ tokenIn: q.hops[0].tokenIn, tokenOut: q.hops[0].tokenOut, fee: q.hops[0].fee, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0 }];
                 } else {
-                    const path = ethers.utils.solidityPack(['address', 'uint24', 'address', 'uint24', 'address'],
-                        [q.hops[0].tokenIn, q.hops[0].fee, q.hops[0].tokenOut, q.hops[1].fee, q.hops[1].tokenOut]);
+                    // Caminho com quantas trocas a rota tiver: moeda, tarifa, moeda, tarifa, …, moeda
+                    const tipos = ['address'], vals = [q.hops[0].tokenIn];
+                    q.hops.forEach((h) => { tipos.push('uint24', 'address'); vals.push(h.fee, h.tokenOut); });
+                    const path = ethers.utils.solidityPack(tipos, vals);
                     method = 'exactInput';
                     args = [{ path, recipient: owner, amountIn: q.rawIn, amountOutMinimum: minOut }];
                 }

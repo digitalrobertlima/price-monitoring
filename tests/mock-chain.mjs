@@ -204,6 +204,13 @@ export class MockChain {
             const [a, b, fee] = I.factory.decodeFunctionData('getPool', data);
             return I.factory.encodeFunctionResult('getPool', [this.poolAddr(s, a, b, fee) || ethers.constants.AddressZero]);
         }
+        const extraIx = this.extraPools.findIndex((p, i) => this.extraAddr(i) === to);
+        if (extraIx >= 0) { // fundo extra (só cotação): responde o básico de um fundo
+            const f = I.pool.getFunction(sel);
+            const pe = this.extraPools[extraIx];
+            if (f.name === 'liquidity') return I.pool.encodeFunctionResult(f, [pe.liquidity ?? 10n ** 21n]);
+            return I.pool.encodeFunctionResult(f, f.name === 'slot0' ? [2n ** 96n, 0, 0, 1, 1, 0, true] : f.name === 'ticks' ? [0, 0, 0, 0, 0, 0, 0, true] : [0]);
+        }
         if (s.pools[to]) { // fundo criado durante o teste
             const f = I.pool.getFunction(sel);
             const pl = s.pools[to];
@@ -298,12 +305,16 @@ export class MockChain {
     poolAddr(s, a, b, fee) {
         const [t0, t1] = lower(a) < lower(b) ? [lower(a), lower(b)] : [lower(b), lower(a)];
         if (t0 === ADDR.WPOL && t1 === ADDR.USDT0 && Number(fee) === 500) return ADDR.POOL;
+        // Fundos extras (só cotação) também aparecem na fábrica, como na rede de verdade
+        const ix = this.extraPools.findIndex((p) => p.fee === Number(fee) && ((p.a === t0 && p.b === t1) || (p.a === t1 && p.b === t0)));
+        if (ix >= 0) return this.extraAddr(ix);
         return Object.keys(s.pools).find((k) => s.pools[k].token0 === t0 && s.pools[k].token1 === t1 && s.pools[k].fee === Number(fee)) || null;
     }
+    extraAddr(ix) { return '0x00000000000000000000000000000000000ee' + ix.toString(16).padStart(3, '0'); }
     poolTick(s, t0, t1, fee) {
         const addr = this.poolAddr(s, t0, t1, fee);
         if (!addr) throw new Revert('fundo inexistente');
-        return addr === ADDR.POOL ? this.tick : s.pools[addr].tick;
+        return addr === ADDR.POOL ? this.tick : (s.pools[addr]?.tick ?? 0);
     }
     execNfpm(s, from, data, value) {
         const sel = data.slice(0, 10);
