@@ -40,6 +40,21 @@ check('rede do app: repassa o pedido e devolve a resposta', ok.status === 200 &&
 check('rede do app: recusa métodos fora de GET/POST', !!(await A._rede({ url: 'https://polygon.drpc.org', method: 'DELETE' })).erro);
 check('rede do app: recusa a origem do próprio cofre', !!(await A._rede({ url: 'https://appassets.androidplatform.net/assets/www/index.html' })).erro);
 check('rede do app: recusa endereço que não é http(s)', !!(await A._rede({ url: 'file:///etc/passwd' })).erro);
+// v48.7: imagens do mapa do BRLS chegam em base64 (a mensagem só leva texto)
+globalThis.fetch = async () => ({ status: 200, headers: { get: () => 'image/png' }, arrayBuffer: async () => new Uint8Array([137, 80, 78, 71, 0, 255]).buffer });
+const img = await A._rede({ url: 'https://tile.openstreetmap.org/17/1/2.png' });
+check('rede do app: imagem vai em base64 sem estragar os bytes', img.b64 === true && img.conteudo === 'image/png' && Buffer.from(img.corpo, 'base64').equals(Buffer.from([137, 80, 78, 71, 0, 255])));
+// v48.7: abrir um ponto no GPS só com números válidos
+{
+    const abertos = [];
+    globalThis.RdeskNative = { openGeo: (lat, lon, app) => abertos.push([lat, lon, app]) };
+    A._gps({ lat: -19.93805, lon: -43.93421, app: 'waze' });
+    A._gps({ lat: 'x', lon: 1 });
+    A._gps({ lat: 95, lon: 1 });
+    A._gps({ lat: -19.9, lon: -43.9, app: 'qualquer' });
+    check('GPS: abre só coordenada válida, no app pedido (ou no GPS padrão)', abertos.length === 2 && abertos[0][2] === 'waze' && abertos[1][2] === 'geo');
+    delete globalThis.RdeskNative;
+}
 // v48.6: o aviso de "conta trocada" só vai ao app quando a conta muda de verdade
 {
     const enviados = [];
