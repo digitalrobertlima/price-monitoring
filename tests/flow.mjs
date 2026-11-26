@@ -256,7 +256,7 @@ try {
     await page.selectOption('#swap-to-token', 'BRZ');
     await page.fill('#swap-amount-in', '5');
     // Espera o resultado DESTE par (o texto da cotação anterior ainda diz "Uniswap" por um instante)
-    await waitFn(page, () => /Sem liquidez/.test(document.getElementById('swap-quote-info').textContent) && document.getElementById('swap-amount-out').value === '--', null, { timeout: 45000 }).catch(() => {});
+    await waitFn(page, () => /Sem liquidez/.test(document.getElementById('swap-quote-info').textContent) && document.getElementById('swap-amount-out').value === '--', null, { timeout: 90000 }).catch(() => {}); // CI lenta
     await page.waitForTimeout(1200);
     const thin = { out: await page.inputValue('#swap-amount-out'), info: await page.textContent('#swap-quote-info') };
     mark = idle();

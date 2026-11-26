@@ -106,9 +106,7 @@
                     enviar({ tipo: 'rede-resposta', id: d.id, ...r });
                 });
             }
-            if (d.tipo === 'gps' && NATIVO()) abrirGps(d);
-            // Corrida em andamento / motorista online: o BRLS pede para a tela não apagar (só no APK)
-            if (d.tipo === 'tela-acesa' && NATIVO() && typeof global.RdeskNative?.keepScreenOn === 'function') global.RdeskNative.keepScreenOn(!!d.liga);
+            avisosDoApp(d);
             if (d.tipo === 'copiar' && NATIVO() && typeof d.texto === 'string') {
                 navigator.clipboard?.writeText(d.texto.slice(0, 4000)).then(() => avisar('Copiado. A área de transferência se apaga sozinha em 60 s.'), () => {});
             }
@@ -135,7 +133,7 @@
         if (!aberto) return;
         global.removeEventListener('message', aberto.ouvir);
         if (typeof aberto.desligarConta === 'function') aberto.desligarConta();
-        try { global.RdeskNative?.keepScreenOn?.(false); } catch (_) { /* sem ponte nativa */ }
+        try { global.RdeskNative?.keepScreenOn?.(false); global.RdeskNative?.plantao?.(false, ''); } catch (_) { /* sem ponte nativa */ }
         aberto.overlay.remove();
         document.body.classList.remove('app-frame-aberto');
         aberto = null;
@@ -149,6 +147,23 @@
             for (const [k, nome] of Object.entries(app.nomesContratos)) if (j[k]) mapa[String(j[k]).toLowerCase()] = nome;
             if (aberto && aberto.app === app) aberto.contratos = mapa;
         } catch (e) { /* sem nomes: mostra o endereço */ }
+    }
+
+    // ---------- Pedidos do BRLS ao aparelho: GPS, tela acesa, plantão e avisos ----------
+    // Plantão = corrida em andamento, motorista online ou loja recebendo pedidos: no APK, liga um aviso
+    // fixo que mantém o app vivo em segundo plano (PlantaoService). Avisos: notificação do sistema.
+    function avisosDoApp(d) {
+        const N = global.RdeskNative;
+        if (d.tipo === 'gps' && NATIVO()) abrirGps(d);
+        if (d.tipo === 'tela-acesa' && NATIVO() && typeof N?.keepScreenOn === 'function') N.keepScreenOn(!!d.liga);
+        if (d.tipo === 'plantao' && NATIVO() && typeof N?.plantao === 'function') {
+            if (d.liga && global.Notification?.permission === 'default') global.Notification.requestPermission?.();
+            N.plantao(!!d.liga, String(d.texto || '').slice(0, 120));
+        }
+        if (d.tipo === 'notificar' && typeof d.titulo === 'string') {
+            const titulo = d.titulo.slice(0, 80), corpo = String(d.corpo || '').slice(0, 240);
+            try { if (global.Notification?.permission === 'granted') new global.Notification(titulo, { body: corpo }); } catch (_) { /* sem avisos */ }
+        }
     }
 
     // ---------- GPS (só no APK): o BRLS pede para abrir um ponto no Waze/Google Maps/GPS ----------
@@ -319,7 +334,7 @@
         else alert(texto);
     }
 
-    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, redeOk: () => (aberto ? aberto.redeOk : 0), _tratar: tratar, _rede: rede, _gps: abrirGps };
+    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, redeOk: () => (aberto ? aberto.redeOk : 0), _tratar: tratar, _rede: rede, _gps: abrirGps, _avisos: avisosDoApp };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarCartao);
     else pintarCartao();
