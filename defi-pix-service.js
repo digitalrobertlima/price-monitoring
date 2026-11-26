@@ -1316,7 +1316,7 @@
             if (!lista.length) return;
             const cands = montar(lista);
             total += cands.length;
-            const res = await runAll(cands, 2);
+            const res = await runAll(cands, 4); // fundos já conferidos com dinheiro: grupos maiores, menos pedidos
             res.forEach((out, i) => {
                 if (!out || out.isZero()) return;
                 const n = nota(out, cands[i].hops.length);
@@ -1354,13 +1354,13 @@
         // última medição) e não refaz rota por rota quando o problema foi só demora.
         const tor = Boolean(window.RDESK_NATIVE);
         const ESPERA = tor ? 30000 : 9000;
+        // Pergunta só aos servidores que estão respondendo (2 no Tor, 3 fora): mandar cada consulta aos
+        // 5 servidores ao mesmo tempo multiplicava os pedidos e fazia os servidores públicos limitarem o app.
         let rpcs = (REG.getChain(137)?.rpcs || []);
-        if (tor) {
-            await Promise.race([Promise.resolve(REG.rankRpcs?.(137)), new Promise((r) => setTimeout(r, 3000))]).catch(() => {});
-            const saude = REG.rpcHealth?.(137);
-            const bons = saude ? saude.filter((x) => x.ok).sort((a, b) => a.ms - b.ms).map((x) => x.url) : [];
-            rpcs = (bons.length ? bons : rpcs).slice(0, 2);
-        }
+        await Promise.race([Promise.resolve(REG.rankRpcs?.(137)), new Promise((r) => setTimeout(r, tor ? 3000 : 1500))]).catch(() => {});
+        const saude = REG.rpcHealth?.(137);
+        const bons = saude ? saude.filter((x) => x.ok).sort((a, b) => a.ms - b.ms).map((x) => x.url) : [];
+        rpcs = (bons.length ? bons : rpcs).slice(0, tor ? 2 : 3);
         const providers = rpcs.map((url) => new ethers.providers.StaticJsonRpcProvider(url, 137));
         const runGroup = async (group) => {
             const payload = group.map((c) => ({ target: QUOTER_V2, allowFailure: true, callData: c.data }));

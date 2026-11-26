@@ -40,4 +40,24 @@ check('rede do app: repassa o pedido e devolve a resposta', ok.status === 200 &&
 check('rede do app: recusa métodos fora de GET/POST', !!(await A._rede({ url: 'https://polygon.drpc.org', method: 'DELETE' })).erro);
 check('rede do app: recusa a origem do próprio cofre', !!(await A._rede({ url: 'https://appassets.androidplatform.net/assets/www/index.html' })).erro);
 check('rede do app: recusa endereço que não é http(s)', !!(await A._rede({ url: 'file:///etc/passwd' })).erro);
+// v48.6: o aviso de "conta trocada" só vai ao app quando a conta muda de verdade
+{
+    const enviados = [];
+    let ouvinte = null;
+    const conta = ethers.Wallet.createRandom();
+    globalThis.RdeskWallet = { address: conta.address, isLocked: () => false, isWatchOnly: () => false, getSigner: async () => conta, onAccountChange: (cb) => { ouvinte = cb; cb(); return () => {}; } };
+    const iframe = { contentWindow: { postMessage: (m) => enviados.push(m) } };
+    globalThis.document = { readyState: 'complete', getElementById: () => null, body: { classList: { add() {}, remove() {} }, appendChild() {} },
+        createElement: () => ({ className: '', setAttribute() {}, querySelector: (q) => (q === 'iframe' ? iframe : { addEventListener() {} }), remove() {}, set innerHTML(v) {} }) };
+    globalThis.addEventListener = () => {}; globalThis.removeEventListener = () => {};
+    globalThis.fetch = async () => ({ json: async () => ({}) });
+    A.abrir('brls');
+    for (let i = 0; i < 5; i++) ouvinte(); // saldos atualizando: mesma conta
+    const contaMsgs = () => enviados.filter((m) => m.tipo === 'conta').length;
+    check('mesma conta (saldos atualizando): o app NÃO recebe "conta trocada"', contaMsgs() === 0, String(contaMsgs()));
+    globalThis.RdeskWallet.address = ethers.Wallet.createRandom().address;
+    ouvinte(); ouvinte();
+    check('conta trocada de verdade: o app recebe um aviso só', contaMsgs() === 1, String(contaMsgs()));
+    A.fechar();
+}
 finish();

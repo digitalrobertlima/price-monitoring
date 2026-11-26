@@ -116,7 +116,14 @@
             }
         };
         global.addEventListener('message', ouvir);
-        const desligarConta = W().onAccountChange?.(() => { if (aberto && aberto.iframe === iframe) enviar({ tipo: 'conta', endereco: W().address }); });
+        // Só avisa o app quando a conta muda DE VERDADE (o aviso da carteira também dispara ao atualizar saldos)
+        let ultimaConta = String(W().address || '').toLowerCase();
+        const desligarConta = W().onAccountChange?.(() => {
+            const agora = String(W().address || '').toLowerCase();
+            if (!aberto || aberto.iframe !== iframe || !agora || agora === ultimaConta) return;
+            ultimaConta = agora;
+            enviar({ tipo: 'conta', endereco: W().address });
+        });
         aberto = { app, overlay, iframe, ouvir, desligarConta, contratos: null, redeOk: 0 };
         carregarContratos(app);
     }
