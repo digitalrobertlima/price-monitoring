@@ -87,7 +87,7 @@
                 <strong>${app.icone} ${esc(app.nome)}</strong>
                 <span class="app-frame-conta">${esc(curto(w.address))}</span>
             </div>
-            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte${NATIVO() ? '&tor=ponte' : ''}" allow="camera; clipboard-read; clipboard-write; web-share; geolocation" referrerpolicy="no-referrer"></iframe>`;
+            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte${NATIVO() ? '&tor=ponte' : ''}" allow="camera; clipboard-read; clipboard-write; web-share; geolocation; screen-wake-lock" referrerpolicy="no-referrer"></iframe>`;
         document.body.appendChild(overlay);
         document.body.classList.add('app-frame-aberto');
         const iframe = overlay.querySelector('iframe');
@@ -107,6 +107,8 @@
                 });
             }
             if (d.tipo === 'gps' && NATIVO()) abrirGps(d);
+            // Corrida em andamento / motorista online: o BRLS pede para a tela não apagar (só no APK)
+            if (d.tipo === 'tela-acesa' && NATIVO() && typeof global.RdeskNative?.keepScreenOn === 'function') global.RdeskNative.keepScreenOn(!!d.liga);
             if (d.tipo === 'copiar' && NATIVO() && typeof d.texto === 'string') {
                 navigator.clipboard?.writeText(d.texto.slice(0, 4000)).then(() => avisar('Copiado. A área de transferência se apaga sozinha em 60 s.'), () => {});
             }
@@ -133,6 +135,7 @@
         if (!aberto) return;
         global.removeEventListener('message', aberto.ouvir);
         if (typeof aberto.desligarConta === 'function') aberto.desligarConta();
+        try { global.RdeskNative?.keepScreenOn?.(false); } catch (_) { /* sem ponte nativa */ }
         aberto.overlay.remove();
         document.body.classList.remove('app-frame-aberto');
         aberto = null;
