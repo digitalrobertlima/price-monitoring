@@ -115,20 +115,78 @@ try {
     check('colar o contrato de uma moeda já conhecida só seleciona ela (sem duplicar)', (await page.$eval('#pl-a', (e) => e.value)) === 'BRLA');
     await page.click('#pl-back');
 
-    // ------------------------------------------------------------ 3. lista em todas as redes + tirar tudo
-    await page.waitForSelector('#pl-list .pl-card', { timeout: 20000 }).catch(() => {});
-    const cards = await page.locator('#pl-list .pl-card').count();
-    const listText = (await page.innerText('#pl-list')).replace(/\s+/g, ' ');
-    check('minhas posições: as duas aparecem, rendendo, com valor em reais', cards >= 2 && /Rendendo/.test(listText) && /USDC/.test(listText) && /BRZ/.test(listText), listText.slice(0, 240));
+    // ------------------------------------------------------------ 3. seção Fundos: lista, colocar mais, tirar parte, tirar tudo
+    await page.waitForSelector('#fundos-lista .pl-card', { timeout: 20000 }).catch(() => {});
+    const cards = await page.locator('#fundos-lista .pl-card').count();
+    const listText = (await page.innerText('#fundos-lista')).replace(/\s+/g, ' ');
+    check('seção Fundos: as duas posições aparecem, recebendo taxas, com valor em reais', cards >= 2 && /Recebendo taxas/.test(listText) && /USDC/.test(listText) && /BRZ/.test(listText), listText.slice(0, 240));
+    const resumo = (await page.innerText('#fundos-resumo')).replace(/\s+/g, ' ');
+    check('resumo no topo: total nos fundos, para colher e quantas posições', /Nos fundos/.test(resumo) && /Para colher/.test(resumo) && /Posições 2/.test(resumo), resumo);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: 'tests/artifacts-fundos.png' });
     const idx = await page.evaluate(() => window.RdeskPools._last().findIndex((p) => p.fee === 3000));
+    const posId = await page.evaluate((i) => window.RdeskPools._last()[i].id, idx);
+    const liq0 = chain.state.positions[posId].liquidity;
+
+    // colocar mais (mesma faixa)
+    mark = chain.txs.length;
+    await page.click(`#fundos-lista [data-acao="add"][data-i="${idx}"]`);
+    await page.waitForSelector('#pa-qtd');
+    await page.fill('#pa-qtd', '5');
+    await waitFn(page, () => !document.getElementById('pa-go').disabled, null, { timeout: 20000 }).catch(() => {});
+    const paPrev = (await page.innerText('#pa-preview')).replace(/\s+/g, ' ');
+    await page.click('#pa-go');
+    await confirmReceipt();
+    await waitFn(page, () => /Colocado/.test(document.getElementById('pa-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
+    txs = chain.txs.slice(mark);
+    check('colocar mais: aprova o valor exato e aumenta a MESMA posição (sem criar outra)', txs.some((t) => t.fn === 'increaseLiquidity' && t.status === 1) && chain.state.positions[posId].liquidity > liq0 && !txs.some((t) => t.fn === 'mint'),
+        `${paPrev} | ${txs.map((t) => `${t.contract}.${t.fn}${t.status ? '' : '!' + t.revertReason}`).join(' -> ')}`);
+
+    // tirar metade
+    await page.evaluate(() => window.RdeskPools.open());
+    await page.waitForSelector('#fundos-lista .pl-card', { timeout: 20000 });
+    await page.waitForTimeout(800);
+    const idx2 = await page.evaluate((id) => window.RdeskPools._last().findIndex((p) => p.id === id), posId);
+    const liq1 = chain.state.positions[posId].liquidity;
+    mark = chain.txs.length;
+    await page.click(`#fundos-lista [data-acao="tirar"][data-i="${idx2}"]`);
+    await page.click('#pt-pcts [data-pct="50"]');
+    await page.screenshot({ path: 'tests/artifacts-fundos-tirar.png' });
+    await page.click('#pt-go');
+    await confirmReceipt();
+    await waitFn(page, () => /Feito/.test(document.getElementById('pt-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
+    txs = chain.txs.slice(mark);
+    const liq2 = chain.state.positions[posId].liquidity;
+    check('tirar 50%: metade da liquidez volta numa transação e a posição continua aberta', txs.length === 1 && txs[0].fn === 'multicall' && txs[0].status === 1 && liq2 > 0n && Math.abs(Number(liq2) / Number(liq1) - 0.5) < 0.01,
+        `${Number(liq1)} → ${Number(liq2)}`);
+
+    // tirar tudo
+    await page.evaluate(() => window.RdeskPools.open());
+    await page.waitForSelector('#fundos-lista .pl-card', { timeout: 20000 });
+    await page.waitForTimeout(800);
+    const idx3 = await page.evaluate((id) => window.RdeskPools._last().findIndex((p) => p.id === id), posId);
     const usdcBefore = chain.balOf(ADDR.USDC, OWNER);
     mark = chain.txs.length;
-    await page.click(`[data-exit="${idx}"]`);
+    await page.click(`#fundos-lista [data-acao="tirar"][data-i="${idx3}"]`);
+    await page.click('#pt-pcts [data-pct="100"]');
+    await page.click('#pt-go');
     await confirmReceipt();
-    await waitFn(page, () => /Feito/.test(document.querySelector(`[data-msg]`)?.parentElement?.innerText || '') || [...document.querySelectorAll('[data-msg]')].some((m) => /Feito/.test(m.textContent)), null, { timeout: 60000 }).catch(() => {});
+    await waitFn(page, () => /Feito/.test(document.getElementById('pt-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});
     txs = chain.txs.slice(mark);
-    check('tirar tudo: retira a liquidez e devolve as moedas numa transação', txs.length === 1 && txs[0].fn === 'multicall' && txs[0].status === 1 && Object.values(chain.state.positions).find((p) => p.owner === OWNER && p.fee === 3000).liquidity === 0n && chain.balOf(ADDR.USDC, OWNER) > usdcBefore,
+    check('tirar tudo: retira a liquidez e devolve as moedas numa transação', txs.length === 1 && txs[0].fn === 'multicall' && txs[0].status === 1 && chain.state.positions[posId].liquidity === 0n && chain.balOf(ADDR.USDC, OWNER) > usdcBefore,
         txs.map((t) => `${t.contract}.${t.fn}${t.status ? '' : '!' + t.revertReason}`).join(' -> '));
+
+    // mais opções: link da Uniswap e "outra posição neste fundo" já com par e taxa
+    await page.evaluate(() => window.RdeskPools.open());
+    await page.waitForSelector('#fundos-lista .pl-card', { timeout: 20000 });
+    const idx4 = await page.evaluate(() => window.RdeskPools._last().findIndex((p) => p.fee === 500 && !p.closed));
+    await page.click(`#fundos-lista [data-acao="mais"][data-i="${idx4}"]`);
+    const link = await page.getAttribute('.pl-menu a', 'href');
+    await page.click('#pm-novo');
+    await page.waitForSelector('#pl-a');
+    const pre = await page.evaluate(() => ({ a: document.getElementById('pl-a').value, b: document.getElementById('pl-b').value, fee: document.querySelector('#pl-fees .chip.active')?.dataset.fee }));
+    check('mais opções: link da posição na Uniswap e nova posição já com o mesmo par e taxa', /app\.uniswap\.org\/positions\/v3\/polygon\/\d+/.test(link) && pre.fee === '500', `${link} ${JSON.stringify(pre)}`);
+    await page.click('#pl-back');
 
     // ------------------------------------------------------------ 4. token do criador: enviar sem moeda da rede (relayer)
     const relayed = [];

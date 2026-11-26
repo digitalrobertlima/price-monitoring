@@ -184,7 +184,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('btn-pools-open')?.addEventListener('click', () => window.RdeskPools?.open());
         document.getElementById('btn-pools-new')?.addEventListener('click', () => window.RdeskPools?.openNew());
         applyBalancePrivacy(readBalancePrivacy());
         document.getElementById('btn-toggle-balances')?.addEventListener('click', () => window.RdeskPrivacy.set(!window.RdeskPrivacy.isHidden()));

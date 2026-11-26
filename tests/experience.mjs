@@ -87,13 +87,14 @@ try {
     // Render: último passo -> comemoração e o card some
     await page.click('.nav-tab-btn[data-tab="earn"]');
     await page.waitForSelector('#ob-coach.show', { timeout: 5000 });
-    check('primeira vez no Render: dica explica a faixa e as alças', /alças azuis/.test(await page.innerText('#ob-coach')));
+    check('primeira vez nos Fundos: dica explica as posições e as alças do piloto', /alças azuis/.test(await page.innerText('#ob-coach')) && /colher/.test(await page.innerText('#ob-coach')));
     await page.click('[data-coach-ok]');
     await page.waitForSelector('#ob-toast.show', { timeout: 5000 });
     check('ao completar os primeiros passos: comemoração', /Primeiros passos concluídos/.test(await page.innerText('#ob-toast')));
     check('o card de primeiros passos some depois de concluído', await ui(() => document.getElementById('getting-started').hidden));
 
     // ================================================================ 3. Gráfico com toque e faixa própria
+    await page.click('[data-fundos-aba="piloto"]');
     await waitFn(page, () => window.RdeskDefi.getState().poolPrice > 0 && window.RdeskDefi.getState().chart?.candles > 20, null, { timeout: 30000 });
     await page.waitForTimeout(800);
     const canvas = page.locator('#earn-chart-container canvas');

@@ -206,16 +206,36 @@
         <!-- =================================================================
              RENDER (Uniswap V3)
              ================================================================= -->
-        <section id="tab-panel-earn" class="tab-panel" aria-label="Render">
-            <div class="intro-card">
+        <section id="tab-panel-earn" class="tab-panel" aria-label="Fundos">
+            <div class="fundos-topo">
                 <div class="intro-head">
-                    <h1>Faça suas moedas renderem</h1>
+                    <h1>Fundos da Uniswap</h1>
                     <span id="top-status-pill" class="pill-badge safe">Pronto</span>
                 </div>
-                <p>Você coloca POL e dólar digital (USDT) num fundo de trocas da Uniswap. Cada vez que alguém troca nesse fundo, você recebe uma parte da taxa. <strong>Só rende enquanto o preço estiver dentro da sua faixa.</strong></p>
-                <div class="net-risk young" id="render-network-risk"><span class="net-tag young">Rede jovem · desde 2020</span><span>O Render roda na Polygon, uma rede nova e mais arriscada que Bitcoin e Ethereum. Use só uma parte do seu dinheiro: sua reserva fica melhor em Bitcoin.</span></div>
-                <button type="button" class="btn-text small" data-explain="render">Como funciona e quais os riscos?</button>
+                <p class="muted-sm">Coloque duas moedas num fundo de trocas e receba parte da taxa de cada troca, enquanto o preço ficar dentro da sua faixa. Tudo direto nos contratos oficiais, em 7 redes.</p>
+                <div class="fundos-abas" role="tablist" aria-label="Partes da seção">
+                    <button type="button" role="tab" class="fundos-aba" data-fundos-aba="posicoes" aria-selected="true">Minhas posições</button>
+                    <button type="button" role="tab" class="fundos-aba" data-fundos-aba="piloto" aria-selected="false">Piloto automático</button>
+                    <button type="button" role="tab" class="fundos-aba" data-fundos-aba="calc" aria-selected="false">Calculadora</button>
+                </div>
             </div>
+
+            <div class="fundos-vista" data-fundos-vista="posicoes" role="tabpanel">
+                <div class="fundos-resumo" id="fundos-resumo" aria-live="polite"></div>
+                <div class="fundos-acoes">
+                    <button type="button" class="fundos-acao principal" id="btn-pools-new"><span aria-hidden="true">＋</span>Nova posição<small>em fundo novo ou que já existe</small></button>
+                    <button type="button" class="fundos-acao" id="btn-fundos-trocar"><span aria-hidden="true">⇄</span>Trocar moedas<small>pela melhor rota</small></button>
+                </div>
+                <div class="section-head"><h2>Suas posições</h2><button type="button" class="btn-text small" id="btn-fundos-atualizar">Atualizar</button></div>
+                <div id="fundos-lista" class="pl-list"><div class="skeleton-row"></div><div class="skeleton-row"></div></div>
+                <div class="net-risk-wrap">
+                    <div class="net-risk young" id="render-network-risk"><span class="net-tag young">Rede jovem · desde 2020</span><span>O Render roda na Polygon, uma rede nova e mais arriscada que Bitcoin e Ethereum. Use só uma parte do seu dinheiro: sua reserva fica melhor em Bitcoin.</span></div>
+                    <button type="button" class="btn-text small" data-explain="render">Como funciona e quais os riscos?</button>
+                </div>
+            </div>
+
+            <div class="fundos-vista" data-fundos-vista="piloto" role="tabpanel" hidden>
+                <p class="muted-sm fundos-explica">O piloto cuida de uma posição POL/USDT na Polygon: você escolhe a faixa no gráfico e ele abre, colhe e muda a faixa quando o preço sai dela.</p>
 
             <div class="section-card">
                 <div class="section-head stack">
@@ -262,29 +282,8 @@
                     </div>
                 </details>
             </div>
-
-            <div class="section-card pools-card">
-                <div class="section-head stack"><h2>Fundos em qualquer rede</h2></div>
-                <p class="muted-sm">Qualquer par de moedas, em Polygon, Ethereum, Base, Arbitrum, Optimism, BNB Chain ou Celo. Abra, colha e tire tudo daqui mesmo, sem abrir outro site. Dá até para criar um fundo que ainda não existe.</p>
-                <div class="two-btn-row"><button type="button" class="btn-primary" id="btn-pools-open">Meus fundos</button><button type="button" class="btn-soft" id="btn-pools-new">＋ Nova posição</button></div>
-            </div>
-
-            <div class="section-card" id="earn-calc">
-                <div class="section-head stack"><h2>Calculadora: quanto preciso para ganhar?</h2></div>
-                <div class="calc-form">
-                    <label class="field-label">Quero ganhar
-                        <span class="calc-inline"><input type="text" inputmode="decimal" id="calc-target" class="field-input" placeholder="R$ 1,00" autocomplete="off">
-                        <select id="calc-period" class="field-input" aria-label="Por período"><option value="min">por minuto</option><option value="hora">por hora</option><option value="dia" selected>por dia</option><option value="mes">por mês</option></select></span>
-                    </label>
-                    <label class="field-label">Tenho para colocar (deixe vazio para usar o que está livre na carteira)
-                        <input type="text" inputmode="decimal" id="calc-have" class="field-input" placeholder="R$ 500,00" autocomplete="off">
-                    </label>
-                </div>
-                <div id="earn-calc-out" aria-live="polite"><p class="muted-sm">Carregando o preço e o movimento do fundo…</p></div>
-            </div>
-
             <div class="section-card">
-                <div class="section-head"><h2>Rendendo agora</h2></div>
+                <div class="section-head"><h2>Posições do piloto</h2></div>
                 <div id="active-positions-list" class="positions-stack">
                     <div class="empty-state">Você ainda não está rendendo. Escolha a faixa acima e toque em “Começar a render”.</div>
                 </div>
@@ -299,6 +298,23 @@
                         </div>
                     </div>
                 </details>
+            </div>
+            </div>
+
+            <div class="fundos-vista" data-fundos-vista="calc" role="tabpanel" hidden>
+            <div class="section-card" id="earn-calc">
+                <div class="section-head stack"><h2>Calculadora: quanto preciso para ganhar?</h2></div>
+                <div class="calc-form">
+                    <label class="field-label">Quero ganhar
+                        <span class="calc-inline"><input type="text" inputmode="decimal" id="calc-target" class="field-input" placeholder="R$ 1,00" autocomplete="off">
+                        <select id="calc-period" class="field-input" aria-label="Por período"><option value="min">por minuto</option><option value="hora">por hora</option><option value="dia" selected>por dia</option><option value="mes">por mês</option></select></span>
+                    </label>
+                    <label class="field-label">Tenho para colocar (deixe vazio para usar o que está livre na carteira)
+                        <input type="text" inputmode="decimal" id="calc-have" class="field-input" placeholder="R$ 500,00" autocomplete="off">
+                    </label>
+                </div>
+                <div id="earn-calc-out" aria-live="polite"><p class="muted-sm">Carregando o preço e o movimento do fundo…</p></div>
+            </div>
             </div>
         </section>
 
@@ -423,7 +439,7 @@
         <button type="button" class="nav-tab-btn active" data-tab="wallet" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg><span>Início</span></button>
         <button type="button" class="nav-tab-btn" data-tab="learn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 12 5l10 4.5L12 14z"/><path d="M6 11.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.5"/><path d="M22 9.5v5"/></svg><span>Aprender</span></button>
         <button type="button" class="nav-tab-btn" data-tab="pixswap" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5h13"/><path d="M17 13l3.5 3.5L17 20"/><path d="M20.5 16.5h-13"/></svg><span>Trocar</span></button>
-        <button type="button" class="nav-tab-btn" data-tab="earn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4.5-4.5 3.5 3.5L19.5 7"/><path d="M15 7h4.5v4.5"/></svg><span>Render</span></button>
+        <button type="button" class="nav-tab-btn" data-tab="earn" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16"/><path d="m5 15 4.5-4.5 3.5 3.5L19.5 7"/><path d="M15 7h4.5v4.5"/></svg><span>Fundos</span></button>
         <button type="button" class="nav-tab-btn" data-tab="audit" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/></svg><span>Extrato</span></button>
     </nav>
 
