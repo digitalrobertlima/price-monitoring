@@ -55,6 +55,21 @@ check('rede do app: imagem vai em base64 sem estragar os bytes', img.b64 === tru
     check('GPS: abre só coordenada válida, no app pedido (ou no GPS padrão)', abertos.length === 2 && abertos[0][2] === 'waze' && abertos[1][2] === 'geo');
     delete globalThis.RdeskNative;
 }
+// v50: links do BRLS — WhatsApp/Jitsi abrem no app deles; o resto é copiado; nada além de https
+{
+    const abertos = [];
+    globalThis.RdeskNative = { openLink: (u) => abertos.push(u) };
+    const nativoAntes = globalThis.RDESK_NATIVE;
+    globalThis.RDESK_NATIVE = true;
+    A._avisos({ tipo: 'abrir', url: 'https://wa.me/5531988887777?text=Ol%C3%A1' });
+    A._avisos({ tipo: 'abrir', url: 'https://meet.jit.si/BRLS-1-abc' });
+    A._avisos({ tipo: 'abrir', url: 'https://wa.me.golpe.com/x' });
+    A._avisos({ tipo: 'abrir', url: 'javascript:alert(1)' });
+    A._avisos({ tipo: 'abrir', url: 'intent://wa.me#Intent;end' });
+    check('links do BRLS: só WhatsApp e Jitsi abrem no app, só https', abertos.length === 2 && abertos[0].startsWith('https://wa.me/') && abertos[1].startsWith('https://meet.jit.si/'));
+    globalThis.RDESK_NATIVE = nativoAntes;
+    delete globalThis.RdeskNative;
+}
 // v49.2: plantão do BRLS (aviso fixo no APK) e avisos com o app em segundo plano
 {
     const chamadas = [];

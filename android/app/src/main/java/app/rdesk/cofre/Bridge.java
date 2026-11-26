@@ -147,6 +147,18 @@ final class Bridge {
         });
     }
 
+    /** WhatsApp / Jitsi pedidos pelo BRLS (a pessoa tocou no botão). Só esses hosts, só https. */
+    @JavascriptInterface public void openLink(String url) {
+        if (url == null || url.length() > 400) return;
+        final Uri u = Uri.parse(url);
+        String h = u.getHost() == null ? "" : u.getHost();
+        if (!"https".equals(u.getScheme()) || !(h.equals("wa.me") || h.equals("api.whatsapp.com") || h.equals("meet.jit.si"))) return;
+        main.post(() -> {
+            try { act.startActivity(new Intent(Intent.ACTION_VIEW, u)); }
+            catch (Exception e) { try { act.startActivity(Intent.createChooser(new Intent(Intent.ACTION_VIEW, u), "Abrir com")); } catch (Exception ignored) { } }
+        });
+    }
+
     /** Mantém a tela acesa (corrida em andamento / motorista online no BRLS). Desliga ao sair do app. */
     @JavascriptInterface public void keepScreenOn(boolean liga) {
         main.post(() -> {
