@@ -29,7 +29,7 @@ try {
     await on.page.fill('#ag-to', DEST);
     await on.page.fill('#ag-amt', '120000');
     await on.page.click('#ag-go');
-    await on.page.waitForSelector('#ag-qr img, #ag-qr canvas', { timeout: 15000 });
+    await on.page.waitForSelector('#ag-qr img[src]', { timeout: 15000 });
     const reqText = await on.page.inputValue('#ag-out .ag-raw');
     check('online: pedido virou QR (sem precisar das palavras)', reqText.startsWith('RDESK1REQ:') && reqText.length < 900, `${reqText.length} caracteres`);
 
