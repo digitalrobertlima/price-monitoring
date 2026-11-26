@@ -142,7 +142,7 @@ class BtcLuz(
             .peers(peers)
             .onlyConfiguredPeers()
             .connections(2u)
-            .socks5Proxy(Socks5Proxy(IpAddress.fromIpv4(127u, 0u, 0u, 1u), tor.port(0).toUShort()))
+            .let { if (TorManager.SEM_TOR) it else it.socks5Proxy(Socks5Proxy(IpAddress.fromIpv4(127u, 0u, 0u, 1u), tor.port(0).toUShort())) }
             .configureTimeoutMillis(30_000u, 60_000u)
             .build(w)
         comps.node.run()

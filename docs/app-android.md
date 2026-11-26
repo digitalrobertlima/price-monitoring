@@ -5,6 +5,8 @@
 > com o Tor embutido. Detalhes de privacidade em [`apk-privado.md`](apk-privado.md).
 >
 > - **Download fixo (sempre a mais nova):** `https://github.com/digitalrobertlima/price-monitoring/releases/download/android/rdesk.apk`
+> - **Versão direta (sem Tor, bem mais rápida):** `https://github.com/digitalrobertlima/price-monitoring/releases/download/android/rdesk-direto.apk`
+>   Mesmo código, compilado com `-Prdesk.modo=direto`: pacote `app.rdesk.cofre.direto` (instala ao lado do outro), a ponte nativa usa a rede normal do celular (sem proxy, DNS normal), sem Tor e sem pontes. O WebView continua sem rede própria (tudo pela ponte, sem cookies, só https). O teste de vazamento do CI só vale para a versão com Tor.
 > - **Por versão:** tags `android-vXX` na página de versões, com SHA-256 e o certificado de assinatura.
 > - **Assinatura:** o workflow só publica quando os Secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASS` e `ANDROID_KEY_ALIAS` existem.
 >

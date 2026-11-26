@@ -157,6 +157,10 @@ public class MainActivity extends Activity {
     }
 
     private void copyLink(String url) {
+        if (TorManager.SEM_TOR) {
+            // APK direto: abre no navegador do celular
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); return; } catch (Exception ignored) { }
+        }
         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("link", url));
         Toast.makeText(this, "Link copiado. Abrir aqui sairia do Tor: cole no Tor Browser.", Toast.LENGTH_LONG).show();

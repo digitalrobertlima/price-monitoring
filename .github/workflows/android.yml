@@ -157,13 +157,28 @@ jobs:
           cat "rdesk-$VER.sha256"
           du -h rdesk-$VER*.apk
 
+      - name: Compilar o APK direto (sem Tor, mais rápido; instala ao lado do outro)
+        run: |
+          gradle -p android --no-daemon --stacktrace assembleRelease -Prdesk.modo=direto
+          OUT=android/app/build/outputs/apk/release
+          cp "$OUT/app-universal-release.apk" "dist/rdesk-direto-$VER.apk"
+          cp "$OUT/app-arm64-v8a-release.apk" "dist/rdesk-direto-$VER-arm64.apk"
+          cp "$OUT/app-armeabi-v7a-release.apk" "dist/rdesk-direto-$VER-arm32.apk"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump badging "dist/rdesk-direto-$VER.apk" | grep -m1 "package: name='app.rdesk.cofre.direto'"
+          "$BT/apksigner" verify "dist/rdesk-direto-$VER.apk"
+          cd dist
+          sha256sum rdesk-*.apk > "rdesk-$VER.sha256"
+          cat "rdesk-$VER.sha256"
+          du -h rdesk-direto-$VER*.apk
+
       - name: Build reproduzível (compila de novo, do zero, em outra pasta, e compara byte a byte)
         run: |
           rm -rf /tmp/refeito && mkdir -p /tmp/refeito
           git archive HEAD | tar -x -C /tmp/refeito
           cd /tmp/refeito
           bash android/tools/preparar.sh > /dev/null
-          RDESK_SEM_ASSINATURA=1 gradle -p android --no-daemon --no-build-cache --quiet assembleRelease
+          RDESK_SEM_ASSINATURA=1 RDESK_MODO=tor gradle -p android --no-daemon --no-build-cache --quiet assembleRelease
           ls android/app/build/outputs/apk/release/
           pip install --quiet --break-system-packages apksigcopier==1.1.1 || pip install --quiet apksigcopier==1.1.1
           cd "$GITHUB_WORKSPACE"
@@ -193,7 +208,9 @@ jobs:
         run: |
           CERT=$(grep -m1 'SHA-256 digest' dist/certificado.txt | sed 's/.*: //')
           cat > notas.md <<EOF
-          **App Android do cofre — $VER**, com o Tor embutido. Nada sai do app fora do Tor.
+          **App Android do cofre — $VER.** Agora são **dois apps** (instalam lado a lado):
+          - \`rdesk-…\` — **com Tor**: nada sai do app fora do Tor (máxima privacidade; demora mais para conectar).
+          - \`rdesk-direto-…\` — **direto**: usa a internet normal do celular, abre e carrega muito mais rápido. Sem Tor: os sites que o app consulta veem o seu IP. Mesmas chaves, mesmo cofre, mesmo BRLS.
 
           **Qual baixar:** \`rdesk-$VER-arm64.apk\` serve na grande maioria dos celulares (menor). Celular bem antigo: \`rdesk-$VER-arm32.apk\`. Na dúvida: \`rdesk-$VER.apk\` (universal, roda em qualquer um, maior).
 
@@ -213,9 +230,11 @@ jobs:
           EOF
           sed -i 's/^          //' notas.md
           gh release view "android-$VER" >/dev/null 2>&1 && gh release delete "android-$VER" --yes --cleanup-tag
-          gh release create "android-$VER" dist/rdesk-$VER*.apk dist/rdesk-$VER.sha256 dist/certificado.txt --title "App Android $VER (Tor embutido)" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
+          gh release create "android-$VER" dist/rdesk-$VER*.apk dist/rdesk-direto-$VER*.apk dist/rdesk-$VER.sha256 dist/certificado.txt --title "App Android $VER (Tor embutido)" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
           # Link fixo que sempre aponta para o APK mais novo
           cp "dist/rdesk-$VER.apk" dist/rdesk.apk
           cp "dist/rdesk-$VER-arm64.apk" dist/rdesk-arm64.apk
+          cp "dist/rdesk-direto-$VER.apk" dist/rdesk-direto.apk
+          cp "dist/rdesk-direto-$VER-arm64.apk" dist/rdesk-direto-arm64.apk
           gh release delete android --yes --cleanup-tag 2>/dev/null || true
-          gh release create android dist/rdesk.apk dist/rdesk-arm64.apk dist/rdesk-$VER.sha256 --title "App Android — sempre a versão mais nova" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
+          gh release create android dist/rdesk.apk dist/rdesk-arm64.apk dist/rdesk-direto.apk dist/rdesk-direto-arm64.apk dist/rdesk-$VER.sha256 --title "App Android — sempre a versão mais nova" --notes-file notas.md --latest=false --target "$GITHUB_SHA"
