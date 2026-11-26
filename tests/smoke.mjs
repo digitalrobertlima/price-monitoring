@@ -183,7 +183,9 @@ try {
     const q2 = await quote(137, 'USDT', 137, 'USDC', 50);
     check('cotação real USDT → USDC perto de 1:1', q2.out > 49 && q2.out < 51, `50 USDT → ${q2.out} USDC | ${q2.info}`);
     for (const [from, to, amount] of [['USDT', 'BRLA', 20], ['USDT', 'BRZ', 20], ['POL', 'BRLA', 100], ['USDT', 'WETH', 50], ['USDT', 'WBTC', 50]]) {
-        const q = await quote(137, from, 137, to, amount);
+        let q = await quote(137, from, 137, to, amount);
+        // Servidor público lento na CI: se ainda estiver buscando, tenta de novo uma vez
+        if (!(q.out > 0) && /Buscando|Consultando/.test(q.info)) { await page.waitForTimeout(3000); q = await quote(137, from, 137, to, amount); }
         const coherent = q.out > 0 ? /Uniswap/.test(q.info) : /Não há|Sem liquidez/i.test(q.info);
         check(`troca ${from} → ${to}: cotação real ou aviso claro de falta de liquidez`, coherent, `${amount} ${from} → ${Number.isFinite(q.out) ? q.out : '--'} ${to} | ${q.info}`);
     }
