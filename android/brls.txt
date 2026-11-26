@@ -1,3 +1,3 @@
-a94dee8ef27e51e4b93cf1fc55b22a10cd0cdef0
+f700f417fe54e0a67ed81859bf8827c4632dec13
 # Commit da carteira BRLS (github.com/digitalrobertlima/xBRL) que vai dentro do APK.
 # Mudou a carteira BRLS? Troque este commit e suba a versão em version.js para sair um APK novo.
