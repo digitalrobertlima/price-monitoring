@@ -147,6 +147,14 @@ final class Bridge {
         });
     }
 
+    /** Mantém a tela acesa (corrida em andamento / motorista online no BRLS). Desliga ao sair do app. */
+    @JavascriptInterface public void keepScreenOn(boolean liga) {
+        main.post(() -> {
+            if (liga) act.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else act.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });
+    }
+
     @JavascriptInterface public String paste() {
         FutureTask<String> task = new FutureTask<>(() -> {
             ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
