@@ -348,7 +348,12 @@
             document.body.appendChild(el);
         }
         const s = torState;
-        if (s.state === 'on') {
+        if (s.state === 'on' && s.direto) {
+            el.textContent = '⚡ Conexão direta (versão rápida, sem Tor)';
+            el.style.opacity = '1';
+            clearTimeout(paintTor._t);
+            paintTor._t = setTimeout(() => { el.style.opacity = '0'; }, 1800);
+        } else if (s.state === 'on') {
             el.textContent = '🧅 Conectado pelo Tor';
             el.style.opacity = '1';
             clearTimeout(paintTor._t);

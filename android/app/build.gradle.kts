@@ -8,6 +8,13 @@ val vname = Regex("RDESK_VERSION = '(v[0-9.]+)'").find(verText)!!.groupValues[1]
 val vparts = vname.removePrefix("v").split(".")
 val vcode = vparts[0].toInt() * 100 + (if (vparts.size > 1) vparts[1].toInt() * 10 else 0)
 val ks = rootProject.file("keystore.jks")
+// Dois APKs a partir do mesmo código (decisão do dono, 26/11/2026):
+//   tor    (padrão) — tudo sai pelo Tor, app.rdesk.cofre
+//   direto          — rede direta do celular, muito mais rápido, app.rdesk.cofre.direto (instala ao lado do outro)
+// gradle assembleRelease -Prdesk.modo=direto   (ou RDESK_MODO=direto)
+val modo = (findProperty("rdesk.modo") as String?) ?: System.getenv("RDESK_MODO") ?: "tor"
+require(modo == "tor" || modo == "direto") { "rdesk.modo precisa ser tor ou direto" }
+val direto = modo == "direto"
 
 configure<ApplicationExtension> {
     namespace = "app.rdesk.cofre"
@@ -18,7 +25,9 @@ configure<ApplicationExtension> {
     }
 
     defaultConfig {
-        applicationId = "app.rdesk.cofre"
+        applicationId = if (direto) "app.rdesk.cofre.direto" else "app.rdesk.cofre"
+        buildConfigField("boolean", "TOR", if (direto) "false" else "true")
+        resValue("string", "app_nome", if (direto) "RDESK Direto" else "RDESK")
         minSdk = 24
         targetSdk = 35
         versionCode = vcode
@@ -54,7 +63,7 @@ configure<ApplicationExtension> {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { buildConfig = true }
+    buildFeatures { buildConfig = true; resValues = true }
     // Um APK por tipo de processador (bem menor) + um universal que roda em qualquer celular
     splits {
         abi {

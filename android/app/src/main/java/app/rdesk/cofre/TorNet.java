@@ -48,10 +48,15 @@ public final class TorNet {
         if (slot < 0 || slot >= TorManager.SLOTS) slot = 0;
         synchronized (clients) {
             if (clients[slot] == null) {
-                Proxy proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", tor.port(slot)));
-                clients[slot] = new OkHttpClient.Builder()
-                        .proxy(proxy)
-                        .dns(host -> { throw new UnknownHostException("DNS local bloqueado: " + host); })
+                OkHttpClient.Builder b = new OkHttpClient.Builder();
+                if (TorManager.SEM_TOR) {
+                    // APK direto: rede do celular (sem proxy, DNS normal). Continua sem cookies, sem cache, só https.
+                    b.proxy(Proxy.NO_PROXY);
+                } else {
+                    b.proxy(new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", tor.port(slot))))
+                     .dns(host -> { throw new UnknownHostException("DNS local bloqueado: " + host); });
+                }
+                clients[slot] = b
                         .cookieJar(CookieJar.NO_COOKIES)
                         .cache(null)
                         .connectionPool(new ConnectionPool(2, 30, TimeUnit.SECONDS))
@@ -143,7 +148,7 @@ public final class TorNet {
             }
         } catch (Exception e) {
             String m = e.getMessage();
-            return error("Falha pela rede Tor" + (m == null ? "" : ": " + m));
+            return error((TorManager.SEM_TOR ? "Falha na rede" : "Falha pela rede Tor") + (m == null ? "" : ": " + m));
         }
     }
 }

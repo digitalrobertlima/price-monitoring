@@ -70,9 +70,13 @@ public final class TorManager {
         this.listener = listener;
     }
 
+    /** APK "direto": não existe Tor; a rede é a do celular e está sempre "pronta". */
+    static final boolean SEM_TOR = !BuildConfig.TOR;
+
     void start() {
         if (started) return;
         started = true;
+        if (SEM_TOR) { setState("on", 100, "Conexão direta (sem Tor)"); return; }
         try {
             pickPorts();
         } catch (IOException e) {
@@ -104,6 +108,7 @@ public final class TorManager {
 
     /** Religa o Tor (ex.: trocou a ponte). Enquanto isso, nada sai do app. */
     void restart() {
+        if (SEM_TOR) return;
         stopping = true;
         setState("starting", 0, "Religando o Tor");
         try { ctx.unbindService(conn); } catch (Exception ignored) { }
@@ -116,6 +121,7 @@ public final class TorManager {
     String ponte() { return Pontes.modo(ctx); }
 
     void stop() {
+        if (SEM_TOR) return;
         stopping = true;
         Pontes.pararTudo();
         try { LocalBroadcastManager.getInstance(ctx).unregisterReceiver(receiver); } catch (Exception ignored) { }
@@ -150,6 +156,7 @@ public final class TorManager {
             o.put("progress", progress);
             o.put("summary", summary);
             o.put("ponte", Pontes.modo(ctx));
+            o.put("direto", SEM_TOR);
         } catch (Exception ignored) { }
         return o;
     }
