@@ -50,7 +50,10 @@ try {
     await page.fill('#swap-amount-in', '5');
     await page.waitForTimeout(300);
     await page.fill('#swap-amount-in', '4');
-    await waitFn(page, () => /direto/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 45000 }).catch(() => {});
+    const t0 = Date.now();
+    // A CI às vezes fica lenta logo depois da troca anterior: espera mais (localmente leva < 1 s)
+    await waitFn(page, () => /direto/.test(document.getElementById('swap-quote-info').textContent), null, { timeout: 90000 }).catch(() => {});
+    console.log('   rota nova achada em', ((Date.now() - t0) / 1000).toFixed(1), 's');
     const info2 = await page.textContent('#swap-quote-info');
     check('fundo novo BRLS/POL entra sozinho e vira a melhor rota', /direto/.test(info2), info2);
 
