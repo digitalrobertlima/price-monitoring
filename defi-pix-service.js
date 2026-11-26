@@ -1292,7 +1292,7 @@
         return fundos;
     }
 
-    async function rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA) {
+    async function rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA, bomSuficiente = () => false) {
         const moedas = [];
         const add = (a) => { if (a && ethers.utils.isAddress(a) && !moedas.some((m) => m.toLowerCase() === a.toLowerCase())) moedas.push(ethers.utils.getAddress(a)); };
         add(addrIn); add(addrOut);
@@ -1300,25 +1300,34 @@
         PONTES_FIXAS.forEach(add);
         const fundos = await fundosComDinheiro(moedas, providers, ESPERA);
         if (!fundos.length) return null;
-        const caminhos = caminhosEntre(addrIn, addrOut, fundos, 3).slice(0, 40);
+        const caminhos = caminhosEntre(addrIn, addrOut, fundos, 3);
         if (!caminhos.length) return { candidatos: 0, melhor: null }; // nenhum fundo com dinheiro liga as duas moedas
-        const cands = caminhos.map((c) => {
+        const montar = (lista) => lista.map((c) => {
             const hops = c.fees.map((fee, i) => ({ tokenIn: c.tokens[i], fee, tokenOut: c.tokens[i + 1] }));
             const tipos = [], vals = [];
             c.tokens.forEach((t, i) => { tipos.push('address'); vals.push(t); if (i < c.fees.length) { tipos.push('uint24'); vals.push(c.fees[i]); } });
             return { hops, data: quoterIface.encodeFunctionData('quoteExactInput', [ethers.utils.solidityPack(tipos, vals), rawIn]) };
         });
-        const res = await runAll(cands, 2);
         // Melhor saída; cada troca a mais só vale se pagar pelo menos 0,3% a mais (menos contratos, menos risco)
         const nota = (out, hops) => out.mul(10000).div(10000 + 30 * (hops - 1));
         let melhor = null;
-        res.forEach((out, i) => {
-            if (!out || out.isZero()) return;
-            const n = nota(out, cands[i].hops.length);
-            if (!melhor || n.gt(melhor.nota)) melhor = { nota: n, out, hops: cands[i].hops };
-        });
-        if (!melhor) return { candidatos: cands.length, melhor: null };
-        return { candidatos: cands.length, melhor: { rawOut: melhor.out, hops: melhor.hops, label: rotuloRota(melhor.hops) } };
+        let total = 0;
+        const cotar = async (lista) => {
+            if (!lista.length) return;
+            const cands = montar(lista);
+            total += cands.length;
+            const res = await runAll(cands, 2);
+            res.forEach((out, i) => {
+                if (!out || out.isZero()) return;
+                const n = nota(out, cands[i].hops.length);
+                if (!melhor || n.gt(melhor.nota)) melhor = { nota: n, out, hops: cands[i].hops };
+            });
+        };
+        // Em etapas (rápido no Tor): primeiro direto e 2 trocas; 3 trocas só se nada mais curto pagar bem.
+        await cotar(caminhos.filter((c) => c.fees.length <= 2).slice(0, 24));
+        if (!melhor || !bomSuficiente(melhor.out)) await cotar(caminhos.filter((c) => c.fees.length === 3).slice(0, 24));
+        if (!melhor) return { candidatos: total, melhor: null };
+        return { candidatos: total, melhor: { rawOut: melhor.out, hops: melhor.hops, label: rotuloRota(melhor.hops) } };
     }
 
     function rotuloRota(hops) {
@@ -1388,7 +1397,7 @@
                 else if (settled[gi].reason && settled[gi].reason.soDemora) out.push(...groups[gi].map(() => null));
                 else out.push(...(await Promise.all(groups[gi].map(runSingle))));
             }
-            if (out.every((x) => x == null) && settled.every((r) => r.status === 'rejected')) throw new Error('rede indisponível');
+            if (groups.length && out.every((x) => x == null) && settled.every((r) => r.status === 'rejected')) throw new Error('rede indisponível');
             return out;
         };
         const started = Date.now();
@@ -1397,7 +1406,11 @@
         // moedas da troca e as moedas "ponte" da Polygon, e cota TODOS os caminhos de até 3 trocas.
         // Ex.: BRLS → BRLA → USDT → POL. Quando entrar um fundo novo (BRLS/POL, BRLS/USDC…), ele aparece sozinho.
         try {
-            const auto = await rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA);
+            // "Paga bem" = pelo menos 99% do valor de mercado (descontadas as tarifas, é o normal de um fundo bom)
+            const uIn = tokenUnitUsd(137, fromMeta), uOut = tokenUnitUsd(137, toMeta);
+            const bomSuficiente = (out) => uIn > 0 && uOut > 0 &&
+                (parseFloat(ethers.utils.formatUnits(out, toMeta.decimals)) * uOut) / (parseFloat(ethers.utils.formatUnits(rawIn, fromMeta.decimals)) * uIn) >= 0.99;
+            const auto = await rotasDescobertas(addrIn, addrOut, rawIn, providers, runAll, ESPERA, bomSuficiente);
             if (auto && auto.melhor) {
                 console.debug('[cotação] descoberta:', auto.candidatos, 'caminhos em', Date.now() - started, 'ms');
                 return auto.melhor;
