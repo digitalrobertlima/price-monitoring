@@ -149,8 +149,8 @@ final class Bridge {
 
     /** WhatsApp / Jitsi pedidos pelo BRLS (a pessoa tocou no botão). Só esses hosts, só https. */
     @JavascriptInterface public void openLink(String url) {
-        Uri u;
-        try { u = Uri.parse(url); } catch (Exception e) { return; }
+        if (url == null || url.length() > 400) return;
+        final Uri u = Uri.parse(url);
         String h = u.getHost() == null ? "" : u.getHost();
         if (!"https".equals(u.getScheme()) || !(h.equals("wa.me") || h.equals("api.whatsapp.com") || h.equals("meet.jit.si"))) return;
         main.post(() -> {
