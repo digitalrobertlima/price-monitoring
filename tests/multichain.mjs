@@ -163,8 +163,8 @@ try {
     await page.waitForSelector('#rmw-snd-token');
     await page.fill('#rmw-snd-to', DEST);
     await page.click('#rmw-snd-max');
-    await waitFn(page, () => parseFloat(document.getElementById('rmw-snd-amt').value) > 0, null, { timeout: 30000 });
-    const maxEth = parseFloat(await page.inputValue('#rmw-snd-amt'));
+    await waitFn(page, () => parseFloat(document.getElementById('rmw-snd-amt').value.replace(',', '.')) > 0, null, { timeout: 30000 });
+    const maxEth = parseFloat((await page.inputValue('#rmw-snd-amt')).replace(',', '.'));
     dialogs.length = 0;
     await page.click('#rmw-snd-exec');
     await waitFn(page, () => /confirmado|rro|insuf|inválid/i.test(document.getElementById('rmw-snd-msg')?.textContent || ''), null, { timeout: 60000 }).catch(() => {});

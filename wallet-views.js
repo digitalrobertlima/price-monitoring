@@ -396,6 +396,8 @@
         const msgBox = $('#rmw-snd-msg');
         const showErr = (text) => { msgBox.innerHTML = `<div class="rmw-alert-err">${esc(text)}</div>`; };
         const showOk = (html) => { msgBox.innerHTML = `<div class="rmw-alert-ok">${html}</div>`; };
+        // Número no jeito brasileiro (vírgula nos centavos): "12.003998" parecia doze mil
+        const virgula = (txt) => String(txt).replace(/\.0+$/, '').replace('.', ',');
         const parseAmount = () => {
             const txt = $('#rmw-snd-amt').value.trim().replace(/\s/g, '').replace(',', '.');
             return /^\d*\.?\d+$/.test(txt) ? txt : null;
@@ -520,11 +522,22 @@
                     if (reserve.lt(minReserve)) reserve = minReserve;
                     const max = bal.sub(reserve);
                     if (max.lte(0)) throw new Error('Saldo insuficiente para cobrir a taxa da rede.');
-                    $('#rmw-snd-amt').value = global.ethers.utils.formatUnits(max, 18);
+                    $('#rmw-snd-amt').value = virgula(global.ethers.utils.formatUnits(max, 18));
                 } else {
-                    const provider = await ctx.getHealthyProvider(chainId);
-                    const raw = await new global.ethers.Contract(token.address, ERC20, provider).balanceOf(acc.address);
-                    $('#rmw-snd-amt').value = global.ethers.utils.formatUnits(raw, token.decimals);
+                    // Saldo exato lido na rede; se um servidor falhar, tenta os outros da lista
+                    const ler = (prov) => new global.ethers.Contract(token.address, ERC20, prov).balanceOf(acc.address);
+                    let raw = null;
+                    try { raw = await ler(await ctx.getHealthyProvider(chainId)); } catch (e) {
+                        for (const url of (REG.getChain(chainId)?.rpcs || [])) {
+                            try {
+                                const prov = new global.ethers.providers.StaticJsonRpcProvider(url, Number(chainId));
+                                raw = await Promise.race([ler(prov), new Promise((_, rej) => setTimeout(() => rej(new Error('demorou')), global.RDESK_NATIVE ? 25000 : 8000))]);
+                                break;
+                            } catch (e2) { /* próximo servidor */ }
+                        }
+                    }
+                    if (!raw) throw new Error('Não consegui ler o seu saldo na rede agora. Tente de novo em alguns segundos.');
+                    $('#rmw-snd-amt').value = virgula(global.ethers.utils.formatUnits(raw, token.decimals));
                 }
                 updateFiat();
             } catch (err) {
