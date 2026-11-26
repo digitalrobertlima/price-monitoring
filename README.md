@@ -1,5 +1,7 @@
 # RDESK
 
+> 📄 **[White paper da Caixa Forte](WHITEPAPER.md)**
+
 Carteira de autocustódia no navegador, com várias contas, e piloto de liquidez Uniswap V3 (pool WPOL/USDT0 0,05% na Polygon) com faixa Sniper visível no gráfico.
 Site 100% estático, sem servidor: **https://digitalrobertlima.github.io/price-monitoring/**
 

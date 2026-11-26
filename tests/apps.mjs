@@ -55,6 +55,26 @@ check('rede do app: imagem vai em base64 sem estragar os bytes', img.b64 === tru
     check('GPS: abre só coordenada válida, no app pedido (ou no GPS padrão)', abertos.length === 2 && abertos[0][2] === 'waze' && abertos[1][2] === 'geo');
     delete globalThis.RdeskNative;
 }
+// v49.2: plantão do BRLS (aviso fixo no APK) e avisos com o app em segundo plano
+{
+    const chamadas = [];
+    const avisos = [];
+    globalThis.RdeskNative = { plantao: (liga, texto) => chamadas.push([liga, texto]), keepScreenOn: (l) => chamadas.push(['tela', l]) };
+    const nativoAntes = globalThis.RDESK_NATIVE;
+    globalThis.RDESK_NATIVE = true;
+    globalThis.Notification = function (t, o) { avisos.push(t + '|' + o.body); };
+    globalThis.Notification.permission = 'granted';
+    A._avisos({ tipo: 'plantao', liga: true, texto: '🚗 Motorista a caminho' });
+    A._avisos({ tipo: 'plantao', liga: false });
+    A._avisos({ tipo: 'tela-acesa', liga: true });
+    A._avisos({ tipo: 'notificar', titulo: '🚗 Corrida: A → B', corpo: 'R$ 20,00' });
+    A._avisos({ tipo: 'notificar', titulo: 123 });
+    check('plantão liga/desliga no APK e mantém a tela acesa', JSON.stringify(chamadas) === JSON.stringify([[true, '🚗 Motorista a caminho'], [false, ''], ['tela', true]]));
+    check('avisos do BRLS viram notificação do sistema (só texto válido)', avisos.length === 1 && avisos[0] === '🚗 Corrida: A → B|R$ 20,00');
+    delete globalThis.RdeskNative;
+    delete globalThis.Notification;
+    globalThis.RDESK_NATIVE = nativoAntes;
+}
 // v48.6: o aviso de "conta trocada" só vai ao app quando a conta muda de verdade
 {
     const enviados = [];

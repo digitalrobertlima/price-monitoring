@@ -205,6 +205,16 @@ final class Bridge {
         deliver(id, o);
     }
 
+    /** Liga/desliga o plantão do BRLS (aviso fixo + app vivo em segundo plano). */
+    @JavascriptInterface public void plantao(boolean liga, String texto) {
+        main.post(() -> {
+            try {
+                if (liga) PlantaoService.ligar(act, texto);
+                else PlantaoService.desligar(act);
+            } catch (Exception ignored) { /* sistema recusou (economia de bateria): segue sem plantão */ }
+        });
+    }
+
     @JavascriptInterface public void notify(String title, String body) {
         main.post(() -> {
             if (!"granted".equals(notifPermission())) return;
@@ -221,6 +231,7 @@ final class Bridge {
             }
             b.setSmallIcon(R.drawable.ic_aviso).setContentTitle(title).setContentText(body)
                     .setStyle(new Notification.BigTextStyle().bigText(body)).setAutoCancel(true)
+                    .setContentIntent(PlantaoService.abrirApp(act))
                     .setVisibility(Notification.VISIBILITY_PRIVATE);
             nm.notify(notifSeq++, b.build());
         });

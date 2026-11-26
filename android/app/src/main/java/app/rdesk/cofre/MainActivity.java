@@ -289,7 +289,8 @@ public class MainActivity extends Activity {
         });
     }
 
-    @Override protected void onPause() { super.onPause(); web.onPause(); }
+    // Com o plantão do BRLS ligado (corrida/pedidos), o WebView continua rodando em segundo plano.
+    @Override protected void onPause() { super.onPause(); if (!PlantaoService.ativo) web.onPause(); }
     @Override protected void onResume() { super.onResume(); web.onResume(); }
 
     @Override
