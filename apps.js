@@ -155,6 +155,7 @@
     function avisosDoApp(d) {
         const N = global.RdeskNative;
         if (d.tipo === 'gps' && NATIVO()) abrirGps(d);
+        if (d.tipo === 'abrir') abrirLink(d);
         if (d.tipo === 'tela-acesa' && NATIVO() && typeof N?.keepScreenOn === 'function') N.keepScreenOn(!!d.liga);
         if (d.tipo === 'plantao' && NATIVO() && typeof N?.plantao === 'function') {
             if (d.liga && global.Notification?.permission === 'default') global.Notification.requestPermission?.();
@@ -164,6 +165,20 @@
             const titulo = d.titulo.slice(0, 80), corpo = String(d.corpo || '').slice(0, 240);
             try { if (global.Notification?.permission === 'granted') new global.Notification(titulo, { body: corpo }); } catch (_) { /* sem avisos */ }
         }
+    }
+
+    // ---------- Links de fora pedidos pelo BRLS (WhatsApp, sala do Jitsi, Drive…) ----------
+    // A pessoa tocou no botão. Só https. WhatsApp e Jitsi abrem no app deles (fora do Tor, com a internet normal);
+    // qualquer outro link é copiado, para a pessoa abrir onde quiser (no Tor Browser, por exemplo).
+    const LINKS_APP = /^(wa\.me|api\.whatsapp\.com|meet\.jit\.si)$/;
+    function abrirLink(d) {
+        let u;
+        try { u = new URL(String(d.url || '')); } catch (_) { return; }
+        if (u.protocol !== 'https:' || u.href.length > 400) return;
+        const N = global.RdeskNative;
+        if (NATIVO() && LINKS_APP.test(u.hostname) && typeof N?.openLink === 'function') { N.openLink(u.href); return; }
+        if (!NATIVO()) { global.open(u.href, '_blank', 'noopener,noreferrer'); return; }
+        navigator.clipboard?.writeText(u.href).then(() => avisar('Link copiado: cole no navegador.'), () => {});
     }
 
     // ---------- GPS (só no APK): o BRLS pede para abrir um ponto no Waze/Google Maps/GPS ----------
