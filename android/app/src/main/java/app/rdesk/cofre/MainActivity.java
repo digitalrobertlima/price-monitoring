@@ -16,6 +16,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -49,6 +50,7 @@ public class MainActivity extends Activity {
     static final String APP_HOST = "digitalrobertlima.github.io";
     static final String APP_PATH = "/xBRL/wallet/";
     private static final int REQ_CAMERA = 11;
+    private static final int REQ_LOCAL = 13;
     private static final int REQ_NOTIF = 12;
     private static final int REQ_FILE = 13;
 
@@ -58,6 +60,8 @@ public class MainActivity extends Activity {
     private WebViewAssetLoader loader;
     private AppAssets brls;
     private PermissionRequest pendingCamera;
+    private GeolocationPermissions.Callback pendingLocal;
+    private String pendingLocalOrigin;
     private ValueCallback<Uri[]> fileCallback;
     private int pendingNotifId = -1;
     private boolean loaded = false;
@@ -88,7 +92,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
-        s.setGeolocationEnabled(false);
+        s.setGeolocationEnabled(true); // só para o "Estou aqui" do mapa do BRLS (ver onGeolocationPermissionsShowPrompt)
         s.setSupportMultipleWindows(false);
         s.setJavaScriptCanOpenWindowsAutomatically(false);
         s.setMediaPlaybackRequiresUserGesture(false);
@@ -192,6 +196,17 @@ public class MainActivity extends Activity {
     }
 
     private class Chrome extends WebChromeClient {
+        /** "Estou aqui" no mapa do BRLS: só a origem oficial da carteira, e só com a permissão do Android. Nada sai pela rede. */
+        @Override
+        public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb) {
+            Uri o = Uri.parse(origin == null ? "" : origin);
+            if (!"https".equals(o.getScheme()) || !APP_HOST.equals(o.getHost())) { cb.invoke(origin, false, false); return; }
+            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) { cb.invoke(origin, true, false); return; }
+            pendingLocal = cb;
+            pendingLocalOrigin = origin;
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCAL);
+        }
+
         @Override
         public void onPermissionRequest(PermissionRequest request) {
             runOnUiThread(() -> {
@@ -246,6 +261,11 @@ public class MainActivity extends Activity {
             if (ok) pendingCamera.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
             else pendingCamera.deny();
             pendingCamera = null;
+        } else if (code == REQ_LOCAL && pendingLocal != null) {
+            boolean algum = false;
+            for (int r : results) if (r == PackageManager.PERMISSION_GRANTED) algum = true;
+            pendingLocal.invoke(pendingLocalOrigin, algum, false);
+            pendingLocal = null;
         } else if (code == REQ_NOTIF && pendingNotifId >= 0) {
             bridge.notifResult(pendingNotifId);
             pendingNotifId = -1;

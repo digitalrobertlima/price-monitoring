@@ -5,6 +5,9 @@
     <!-- Só o necessário. Sem localização, contatos, telefone ou identificador do aparelho. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- "Estou aqui" no mapa do BRLS (embarque da corrida): lido no aparelho, nunca enviado -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Sem esta permissão o Android recusa a consulta da digital e o app achava que o celular não tinha biometria -->

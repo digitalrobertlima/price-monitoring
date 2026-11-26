@@ -87,7 +87,7 @@
                 <strong>${app.icone} ${esc(app.nome)}</strong>
                 <span class="app-frame-conta">${esc(curto(w.address))}</span>
             </div>
-            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte${NATIVO() ? '&tor=ponte' : ''}" allow="camera; clipboard-read; clipboard-write; web-share" referrerpolicy="no-referrer"></iframe>`;
+            <iframe class="app-frame" title="${esc(app.nome)}" src="${esc(app.url)}?via=caixaforte${NATIVO() ? '&tor=ponte' : ''}" allow="camera; clipboard-read; clipboard-write; web-share; geolocation" referrerpolicy="no-referrer"></iframe>`;
         document.body.appendChild(overlay);
         document.body.classList.add('app-frame-aberto');
         const iframe = overlay.querySelector('iframe');
@@ -106,6 +106,7 @@
                     enviar({ tipo: 'rede-resposta', id: d.id, ...r });
                 });
             }
+            if (d.tipo === 'gps' && NATIVO()) abrirGps(d);
             if (d.tipo === 'copiar' && NATIVO() && typeof d.texto === 'string') {
                 navigator.clipboard?.writeText(d.texto.slice(0, 4000)).then(() => avisar('Copiado. A área de transferência se apaga sozinha em 60 s.'), () => {});
             }
@@ -147,6 +148,18 @@
         } catch (e) { /* sem nomes: mostra o endereço */ }
     }
 
+    // ---------- GPS (só no APK): o BRLS pede para abrir um ponto no Waze/Google Maps/GPS ----------
+    // Só números conferidos; a pessoa tocou no botão. O app de GPS usa a internet normal (fora do Tor).
+    function abrirGps(d) {
+        const lat = Number(d.lat), lon = Number(d.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+        const qual = ['waze', 'google', 'geo'].includes(d.app) ? d.app : 'geo';
+        const N = global.RdeskNative;
+        if (N && typeof N.openGeo === 'function') { N.openGeo(lat, lon, qual); return; }
+        const c = lat.toFixed(5) + ',' + lon.toFixed(5);
+        navigator.clipboard?.writeText(c).then(() => avisar('Coordenada copiada: cole no seu app de GPS.'), () => {});
+    }
+
     // ---------- rede do app (só no APK: a janela do app não tem internet) ----------
     // Passa pelo fetch daqui, que no APK é a ponte nativa (Tor). Só GET/POST, com limites de tamanho e tempo.
     async function rede(d) {
@@ -164,9 +177,17 @@
             const t = setTimeout(() => ctl.abort(), 60000);
             try {
                 const r = await fetch(url.href, { method, headers, body: method === 'POST' ? corpo : undefined, signal: ctl.signal });
+                const tipo = r.headers.get('content-type') || '';
+                if (/^image\//i.test(tipo)) { // mapa do BRLS: a mensagem só leva texto, então a imagem vai em base64
+                    const bytes = new Uint8Array(await r.arrayBuffer());
+                    if (bytes.length > 2 * 1024 * 1024) throw new Error('resposta grande demais');
+                    let bin = '';
+                    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                    return { status: r.status, conteudo: tipo, corpo: btoa(bin), b64: true };
+                }
                 const texto = await r.text();
                 if (texto.length > 4 * 1024 * 1024) throw new Error('resposta grande demais');
-                return { status: r.status, conteudo: r.headers.get('content-type') || '', corpo: texto };
+                return { status: r.status, conteudo: tipo, corpo: texto };
             } finally { clearTimeout(t); }
         } catch (e) {
             return { erro: String((e && e.message) || e || 'falha na rede').slice(0, 200) };
@@ -295,7 +316,7 @@
         else alert(texto);
     }
 
-    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, redeOk: () => (aberto ? aberto.redeOk : 0), _tratar: tratar, _rede: rede };
+    global.RdeskApps = { lista: () => APPS.slice(), abrir, fechar, estaAberto: () => !!aberto, redeOk: () => (aberto ? aberto.redeOk : 0), _tratar: tratar, _rede: rede, _gps: abrirGps };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarCartao);
     else pintarCartao();

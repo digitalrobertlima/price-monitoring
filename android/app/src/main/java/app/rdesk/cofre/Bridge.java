@@ -131,6 +131,22 @@ final class Bridge {
         });
     }
 
+    /** Abre um ponto (coordenada) no Waze, no Google Maps ou no app de GPS que a pessoa escolher. Só com toque dela. */
+    @JavascriptInterface public void openGeo(double lat, double lon, String app) {
+        if (Double.isNaN(lat) || Double.isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+        String c = String.format(java.util.Locale.US, "%.5f,%.5f", lat, lon);
+        main.post(() -> {
+            Uri geo = Uri.parse("geo:" + c + "?q=" + c);
+            Uri uri = "waze".equals(app) ? Uri.parse("https://waze.com/ul?ll=" + c + "&navigate=yes")
+                    : "google".equals(app) ? Uri.parse("google.navigation:q=" + c) : geo;
+            try {
+                act.startActivity(new Intent(Intent.ACTION_VIEW, uri));
+            } catch (Exception e) {
+                try { act.startActivity(Intent.createChooser(new Intent(Intent.ACTION_VIEW, geo), "Abrir no GPS")); } catch (Exception ignored) { }
+            }
+        });
+    }
+
     @JavascriptInterface public String paste() {
         FutureTask<String> task = new FutureTask<>(() -> {
             ClipboardManager cm = (ClipboardManager) act.getSystemService(Context.CLIPBOARD_SERVICE);
