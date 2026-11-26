@@ -51,6 +51,7 @@
             'function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256, uint256, uint128 tokensOwed0, uint128 tokensOwed1)',
             'function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96) payable returns (address pool)',
             'function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline)) payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)',
+            'function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)',
             'function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) payable returns (uint256 amount0, uint256 amount1)',
             'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) payable returns (uint256 amount0, uint256 amount1)',
             'function multicall(bytes[] data) payable returns (bytes[] results)'
@@ -331,6 +332,64 @@
         return tx.hash;
     }
 
+    // Colocar mais numa posição que já existe (mesma faixa). `lado` 0 = quantia em token0, 1 = em token1.
+    async function planAdd(pos, lado, quantia) {
+        const pool = await poolInfo(pos.chainId, pos.token0.address, pos.token1.address, pos.fee);
+        if (!pool.exists || !pool.sqrtP) throw new Error('Não consegui ler o fundo agora. Tente de novo.');
+        const m = lado === 0 ? pos.token0 : pos.token1;
+        const raw = Number(quantia) * 10 ** m.decimals;
+        if (!(raw > 0)) throw new Error(`Digite quanto de ${m.symbol} quer colocar.`);
+        const r = pairAmount(lado, raw, pool.sqrtP, pos.tickLower, pos.tickUpper);
+        if (r.wrongSide) throw new Error(`Com o preço fora da faixa, esta posição só aceita ${lado === 0 ? pos.token1.symbol : pos.token0.symbol}.`);
+        const d0 = toUnits(r.a0 * 1.000001 + (r.a0 > 0 ? 1 : 0)), d1 = toUnits(r.a1 * 1.000001 + (r.a1 > 0 ? 1 : 0));
+        return {
+            chainId: pos.chainId, pos, m0: pos.token0, m1: pos.token1,
+            amt0: r.a0 / 10 ** pos.token0.decimals, amt1: r.a1 / 10 ** pos.token1.decimals,
+            params: { tokenId: pos.id, amount0Desired: d0, amount1Desired: d1, amount0Min: toUnits(r.a0 * (1 - SLIP)), amount1Min: toUnits(r.a1 * (1 - SLIP)), deadline: Math.floor(Date.now() / 1000) + 1200 }
+        };
+    }
+    async function executeAdd(plan, { wrapNative = 0 } = {}) {
+        const chainId = plan.chainId;
+        const signer = await W().getSigner(chainId);
+        const owner = await signer.getAddress();
+        if (wrapNative > 0) {
+            const wr = new (E().Contract)(WRAPPED[chainId].address, ABI.erc20, signer);
+            await W().confirmTx(await wr.deposit({ value: E().utils.parseUnits(String(wrapNative.toFixed(18)).replace(/0+$/, '').replace(/\.$/, ''), 18) }), chainId);
+        }
+        await conferirSaldos(plan, owner, 0);
+        const nfpmAddr = UNI[chainId].nfpm;
+        if (plan.params.amount0Desired.gt(0)) await approveExact(signer, chainId, plan.m0.address, nfpmAddr, plan.params.amount0Desired);
+        if (plan.params.amount1Desired.gt(0)) await approveExact(signer, chainId, plan.m1.address, nfpmAddr, plan.params.amount1Desired);
+        const nfpm = new (E().Contract)(nfpmAddr, ABI.nfpm, signer);
+        try { await nfpm.callStatic.increaseLiquidity(plan.params, { from: owner }); } catch (e) { throw new Error(motivoUniswap(e, plan)); }
+        const tx = await nfpm.increaseLiquidity(plan.params);
+        await W().confirmTx(tx, chainId);
+        return tx.hash;
+    }
+    // Tirar uma parte (1–100%). Os ganhos acumulados vêm junto. 100% = tirar tudo.
+    async function withdrawPart(pos, pct) {
+        pct = Math.max(1, Math.min(100, Math.round(pct)));
+        if (pct === 100) return withdrawAll(pos);
+        const signer = await W().getSigner(pos.chainId);
+        const owner = await signer.getAddress();
+        const I = iface('nfpm');
+        const liq = (BigInt(pos.liquidityBn) * BigInt(pct)) / 100n;
+        if (liq <= 0n) throw new Error('Quantia pequena demais para tirar.');
+        const f = pct / 100;
+        const m0 = Math.floor(pos.amount0 * f * 10 ** pos.token0.decimals * (1 - SLIP)), m1 = Math.floor(pos.amount1 * f * 10 ** pos.token1.decimals * (1 - SLIP));
+        const calls = [
+            I.encodeFunctionData('decreaseLiquidity', [{ tokenId: pos.id, liquidity: liq.toString(), amount0Min: toUnits(m0), amount1Min: toUnits(m1), deadline: Math.floor(Date.now() / 1000) + 1200 }]),
+            I.encodeFunctionData('collect', [{ tokenId: pos.id, recipient: owner, amount0Max: MAX_U128, amount1Max: MAX_U128 }])
+        ];
+        const nfpm = new (E().Contract)(UNI[pos.chainId].nfpm, ABI.nfpm, signer);
+        try { await nfpm.callStatic.multicall(calls, { from: owner }); } catch (e) { throw new Error(motivoUniswap(e, { m0: pos.token0, m1: pos.token1 })); }
+        const tx = await nfpm.multicall(calls);
+        await W().confirmTx(tx, pos.chainId);
+        return tx.hash;
+    }
+    const UNI_SLUG = { 1: 'ethereum', 137: 'polygon', 42161: 'arbitrum', 10: 'optimism', 8453: 'base', 56: 'bnb', 42220: 'celo' };
+    const linkUniswap = (pos) => `https://app.uniswap.org/positions/v3/${UNI_SLUG[pos.chainId] || 'ethereum'}/${pos.id}`;
+
     // ---------------------------------------------------------------- telas
     const fmt = (v) => W().formatBRL(v);
     const brl = (usd) => fmt(usd * (W().getPrices().USD_BRL || 5.4));
@@ -349,71 +408,250 @@
         return wrap;
     }
     let lastList = [];
-    async function open() {
+    // A seção "Fundos" (aba própria): a lista fica na tela, as ações abrem folhas por cima.
+    function open() {
+        document.getElementById('ob-root')?.replaceChildren();
+        const btn = document.querySelector('.nav-tab-btn[data-tab="earn"]');
+        if (btn && btn.getAttribute('aria-selected') !== 'true') btn.click();
+        mostrarAba('posicoes');
+        return renderLista();
+    }
+    function mostrarAba(qual) {
+        document.querySelectorAll('[data-fundos-aba]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.fundosAba === qual)));
+        document.querySelectorAll('[data-fundos-vista]').forEach((v) => { v.hidden = v.dataset.fundosVista !== qual; });
+        if (qual === 'piloto') requestAnimationFrame(() => global.dispatchEvent(new Event('resize'))); // gráfico estava escondido
+        if (qual === 'posicoes') renderLista();
+    }
+    let listando = null;
+    function renderLista() {
+        const box = document.getElementById('fundos-lista');
+        if (!box) return Promise.resolve();
+        if (listando) return listando;
+        listando = desenharLista(box).finally(() => { listando = null; });
+        return listando;
+    }
+    async function desenharLista(box) {
+        const resumo = document.getElementById('fundos-resumo');
         const owner = W()?.getAddress?.();
-        const el = sheet(`
-            <div class="mk-top"><h2>Fundos de troca</h2><button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button></div>
-            <p class="muted-sm">Seu dinheiro trabalha em qualquer rede, com qualquer par de moedas. O app fala direto com os contratos oficiais da Uniswap: você não precisa abrir outro site.</p>
-            <button type="button" class="btn-primary" id="pl-new">＋ Abrir uma posição nova</button>
-            <h3 class="view-subtitle">Suas posições em todas as redes</h3>
-            <div id="pl-list" class="pl-list"><div class="skeleton-row"></div><div class="skeleton-row"></div></div>`);
-        if (!el) return;
-        el.querySelector('#pl-new').onclick = () => openNew();
-        const box = el.querySelector('#pl-list');
-        if (!owner) { box.innerHTML = '<div class="empty-state">Abra uma carteira para ver e abrir posições.</div>'; return; }
+        if (!owner) {
+            box.innerHTML = '<div class="empty-state">Abra uma carteira para ver e abrir posições.</div>';
+            if (resumo) resumo.innerHTML = '';
+            return;
+        }
+        if (!lastList.length) box.innerHTML = '<div class="skeleton-row"></div><div class="skeleton-row"></div>';
         const list = await listPositions(owner).catch(() => []);
         lastList = list;
         if (!box.isConnected) return;
-        if (!list.length) { box.innerHTML = '<div class="empty-state">Nenhuma posição ainda. Toque em "Abrir uma posição nova".</div>'; return; }
-        // Encerradas e sem nada para colher ficam guardadas numa dobra (não poluem a lista)
+        const abertas = list.filter((p) => !p.closed);
+        if (resumo) {
+            const total = abertas.reduce((n, p) => n + (p.priced ? p.usd : 0), 0);
+            const ganhos = list.reduce((n, p) => n + (p.priced ? p.feesUsd : 0), 0);
+            const fora = abertas.filter((p) => !p.inRange).length;
+            resumo.innerHTML = abertas.length ? `
+                <div class="fundos-num"><span>Nos fundos</span><strong class="money">${esc(brl(total))}</strong></div>
+                <div class="fundos-num"><span>Para colher</span><strong class="money">${esc(brl(ganhos))}</strong></div>
+                <div class="fundos-num"><span>Posições</span><strong>${abertas.length}${fora ? ` <small class="fora">· ${fora} fora da faixa</small>` : ''}</strong></div>` : '';
+        }
+        if (!list.length) { box.innerHTML = '<div class="empty-state">Nenhuma posição ainda. Toque em "Nova posição" para colocar duas moedas num fundo.</div>'; return; }
         const isOld = (p) => p.closed && !(p.fees0 > 0 || p.fees1 > 0);
+        const temGanho = (p) => p.feesUsd > 0 || p.fees0 > 0 || p.fees1 > 0;
         const card = (p, i) => `
-            <div class="pl-card ${p.closed ? 'closed' : p.inRange ? 'in' : 'out'}">
+            <article class="pl-card ${p.closed ? 'closed' : p.inRange ? 'in' : 'out'}">
                 <div class="pl-head">${REG().tokenBadge(p.token0.symbol, 28)}${REG().tokenBadge(p.token1.symbol, 28)}
                     <strong>${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}</strong>
                     <span class="pl-fee">${esc(FEES.find((f) => f.fee === p.fee)?.label || p.fee)}</span>
                     ${REG().chainBadge(p.chainId)}</div>
-                <div class="pl-status">${p.closed ? '⚪ Encerrada' : p.inRange ? '🟢 Rendendo' : '🟠 Fora da faixa: parou de render'}</div>
+                <div class="pl-status">${p.closed ? '⚪ Encerrada' : p.inRange ? '🟢 Recebendo taxas' : '🟠 Fora da faixa: parou de receber'}</div>
                 <div class="pl-grid">
                     <div><span>Valor</span><strong class="money">${p.priced ? esc(brl(p.usd)) : `${num(p.amount0)} ${esc(p.token0.symbol)} + ${num(p.amount1)} ${esc(p.token1.symbol)}`}</strong></div>
-                    <div><span>Ganhos para colher</span><strong class="money">${p.priced ? esc(brl(p.feesUsd)) : `${num(p.fees0)} + ${num(p.fees1)}`}</strong></div>
+                    <div><span>Para colher</span><strong class="money">${p.priced ? esc(brl(p.feesUsd)) : `${num(p.fees0)} + ${num(p.fees1)}`}</strong></div>
                     <div class="wide"><span>Faixa (${esc(p.token1.symbol)} por ${esc(p.token0.symbol)})</span><strong>${num(p.min)} – ${num(p.max)} · agora ${num(p.price)}</strong></div>
                 </div>
-                <div class="two-btn-row">
-                    <button type="button" class="btn-soft" data-collect="${i}" ${p.feesUsd > 0 || p.fees0 > 0 || p.fees1 > 0 ? '' : 'disabled'}>Colher ganhos</button>
-                    <button type="button" class="btn-soft" data-exit="${i}" ${p.closed && !(p.fees0 > 0 || p.fees1 > 0) ? 'disabled' : ''}>Tirar tudo</button>
+                <div class="pl-acoes">
+                    <button type="button" class="btn-soft" data-acao="add" data-i="${i}" ${p.closed ? 'disabled' : ''}>＋ Colocar</button>
+                    <button type="button" class="btn-soft" data-acao="tirar" data-i="${i}" ${p.closed ? 'disabled' : ''}>− Tirar</button>
+                    <button type="button" class="btn-soft" data-acao="colher" data-i="${i}" ${temGanho(p) ? '' : 'disabled'}>Colher</button>
+                    <button type="button" class="btn-soft" data-acao="mais" data-i="${i}" aria-label="Mais opções">⋯</button>
                 </div>
                 <div class="pl-msg" data-msg="${i}" role="status"></div>
-            </div>`;
+            </article>`;
         const active = list.map((p, i) => [p, i]).filter(([p]) => !isOld(p));
         const old = list.map((p, i) => [p, i]).filter(([p]) => isOld(p));
         box.innerHTML = (active.length ? active.map(([p, i]) => card(p, i)).join('') : '<div class="empty-state">Nenhuma posição aberta agora.</div>')
             + (old.length ? `<details class="more-fold"><summary>Encerradas (${old.length})</summary><div class="fold-content pl-list">${old.map(([p, i]) => card(p, i)).join('')}</div></details>` : '');
-        const run = async (i, kind) => {
-            const p = list[i];
-            const msg = box.querySelector(`[data-msg="${i}"]`);
+        box.querySelectorAll('[data-acao]').forEach((b) => {
+            b.onclick = () => {
+                const p = list[Number(b.dataset.i)];
+                const msg = box.querySelector(`[data-msg="${b.dataset.i}"]`);
+                if (b.dataset.acao === 'add') return folhaColocar(p);
+                if (b.dataset.acao === 'tirar') return folhaTirar(p);
+                if (b.dataset.acao === 'colher') return colherComRecibo(p, msg);
+                if (b.dataset.acao === 'mais') return folhaMais(p);
+            };
+        });
+    }
+    const feito = (texto) => { global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: texto } })); W().refreshBalances?.(); };
+    const linkTx = (chainId, hash) => `<a href="${esc(REG().explorerTxUrl(chainId, hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`;
+    async function colherComRecibo(p, msg) {
+        const ok = await global.RdeskReceipt.confirm({
+            title: 'Colher ganhos', sendVal: `${p.token0.symbol}/${p.token1.symbol} na ${REG().getChain(p.chainId).name}`, sendBrl: p.priced ? brl(p.feesUsd) : '',
+            recvVal: `${num(p.fees0)} ${p.token0.symbol} + ${num(p.fees1)} ${p.token1.symbol}`, recvBrl: p.priced ? brl(p.feesUsd) : '',
+            route: 'Uniswap V3 (contrato oficial, direto do app)', fee: 'R$ 0,00 (sem taxa do app)',
+            gas: `Paga em ${REG().getChain(p.chainId).native} na rede ${REG().getChain(p.chainId).name}`, shield: 'Só os ganhos saem; a posição continua no fundo.'
+        });
+        if (!ok) return;
+        try {
+            if (msg) msg.textContent = 'Assinando…';
+            const hash = await collect(p);
+            if (msg) msg.innerHTML = `✓ Ganhos colhidos. ${linkTx(p.chainId, hash)}`;
+            feito('Ganhos colhidos!');
+            renderLista();
+        } catch (e) { if (msg) msg.textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 200); }
+    }
+    const tituloPos = (p) => `${esc(p.token0.symbol)} / ${esc(p.token1.symbol)} <small>${esc(FEES.find((f) => f.fee === p.fee)?.label || '')} · ${esc(REG().getChain(p.chainId).name)}</small>`;
+
+    // ---------- colocar mais ----------
+    function folhaColocar(p) {
+        const el = sheet(`
+            <div class="mk-top"><h2>Colocar mais</h2><button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button></div>
+            <p class="pl-titulo">${tituloPos(p)}</p>
+            <p class="muted-sm">Entra na mesma faixa (${num(p.min)} – ${num(p.max)}). Você diz quanto de uma moeda; o app calcula quanto vai da outra, no preço de agora.</p>
+            <label class="field-label">Moeda que você vai digitar
+                <select id="pa-lado" class="field-input"><option value="0">${esc(p.token0.symbol)}</option><option value="1">${esc(p.token1.symbol)}</option></select></label>
+            <label class="field-label">Quanto<input type="text" inputmode="decimal" id="pa-qtd" class="field-input" autocomplete="off" placeholder="0,00"></label>
+            <div id="pa-preview" aria-live="polite"></div>
+            <button type="button" class="btn-primary" id="pa-go" disabled>Revisar e colocar</button>
+            <div id="pa-msg" class="pl-msg" role="status"></div>`);
+        if (!el) return;
+        const $ = (q) => el.querySelector(q);
+        let plano = null, t = null;
+        // Saldos lidos na rede ao abrir (a lista da tela pode estar atrasada)
+        const saldos = {};
+        const dono = W().getAddress();
+        const lerSaldos = Promise.all([
+            ...[p.token0, p.token1].map((m) => withRpcs(p.chainId, (pr) => new (E().Contract)(m.address, ABI.erc20, pr).balanceOf(dono))
+                .then((v) => { saldos[m.address.toLowerCase()] = Number(E().utils.formatUnits(v, m.decimals)); }).catch(() => {})),
+            withRpcs(p.chainId, (pr) => pr.getBalance(dono)).then((v) => { saldos.nativo = Number(E().utils.formatEther(v)); }).catch(() => {})
+        ]);
+        const saldoDe = (m) => saldos[m.address.toLowerCase()] ?? Number((W().getBalances() || []).find((b) => b.chainId === p.chainId && b.symbol === m.symbol)?.amount || 0);
+        const nativo = () => saldos.nativo ?? 0;
+        const ehEmbrulhada = (m) => WRAPPED[p.chainId] && m.address.toLowerCase() === WRAPPED[p.chainId].address.toLowerCase();
+        const previa = () => {
+            clearTimeout(t);
+            t = setTimeout(async () => {
+                $('#pa-go').disabled = true; plano = null;
+                const q = Number(String($('#pa-qtd').value).replace(/\./g, '').replace(',', '.'));
+                if (!(q > 0)) { $('#pa-preview').innerHTML = ''; return; }
+                try {
+                    await lerSaldos;
+                    plano = await planAdd(p, Number($('#pa-lado').value), q);
+                    const falta = [[p.token0, plano.amt0], [p.token1, plano.amt1]].filter(([m, need]) => need > 0 && saldoDe(m) + (ehEmbrulhada(m) ? Math.max(0, nativo() - 3) : 0) + 1e-12 < need);
+                    const u0 = usdOf(p.chainId, p.token0), u1 = usdOf(p.chainId, p.token1);
+                    $('#pa-preview').innerHTML = `<div class="pl-need"><span>Você coloca</span><strong>${num(plano.amt0)} ${esc(p.token0.symbol)} + ${num(plano.amt1)} ${esc(p.token1.symbol)}</strong>${u0 > 0 && u1 > 0 ? `<small class="money">≈ ${esc(brl(plano.amt0 * u0 + plano.amt1 * u1))}</small>` : ''}</div>`
+                        + (falta.length ? `<p class="warn-text">Falta ${falta.map(([m, need]) => `${esc(m.symbol)} (você tem ${num(saldoDe(m))}, precisa de ${num(need)})`).join(' e ')}.</p>` : '');
+                    $('#pa-go').disabled = falta.length > 0;
+                } catch (e) { $('#pa-preview').innerHTML = `<p class="warn-text">${esc(e.message)}</p>`; }
+            }, 250);
+        };
+        $('#pa-qtd').addEventListener('input', previa);
+        $('#pa-lado').addEventListener('change', previa);
+        $('#pa-go').onclick = async () => {
+            if (!plano) return;
+            const u0 = usdOf(p.chainId, p.token0), u1 = usdOf(p.chainId, p.token1);
             const ok = await global.RdeskReceipt.confirm({
-                title: kind === 'collect' ? 'Colher ganhos' : 'Tirar tudo do fundo',
-                sendVal: `${p.token0.symbol}/${p.token1.symbol} na ${REG().getChain(p.chainId).name}`,
-                sendBrl: p.priced ? brl(kind === 'collect' ? p.feesUsd : p.usd + p.feesUsd) : '',
-                recvVal: kind === 'collect' ? `${num(p.fees0)} ${p.token0.symbol} + ${num(p.fees1)} ${p.token1.symbol}` : `~${num(p.amount0 + p.fees0)} ${p.token0.symbol} + ~${num(p.amount1 + p.fees1)} ${p.token1.symbol}`,
-                recvBrl: p.priced ? brl(kind === 'collect' ? p.feesUsd : p.usd + p.feesUsd) : '',
-                route: 'Uniswap V3 (contrato oficial, direto do app)',
-                fee: 'R$ 0,00 (sem taxa do app)',
-                gas: `Paga em ${REG().getChain(p.chainId).native} na rede ${REG().getChain(p.chainId).name}`,
-                shield: kind === 'collect' ? 'Só os ganhos saem; a posição continua rendendo.' : `Mínimo garantido: 95% do valor de hoje. As moedas voltam para a sua carteira.`
+                title: 'Colocar mais na posição', sendVal: `${num(plano.amt0)} ${p.token0.symbol} + ${num(plano.amt1)} ${p.token1.symbol}`,
+                sendBrl: u0 > 0 && u1 > 0 ? brl(plano.amt0 * u0 + plano.amt1 * u1) : '', recvVal: `Mais dinheiro na posição ${p.token0.symbol}/${p.token1.symbol}`,
+                recvBrl: p.inRange ? 'recebe taxas enquanto o preço ficar na faixa' : 'a faixa está fora do preço: fica parado',
+                route: `Uniswap V3 oficial • ${REG().getChain(p.chainId).name}`, fee: 'R$ 0,00 (sem taxa do app)',
+                gas: `Paga em ${REG().getChain(p.chainId).native}`, shield: 'Mínimo garantido: 95% do calculado. Aprovação só do valor exato.'
             });
             if (!ok) return;
             try {
-                msg.textContent = 'Assinando…';
-                const hash = kind === 'collect' ? await collect(p) : await withdrawAll(p);
-                msg.innerHTML = `✓ Feito. <a href="${esc(REG().explorerTxUrl(p.chainId, hash))}" target="_blank" rel="noopener noreferrer">Ver transação ↗</a>`;
-                global.dispatchEvent(new CustomEvent('rdesk:success', { detail: { text: kind === 'collect' ? 'Ganhos colhidos!' : 'Dinheiro tirado do fundo!' } }));
-                W().refreshBalances?.();
-            } catch (e) { msg.textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 200); }
+                $('#pa-go').disabled = true;
+                $('#pa-msg').textContent = 'Assinando… (aprovar cada moeda e depois colocar)';
+                const emb = [[p.token0, plano.amt0], [p.token1, plano.amt1]].filter(([m]) => ehEmbrulhada(m)).map(([m, need]) => Math.max(0, need - saldoDe(m)))[0] || 0;
+                const hash = await executeAdd(plano, { wrapNative: emb > 0 ? emb * 1.000001 : 0 });
+                $('#pa-msg').innerHTML = `✅ Colocado! ${linkTx(p.chainId, hash)}`;
+                feito('Posição aumentada!');
+                setTimeout(() => { if ($('#pa-msg').isConnected) open(); }, 1600);
+            } catch (e) { $('#pa-msg').textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 220); $('#pa-go').disabled = false; }
         };
-        box.querySelectorAll('[data-collect]').forEach((b) => { b.onclick = () => run(Number(b.dataset.collect), 'collect'); });
-        box.querySelectorAll('[data-exit]').forEach((b) => { b.onclick = () => run(Number(b.dataset.exit), 'exit'); });
+    }
+
+    // ---------- tirar parte ou tudo ----------
+    function folhaTirar(p) {
+        const el = sheet(`
+            <div class="mk-top"><h2>Tirar do fundo</h2><button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button></div>
+            <p class="pl-titulo">${tituloPos(p)}</p>
+            <div class="chip-group" id="pt-pcts">${[25, 50, 75, 100].map((v) => `<button type="button" class="chip" data-pct="${v}">${v === 100 ? 'Tudo' : v + '%'}</button>`).join('')}</div>
+            <label class="field-label">Quanto tirar: <strong id="pt-val">50%</strong><input type="range" id="pt-range" min="1" max="100" value="50" class="pt-range"></label>
+            <div id="pt-preview" class="pl-need" aria-live="polite"></div>
+            <p class="muted-sm">Os ganhos que estavam para colher vêm junto. Com "Tudo", a posição fica encerrada (dá para abrir outra depois).</p>
+            <button type="button" class="btn-primary" id="pt-go">Revisar e tirar</button>
+            <div id="pt-msg" class="pl-msg" role="status"></div>`);
+        if (!el) return;
+        const $ = (q) => el.querySelector(q);
+        const pct = () => Number($('#pt-range').value);
+        const u0 = usdOf(p.chainId, p.token0), u1 = usdOf(p.chainId, p.token1);
+        const prev = () => {
+            const f = pct() / 100;
+            $('#pt-val').textContent = pct() === 100 ? 'tudo' : `${pct()}%`;
+            $('#pt-preview').innerHTML = `<span>Volta para a carteira (aprox.)</span><strong>${num(p.amount0 * f + p.fees0)} ${esc(p.token0.symbol)} + ${num(p.amount1 * f + p.fees1)} ${esc(p.token1.symbol)}</strong>${p.priced ? `<small class="money">≈ ${esc(brl(p.usd * f + p.feesUsd))}</small>` : ''}`;
+            el.querySelectorAll('[data-pct]').forEach((b) => b.classList.toggle('active', Number(b.dataset.pct) === pct()));
+        };
+        $('#pt-range').addEventListener('input', prev);
+        el.querySelectorAll('[data-pct]').forEach((b) => { b.onclick = () => { $('#pt-range').value = b.dataset.pct; prev(); }; });
+        prev();
+        $('#pt-go').onclick = async () => {
+            const v = pct(), f = v / 100;
+            const ok = await global.RdeskReceipt.confirm({
+                title: v === 100 ? 'Tirar tudo do fundo' : `Tirar ${v}% do fundo`, sendVal: `${p.token0.symbol}/${p.token1.symbol} na ${REG().getChain(p.chainId).name}`,
+                sendBrl: p.priced ? brl(p.usd * f) : '', recvVal: `~${num(p.amount0 * f + p.fees0)} ${p.token0.symbol} + ~${num(p.amount1 * f + p.fees1)} ${p.token1.symbol}`,
+                recvBrl: p.priced ? brl(p.usd * f + p.feesUsd) : '', route: 'Uniswap V3 (contrato oficial, direto do app)', fee: 'R$ 0,00 (sem taxa do app)',
+                gas: `Paga em ${REG().getChain(p.chainId).native}`, shield: 'Mínimo garantido: 95% do valor de hoje. As moedas voltam para a sua carteira.'
+            });
+            if (!ok) return;
+            try {
+                $('#pt-go').disabled = true; $('#pt-msg').textContent = 'Assinando…';
+                const hash = await withdrawPart(p, v);
+                $('#pt-msg').innerHTML = `✅ Feito! ${linkTx(p.chainId, hash)}`;
+                feito(v === 100 ? 'Dinheiro tirado do fundo!' : 'Parte tirada do fundo!');
+                setTimeout(() => { if ($('#pt-msg').isConnected) open(); }, 1600);
+            } catch (e) { $('#pt-msg').textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 220); $('#pt-go').disabled = false; }
+        };
+    }
+
+    // ---------- mais opções ----------
+    function folhaMais(p) {
+        const el = sheet(`
+            <div class="mk-top"><h2>Mais opções</h2><button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button></div>
+            <p class="pl-titulo">${tituloPos(p)}</p>
+            <div class="pl-menu">
+                ${p.closed ? '' : `<button type="button" class="btn-soft" id="pm-faixa">↔ Mudar a faixa<small>Tira tudo desta posição e abre outra no mesmo fundo, com a faixa nova</small></button>`}
+                <button type="button" class="btn-soft" id="pm-novo">＋ Outra posição neste fundo<small>Mesmo par e mesma taxa, com outra faixa</small></button>
+                <a class="btn-soft" href="${esc(linkUniswap(p))}" target="_blank" rel="noopener noreferrer">Ver no site da Uniswap ↗<small>Posição nº ${esc(p.id)}</small></a>
+            </div>
+            <div id="pm-msg" class="pl-msg" role="status"></div>`);
+        if (!el) return;
+        const pre = { chainId: p.chainId, a: p.token0.symbol, b: p.token1.symbol, fee: p.fee };
+        el.querySelector('#pm-novo').onclick = () => openNew(pre);
+        const fx = el.querySelector('#pm-faixa');
+        if (fx) fx.onclick = async () => {
+            const ok = await global.RdeskReceipt.confirm({
+                title: 'Mudar a faixa (passo 1 de 2: tirar tudo)', sendVal: `${p.token0.symbol}/${p.token1.symbol} na ${REG().getChain(p.chainId).name}`,
+                sendBrl: p.priced ? brl(p.usd) : '', recvVal: `~${num(p.amount0 + p.fees0)} ${p.token0.symbol} + ~${num(p.amount1 + p.fees1)} ${p.token1.symbol}`,
+                recvBrl: 'depois você escolhe a faixa nova', route: 'Uniswap V3 (contrato oficial, direto do app)', fee: 'R$ 0,00 (sem taxa do app)',
+                gas: `Paga em ${REG().getChain(p.chainId).native}`, shield: 'Mínimo garantido: 95% do valor de hoje.'
+            });
+            if (!ok) return;
+            try {
+                el.querySelector('#pm-msg').textContent = 'Tirando da faixa antiga…';
+                await withdrawAll(p);
+                feito('Faixa antiga encerrada. Agora escolha a nova.');
+                W().refreshBalances?.();
+                openNew(pre);
+            } catch (e) { el.querySelector('#pm-msg').textContent = `❌ ${e?.reason || e?.message || e}`.slice(0, 200); }
+        };
     }
 
     function tokensFor(chainId) {
@@ -423,6 +661,7 @@
     function openNew(prefill = {}) {
         const chains = Object.keys(UNI).map(Number);
         let chainId = prefill.chainId && UNI[prefill.chainId] ? prefill.chainId : 137;
+        const feeInicial = FEES.some((f) => f.fee === prefill.fee) ? prefill.fee : null;
         const el = sheet(`
             <div class="mk-top"><button type="button" class="icon-btn" id="pl-back" aria-label="Voltar">←</button><h2>Nova posição</h2><button type="button" class="icon-btn" data-close aria-label="Fechar">✕</button></div>
             <label class="field-label">Rede<select id="pl-chain" class="field-input">${chains.map((c) => `<option value="${c}" ${c === chainId ? 'selected' : ''}>${esc(REG().getChain(c).name)}</option>`).join('')}</select></label>
@@ -452,7 +691,7 @@
             <p class="muted-sm">Risco: se o preço sair da faixa, a posição para de render e fica toda numa moeda só. Fundo novo, com pouca gente, rende pouco. Use só uma parte do dinheiro.</p>`);
         if (!el) return;
         const $ = (s) => el.querySelector(s);
-        const st = { fee: 3000, width: '8', pool: null, plan: null, seq: 0, extras: [], ladoColar: 'a', anterior: { a: '', b: '' }, vivos: {} };
+        const st = { fee: feeInicial || 3000, width: '8', pool: null, plan: null, seq: 0, extras: [], ladoColar: 'a', anterior: { a: '', b: '' }, vivos: {} };
         const COLAR = '__colar';
         const todos = () => [...tokensFor(chainId), ...st.extras.filter((t) => t.chainId === chainId)];
         const num2 = (s) => { const v = REG().parseBRL(String(s || '').trim()); return v === null ? NaN : v; };
@@ -659,5 +898,21 @@
         loadPool();
     }
 
-    global.RdeskPools = { withRpcs, open, openNew, listPositions, planMint, executeMint, collect, withdrawAll, poolInfo, UNI, WRAPPED, _math: { sqrtX96FromRaw, amountsFor, pairAmount, alignTick, tickFromRaw, rawFromHuman, humanFromRaw }, _last: () => lastList };
+    // Ligações da seção Fundos
+    function ligar() {
+        document.querySelectorAll('[data-fundos-aba]').forEach((b) => { b.onclick = () => mostrarAba(b.dataset.fundosAba); });
+        document.getElementById('btn-fundos-atualizar')?.addEventListener('click', () => { lastList = []; renderLista(); });
+        document.getElementById('btn-fundos-trocar')?.addEventListener('click', () => document.querySelector('.nav-tab-btn[data-tab="pixswap"]')?.click());
+        document.querySelector('.nav-tab-btn[data-tab="earn"]')?.addEventListener('click', () => {
+            const aba = document.querySelector('[data-fundos-aba][aria-selected="true"]')?.dataset.fundosAba || 'posicoes';
+            if (aba === 'posicoes') renderLista();
+        });
+        global.addEventListener('rdesk:account-changed', () => { lastList = []; });
+    }
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligar);
+        else ligar();
+    }
+
+    global.RdeskPools = { withRpcs, open, openNew, mostrarAba, renderLista, planAdd, executeAdd, withdrawPart, listPositions, planMint, executeMint, collect, withdrawAll, poolInfo, UNI, WRAPPED, _math: { sqrtX96FromRaw, amountsFor, pairAmount, alignTick, tickFromRaw, rawFromHuman, humanFromRaw }, _last: () => lastList };
 })(window);

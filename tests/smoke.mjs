@@ -57,6 +57,7 @@ try {
     check('cotações ao vivo (POL em USD e dólar em R$)', prices.POL > 0.001 && prices.POL < 100 && prices.USD_BRL > 2 && prices.USD_BRL < 20, `POL=$${prices.POL} USD/BRL=${prices.USD_BRL}`);
 
     await page.click('.nav-tab-btn[data-tab="earn"]');
+    await page.click('[data-fundos-aba="piloto"]');
     await waitFn(page, () => window.RdeskDefi.getState().poolPrice > 0, null, { timeout: 45000 });
     const st = await page.evaluate(() => window.RdeskDefi.getState());
     check('preço da pool Uniswap coerente com o mercado (±5%)', Math.abs(st.poolPrice - prices.POL) / prices.POL < 0.05, `pool=$${st.poolPrice.toFixed(5)} mercado=$${prices.POL}`);

@@ -55,6 +55,7 @@ const I = {
         'function tokenOfOwnerByIndex(address,uint256) view returns (uint256)',
         'function positions(uint256) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
         'function mint((address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, address recipient, uint256 deadline)) payable returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)',
+        'function increaseLiquidity((uint256 tokenId, uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)',
         'function decreaseLiquidity((uint256 tokenId, uint128 liquidity, uint256 amount0Min, uint256 amount1Min, uint256 deadline)) payable returns (uint256 amount0, uint256 amount1)',
         'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) payable returns (uint256 amount0, uint256 amount1)',
         'function multicall(bytes[] data) payable returns (bytes[] results)',
@@ -377,6 +378,27 @@ export class MockChain {
                 if (s.pools[this.poolAddr(s, t0, t1, m.fee)]) s.pools[this.poolAddr(s, t0, t1, m.fee)].liquidity += liq;
                 (s.owned[owner] ??= []).push(id);
                 return enc([id, liq, u0, u1]);
+            }
+            case 'increaseLiquidity': {
+                const d = a[0]; const p = getPos(d.tokenId); onlyOwner(p);
+                if (Number(d.deadline) < now) throw new Revert('Transaction too old');
+                const t0 = p.token0 || ADDR.WPOL, t1 = p.token1 || ADDR.USDT0;
+                const tickNow = p.token0 ? this.poolTick(s, p.token0, p.token1, p.fee) : this.tick;
+                const sp = this.sqrtAt(tickNow), sa = this.sqrtAt(p.tickLower), sb = this.sqrtAt(p.tickUpper);
+                const d0 = Number(big(d.amount0Desired)), d1 = Number(big(d.amount1Desired));
+                let L;
+                if (sp <= sa) L = d0 / (1 / sa - 1 / sb);
+                else if (sp >= sb) L = d1 / (sb - sa);
+                else L = Math.min(d0 / (1 / sp - 1 / sb), d1 / (sp - sa));
+                const liq = BigInt(Math.floor(L));
+                if (liq <= 0n) throw new Revert('liquidez zero');
+                const [u0, u1] = this.amountsForLiquidity(liq, p.tickLower, p.tickUpper, tickNow);
+                if (u0 < big(d.amount0Min) || u1 < big(d.amount1Min)) throw new Revert('Price slippage check');
+                if (u0 > big(d.amount0Desired) || u1 > big(d.amount1Desired)) throw new Revert('usaria mais do que o pedido');
+                this._pull(s, t0, from, ADDR.NFPM, u0);
+                this._pull(s, t1, from, ADDR.NFPM, u1);
+                p.liquidity += liq;
+                return enc([liq, u0, u1]);
             }
             case 'decreaseLiquidity': {
                 const d = a[0]; const p = getPos(d.tokenId); onlyOwner(p);

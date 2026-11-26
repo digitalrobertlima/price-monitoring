@@ -144,7 +144,7 @@
             { id: 'wallet', title: 'Criar ou abrir sua carteira', hint: 'Leva 2 minutos. Tenha papel e caneta por perto.', done: hasAcc, go: () => w?.openModal(hasAcc ? 'list' : 'add') },
             { id: 'receive', title: 'Conhecer o seu endereço', hint: 'É o “número” da sua carteira, para alguém te enviar moedas.', done: Boolean(st.did.receive), go: () => (hasAcc ? w.openView('receive') : w?.openModal('add')) },
             { id: 'fund', title: 'Colocar sua primeira moeda', hint: 'Peça para alguém enviar ou mande de outra carteira sua.', done: total > 0, go: () => (hasAcc ? w.openView('receive') : w?.openModal('add')) },
-            { id: 'earn', title: 'Conhecer o Render', hint: 'Veja como suas moedas podem render, sem compromisso.', done: Boolean(st.did.earn), go: () => document.querySelector('.nav-tab-btn[data-tab="earn"]')?.click() }
+            { id: 'earn', title: 'Conhecer os Fundos', hint: 'Veja como colocar duas moedas num fundo de trocas, sem compromisso.', done: Boolean(st.did.earn), go: () => document.querySelector('.nav-tab-btn[data-tab="earn"]')?.click() }
         ];
     }
 
@@ -192,7 +192,7 @@
         receive: { title: 'Este é o seu endereço', text: 'Funciona como o número da sua carteira. Mostre o código ou copie o endereço para quem vai te enviar. <strong>Escolha a mesma rede que a pessoa vai usar</strong> — rede é o caminho por onde a moeda viaja.' },
         send: { title: 'Antes de enviar', text: 'Confira o endereço inteiro e a rede. Envio em blockchain <strong>não tem estorno</strong>. Na dúvida, mande um valor pequeno primeiro.' },
         pixswap: { title: 'Trocar moedas', text: 'Escolha o que você dá e o que quer receber. O app mostra quanto você recebe <strong>antes</strong> de confirmar, e bloqueia trocas que te fariam perder dinheiro.' },
-        earn: { title: 'Render', text: 'O gráfico mostra o preço do POL. A faixa azul é onde seu dinheiro trabalha: <strong>arraste as alças azuis</strong> para escolher a sua, ou use a sugerida. Nada acontece até você confirmar.' },
+        earn: { title: 'Fundos', text: 'Aqui ficam suas posições na Uniswap, em todas as redes: <strong>colocar mais, tirar uma parte, colher e mudar a faixa</strong>. Em "Piloto automático" você escolhe a faixa no gráfico, <strong>arrastando as alças azuis</strong>. Nada acontece até você confirmar.' },
         audit: { title: 'Seu extrato', text: 'Aqui aparecem todas as suas transações, como num extrato do banco. Em cima, quanto você ganhou ou perdeu desde o começo, comparando com a moeda que você escolher (Bitcoin, real, dólar ou ether).' },
         addtoken: { title: 'Adicionar uma moeda', text: 'Pegue o endereço do contrato no <strong>site oficial</strong> do projeto. Qualquer pessoa pode criar uma moeda com qualquer nome.' }
     };

@@ -57,6 +57,7 @@ try {
 
     // ------------------------------------------------------------ 2. Aba Render: faixa Sniper visível
     await page.click('.nav-tab-btn[data-tab="earn"]');
+    await page.click('[data-fundos-aba="piloto"]');
     await waitFn(page, () => window.RdeskDefi.getState().poolPrice > 0, null, { timeout: 30000 });
     await page.waitForTimeout(1500);
     const st0 = await ui(() => window.RdeskDefi.getState());

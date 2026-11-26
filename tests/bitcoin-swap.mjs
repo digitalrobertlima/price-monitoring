@@ -182,7 +182,7 @@ try {
     check('receber pelo Bitcoin explica que é o lugar mais seguro para guardar', /mais seguro para guardar/.test(await page.innerText('[data-net-risk]')));
     await page.click('#rmw-close-btn');
     await page.click('.nav-tab-btn[data-tab="earn"]');
-    check('aba Render avisa que roda numa rede jovem e sugere usar só uma parte', /rede nova e mais arriscada/.test(await page.innerText('#render-network-risk')));
+    check('aba Fundos avisa que roda numa rede jovem e sugere usar só uma parte', /rede nova e mais arriscada/.test(await page.innerText('#render-network-risk')));
 
     check('sem erros de JavaScript nem violação de CSP', pageErrors.length === 0 && cspViolations.length === 0, [...pageErrors, ...cspViolations].slice(0, 3).join(' | '));
     void dialogs;
